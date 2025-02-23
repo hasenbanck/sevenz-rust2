@@ -2,10 +2,9 @@ use std::{
     fs::{read, read_to_string, File},
     path::PathBuf,
 };
-
 use tempfile::tempdir;
 
-use sevenz_rust::{decompress_file, Archive, BlockDecoder};
+use sevenz_rust::{decompress_file, Archive, BlockDecoder, Password, SevenZReader};
 
 #[test]
 fn decompress_single_empty_file_unencoded_header() {
@@ -179,5 +178,31 @@ fn test_entry_compressed_size() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn test_get_file_by_path() {
+    // non_solid.7z and solid.7z are expected to have the same content.
+    let mut non_solid_reader =
+        SevenZReader::open("tests/resources/non_solid.7z", Password::empty()).unwrap();
+    let mut solid_reader =
+        SevenZReader::open("tests/resources/solid.7z", Password::empty()).unwrap();
+
+    let paths: Vec<String> = non_solid_reader
+        .archive()
+        .files
+        .iter()
+        .filter(|file| !file.is_directory)
+        .map(|file| file.name.clone())
+        .collect();
+
+    for path in paths.iter() {
+        let data0 = non_solid_reader.read_file(path.as_str()).unwrap();
+        let data1 = solid_reader.read_file(path.as_str()).unwrap();
+
+        assert!(!data0.is_empty());
+        assert!(!data1.is_empty());
+        assert_eq!(&data0, &data1);
     }
 }

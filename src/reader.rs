@@ -1,11 +1,11 @@
+use crate::{archive::*, decoders::add_decoder, error::Error, folder::*, password::Password};
+use bit_set::BitSet;
+use crc32fast::Hasher;
+use std::collections::HashMap;
 use std::{
     fs::File,
     io::{ErrorKind, Read, Seek, SeekFrom},
 };
-
-use crate::{archive::*, decoders::add_decoder, error::Error, folder::*, password::Password};
-use bit_set::BitSet;
-use crc32fast::Hasher;
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 
@@ -366,6 +366,12 @@ impl Archive {
         } else {
             return Err(Error::other("Broken or unsupported archive: no Header"));
         }
+
+        archive.is_solid = archive
+            .folders
+            .iter()
+            .any(|folder| folder.num_unpack_sub_streams > 1);
+
         Ok(archive)
     }
 
@@ -1090,10 +1096,17 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
     }
 }
 
+#[derive(Copy, Clone)]
+struct IndexEntry {
+    folder_index: Option<usize>,
+    file_index: usize,
+}
+
 pub struct SevenZReader<R: Read + Seek> {
     source: R,
     archive: Archive,
     password: Vec<u8>,
+    index: HashMap<String, IndexEntry>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1112,19 +1125,44 @@ impl<R: Read + Seek> SevenZReader<R> {
     pub fn new(mut source: R, reader_len: u64, password: Password) -> Result<Self, Error> {
         let password = password.to_vec();
         let archive = Archive::read(&mut source, reader_len, &password)?;
-        Ok(Self {
+
+        let mut reader = Self {
             source,
             archive,
             password,
-        })
+            index: HashMap::default(),
+        };
+
+        reader.fill_index();
+
+        Ok(reader)
     }
 
     #[inline]
     pub fn from_archive(archive: Archive, source: R, password: Password) -> Self {
-        Self {
+        let mut reader = Self {
             source,
             archive,
             password: password.to_vec(),
+            index: HashMap::default(),
+        };
+
+        reader.fill_index();
+
+        reader
+    }
+
+    fn fill_index(&mut self) {
+        for (file_index, file) in self.archive.files.iter().enumerate() {
+            let folder_index = self.archive.stream_map.file_folder_index[file_index];
+
+            self.index.insert(
+                file.name.clone(),
+                IndexEntry {
+                    folder_index,
+                    file_index,
+                },
+            );
         }
     }
 
@@ -1367,6 +1405,82 @@ impl<R: Read + Seek> SevenZReader<R> {
             }
         }
         Ok(())
+    }
+
+    /// Returns the data of a file with the given path inside the archive.
+    ///
+    /// # Notice
+    /// This function is very inefficient when used with solid archives, since
+    /// it needs to decode all data before the actual file.
+    pub fn read_file(&mut self, name: &str) -> Result<Vec<u8>, Error> {
+        let index_entry = *self.index.get(name).ok_or(Error::FileNotFound)?;
+        let file = &self.archive.files[index_entry.file_index];
+
+        if !file.has_stream {
+            return Ok(Vec::new());
+        }
+
+        let folder_index = index_entry
+            .folder_index
+            .ok_or_else(|| Error::other("File has no associated folder"))?;
+
+        match self.archive.is_solid {
+            true => {
+                let mut result = None;
+                let target_file_ptr = file as *const _;
+
+                BlockDecoder::new(
+                    folder_index,
+                    &self.archive,
+                    &self.password,
+                    &mut self.source,
+                )
+                .for_each_entries(&mut |archive_entry, reader| {
+                    let mut data = Vec::with_capacity(archive_entry.size as usize);
+                    reader.read_to_end(&mut data)?;
+
+                    if archive_entry as *const _ == target_file_ptr {
+                        result = Some(data);
+                        Ok(false)
+                    } else {
+                        Ok(true)
+                    }
+                })?;
+
+                result.ok_or(Error::FileNotFound)
+            }
+            false => {
+                let pack_index =
+                    self.archive.stream_map.folder_first_pack_stream_index[folder_index];
+                let pack_offset = self.archive.stream_map.pack_stream_offsets[pack_index];
+                let folder_offset = SIGNATURE_HEADER_SIZE + self.archive.pack_pos + pack_offset;
+
+                self.source.seek(SeekFrom::Start(folder_offset))?;
+
+                let (mut folder_reader, _size) = Self::build_decode_stack(
+                    &mut self.source,
+                    &self.archive,
+                    folder_index,
+                    &self.password,
+                )?;
+
+                let mut data = Vec::with_capacity(file.size as usize);
+                let mut decoder: Box<dyn Read> =
+                    Box::new(BoundedReader::new(&mut folder_reader, file.size as usize));
+
+                if file.has_crc {
+                    decoder = Box::new(Crc32VerifyingReader::new(
+                        decoder,
+                        file.size as usize,
+                        file.crc,
+                    ));
+                }
+
+                decoder.read_to_end(&mut data)?;
+
+                Ok(data)
+            }
+        }
     }
 }
 

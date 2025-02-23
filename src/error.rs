@@ -19,6 +19,7 @@ pub enum Error {
     PasswordRequired,
     Unsupported(Cow<'static, str>),
     MaybeBadPassword(std::io::Error),
+    FileNotFound,
 }
 
 impl From<std::io::Error> for Error {

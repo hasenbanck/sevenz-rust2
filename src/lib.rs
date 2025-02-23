@@ -33,8 +33,7 @@ pub use lzma_rust as lzma;
 pub use method_options::*;
 pub use nt_time;
 pub use password::Password;
-pub use reader::BlockDecoder;
-pub use reader::SevenZReader;
+pub use reader::{BlockDecoder, SevenZReader};
 #[cfg(feature = "compress")]
 pub use writer::*;
 pub(crate) mod archive;

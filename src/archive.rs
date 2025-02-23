@@ -2,7 +2,7 @@
 use crate::{folder::*, method_options::MethodOptions};
 use bit_set::BitSet;
 use nt_time::FileTime;
-use std::{any::Any, collections::LinkedList, sync::Arc, time::SystemTime};
+use std::sync::Arc;
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -45,6 +45,7 @@ pub struct Archive {
     pub sub_streams_info: Option<SubStreamsInfo>,
     pub files: Vec<SevenZArchiveEntry>,
     pub stream_map: StreamMap,
+    pub is_solid: bool,
 }
 
 #[derive(Debug, Default, Clone)]
