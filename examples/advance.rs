@@ -3,6 +3,7 @@ use std::{collections::HashMap, env::temp_dir, time::Instant};
 use lzma::LZMA2Options;
 use rand::Rng;
 use sevenz_rust::*;
+
 fn main() {
     let temp_dir = temp_dir();
     let src = temp_dir.join("compress/advance");
@@ -16,7 +17,7 @@ fn main() {
     // generate random content files
     {
         for i in 0..file_count {
-            let c = gen_random_contents(rand::thread_rng().gen_range(1024..10240));
+            let c = gen_random_contents(rand::rng().random_range(1024..10240));
             unpack_size += c.len();
             contents.insert(format!("file{i}.txt"), c);
         }
@@ -69,9 +70,9 @@ fn main() {
 
 fn gen_random_contents(len: usize) -> String {
     let mut s = String::with_capacity(len);
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 0..len {
-        let ch = rng.gen_range('A'..='Z');
+        let ch = rng.random_range('A'..='Z');
         s.push(ch);
     }
     s

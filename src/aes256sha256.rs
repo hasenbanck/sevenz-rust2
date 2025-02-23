@@ -234,18 +234,16 @@ mod enc {
 
     impl AesEncoderOptions {
         pub fn new(password: Password) -> Self {
-            fn random_arr() -> [u8; 16] {
-                let mut a = [0u8; 16];
-                let mut r = rand::thread_rng();
-                for i in a.iter_mut() {
-                    *i = r.gen();
-                }
-                a
-            }
+            let mut iv = [0; 16];
+            getrandom::fill(&mut iv).expect("Can't generate IV");
+
+            let mut salt = [0; 16];
+            getrandom::fill(&mut salt).expect("Can't generate salt");
+
             Self {
                 password,
-                iv: random_arr(),
-                salt: random_arr(),
+                iv,
+                salt,
                 num_cycles_power: 8,
             }
         }
