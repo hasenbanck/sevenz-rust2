@@ -84,7 +84,7 @@ impl SevenZWriter<File> {
 }
 
 impl<W: Write + Seek> SevenZWriter<W> {
-    /// Prepares writer to write a 7z archive to
+    /// Prepares writer to write a 7z archive to.
     pub fn new(mut writer: W) -> Result<Self> {
         writer
             .seek(std::io::SeekFrom::Start(SIGNATURE_HEADER_SIZE))
@@ -101,8 +101,11 @@ impl<W: Write + Seek> SevenZWriter<W> {
     }
 
     /// Sets the default compression methods to use for entry contents.
+    ///
+    /// Currently only the COPY and LZMA2 and optionally ZStandard compression algorithm
+    /// are supported.
+    ///
     /// The default is LZMA2.
-    /// And currently only support LZMA2
     pub fn set_content_methods(
         &mut self,
         content_methods: Vec<SevenZMethodConfiguration>,
@@ -146,17 +149,16 @@ impl<W: Write + Seek> SevenZWriter<W> {
             if let Some(mut r) = reader {
                 let mut compressed_len = 0;
                 let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
-                let content_methods = if entry.content_methods.is_empty() {
-                    &self.content_methods
-                } else {
-                    &entry.content_methods
-                };
+
                 let mut more_sizes: Vec<Rc<Cell<usize>>> =
-                    Vec::with_capacity(content_methods.len() - 1);
+                    Vec::with_capacity(self.content_methods.len() - 1);
 
                 let (crc, size) = {
-                    let mut w =
-                        Self::create_writer(content_methods, &mut compressed, &mut more_sizes)?;
+                    let mut w = Self::create_writer(
+                        &self.content_methods,
+                        &mut compressed,
+                        &mut more_sizes,
+                    )?;
                     let mut write_len = 0;
                     let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
                     let mut buf = [0u8; 4096];
@@ -199,7 +201,8 @@ impl<W: Write + Seek> SevenZWriter<W> {
                 sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
                 sizes.push(size as u64);
 
-                self.unpack_info.add(content_methods.clone(), sizes, crc);
+                self.unpack_info
+                    .add(self.content_methods.clone(), sizes, crc);
 
                 self.files.push(entry);
                 return Ok(self.files.last().unwrap());
@@ -397,6 +400,7 @@ impl<W: Write + Seek> SevenZWriter<W> {
                 }
             }
         }
+
         methods.push(SevenZMethodConfiguration::new(SevenZMethod::LZMA));
 
         let methods = Arc::new(methods);

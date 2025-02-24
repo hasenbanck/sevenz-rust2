@@ -15,6 +15,8 @@ pub enum Encoder<W: Write> {
     COPY(CountingWriter<W>),
     LZMA(LZMAWriter<W>),
     LZMA2(LZMA2Writer<W>),
+    #[cfg(feature = "zstd")]
+    ZSTD(zstd::Encoder<'static, CountingWriter<W>>),
     #[cfg(feature = "aes256")]
     AES(Aes256Sha256Encoder<W>),
 }
@@ -25,6 +27,8 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::COPY(w) => w.write(buf),
             Encoder::LZMA(w) => w.write(buf),
             Encoder::LZMA2(w) => w.write(buf),
+            #[cfg(feature = "zstd")]
+            Encoder::ZSTD(w) => w.write(buf),
             #[cfg(feature = "aes256")]
             Encoder::AES(w) => w.write(buf),
         }
@@ -35,6 +39,8 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::COPY(w) => w.flush(),
             Encoder::LZMA(w) => w.flush(),
             Encoder::LZMA2(w) => w.flush(),
+            #[cfg(feature = "zstd")]
+            Encoder::ZSTD(w) => w.flush(),
             #[cfg(feature = "aes256")]
             Encoder::AES(w) => w.flush(),
         }
@@ -60,6 +66,15 @@ pub fn add_encoder<W: Write>(
             let options = get_lzma2_options(method_config.options.as_ref(), &mut def_opts);
             let lz = LZMA2Writer::new(input, options);
             Ok(Encoder::LZMA2(lz))
+        }
+        #[cfg(feature = "zstd")]
+        SevenZMethod::ID_ZSTD => {
+            let level = match method_config.options.as_ref() {
+                Some(MethodOptions::ZSTD(options)) => options.0,
+                _ => 3,
+            };
+            let zstd_decoder = zstd::Encoder::new(input, level).map_err(Error::io)?;
+            Ok(Encoder::ZSTD(zstd_decoder))
         }
         #[cfg(feature = "aes256")]
         SevenZMethod::ID_AES256SHA256 => {

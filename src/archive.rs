@@ -2,7 +2,6 @@
 use crate::{folder::*, method_options::MethodOptions};
 use bit_set::BitSet;
 use nt_time::FileTime;
-use std::sync::Arc;
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -74,7 +73,6 @@ pub struct SevenZArchiveEntry {
     pub compressed_crc: u64,
     pub size: u64,
     pub compressed_size: u64,
-    pub(crate) content_methods: Arc<Vec<SevenZMethodConfiguration>>,
 }
 
 impl SevenZArchiveEntry {
@@ -219,34 +217,40 @@ pub struct SevenZMethod(&'static str, &'static [u8]);
 
 impl SevenZMethod {
     pub const ID_COPY: &'static [u8] = &[0x00];
+    pub const ID_DELTA: &'static [u8] = &[0x03];
+    pub const ID_BCJ: &'static [u8] = &[0x04];
 
     pub const ID_LZMA: &'static [u8] = &[0x03, 0x01, 0x01];
-    pub const ID_LZMA2: &'static [u8] = &[0x21];
-    pub const ID_ZSTD: &'static [u8] = &[4, 247, 17, 1];
-    pub const ID_DEFLATE: &'static [u8] = &[0x04, 0x01, 0x08];
-    pub const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
-
     pub const ID_BCJ_X86: &'static [u8] = &[0x03, 0x03, 0x01, 0x03];
+    pub const ID_BCJ2: &'static [u8] = &[0x03, 0x03, 0x01, 0x1B];
     pub const ID_BCJ_PPC: &'static [u8] = &[0x03, 0x03, 0x02, 0x05];
     pub const ID_BCJ_IA64: &'static [u8] = &[0x03, 0x03, 0x04, 0x01];
     pub const ID_BCJ_ARM: &'static [u8] = &[0x03, 0x03, 0x05, 0x01];
     pub const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
     pub const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
-    pub const ID_DELTA: &'static [u8] = &[0x03];
-    pub const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
-    pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xf1, 0x07, 0x01];
-    pub const ID_BCJ2: &'static [u8] = &[0x03, 0x03, 0x01, 0x1B];
-    /// no compression
-    pub const COPY: SevenZMethod = Self("COPY", Self::ID_COPY);
 
+    pub const ID_LZMA2: &'static [u8] = &[0x21];
+    pub const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
+    pub const ID_ZSTD: &'static [u8] = &[0x04, 0xf7, 0x11, 0x01];
+    pub const ID_BROTLI: &'static [u8] = &[0x04, 0xf7, 0x11, 0x02];
+    pub const ID_LZ4: &'static [u8] = &[0x04, 0xf7, 0x11, 0x04];
+    pub const ID_LZS: &'static [u8] = &[0x04, 0xf7, 0x11, 0x05];
+    pub const ID_LIZARD: &'static [u8] = &[0x04, 0xf7, 0x11, 0x06];
+    pub const ID_DEFLATE: &'static [u8] = &[0x04, 0x01, 0x08];
+    pub const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
+    pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xf1, 0x07, 0x01];
+
+    pub const COPY: Self = Self("COPY", Self::ID_COPY);
     pub const LZMA: Self = Self("LZMA", Self::ID_LZMA);
     pub const LZMA2: Self = Self("LZMA2", Self::ID_LZMA2);
+    pub const BZIP2: Self = Self("BZIP2", Self::ID_BZIP2);
     pub const ZSTD: Self = Self("ZSTD", Self::ID_ZSTD);
-
+    pub const BROTLI: Self = Self("BROTLI", Self::ID_BROTLI);
+    pub const LZ4: Self = Self("LZ4", Self::ID_LZ4);
+    pub const LZS: Self = Self("LZS", Self::ID_LZS);
+    pub const LIZARD: Self = Self("LIZARD", Self::ID_LIZARD);
     pub const DEFLATE: Self = Self("DEFLATE", Self::ID_DEFLATE);
     pub const DEFLATE64: Self = Self("DEFLATE64", Self::ID_DEFLATE64);
-
-    pub const BZIP2: Self = Self("BZIP2", Self::ID_BZIP2);
     pub const AES256SHA256: Self = Self("AES256SHA256", Self::ID_AES256SHA256);
 
     pub const BCJ_X86_FILTER: Self = Self("BCJ_X86", Self::ID_BCJ_X86);
@@ -260,12 +264,16 @@ impl SevenZMethod {
 
     const METHODS: &'static [&'static SevenZMethod] = &[
         &Self::COPY,
-        &Self::ZSTD,
         &Self::LZMA,
         &Self::LZMA2,
+        &Self::BZIP2,
+        &Self::ZSTD,
+        &Self::BROTLI,
+        &Self::LZ4,
+        &Self::LZS,
+        &Self::LIZARD,
         &Self::DEFLATE,
         &Self::DEFLATE64,
-        &Self::BZIP2,
         &Self::AES256SHA256,
         &Self::BCJ_X86_FILTER,
         &Self::BCJ_PPC_FILTER,

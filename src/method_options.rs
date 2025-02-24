@@ -5,11 +5,24 @@ use lzma_rust2::LZMA2Options;
 use crate::aes256sha256::AesEncoderOptions;
 use std::fmt::Debug;
 
+#[cfg(feature = "zstd")]
+#[derive(Debug, Copy, Clone)]
+pub struct ZStandardOptions(pub(crate) i32);
+
+#[cfg(feature = "zstd")]
+impl ZStandardOptions {
+    pub const fn from_level(level: i32) -> Self {
+        Self(level)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum MethodOptions {
     Num(u32),
     #[cfg(feature = "compress")]
     LZMA2(LZMA2Options),
+    #[cfg(feature = "zstd")]
+    ZSTD(ZStandardOptions),
     #[cfg(feature = "aes256")]
     Aes(AesEncoderOptions),
 }
@@ -45,6 +58,13 @@ impl From<u32> for MethodOptions {
 impl From<LZMA2Options> for MethodOptions {
     fn from(o: LZMA2Options) -> Self {
         Self::LZMA2(o)
+    }
+}
+
+#[cfg(feature = "zstd")]
+impl From<ZStandardOptions> for MethodOptions {
+    fn from(o: ZStandardOptions) -> Self {
+        Self::ZSTD(o)
     }
 }
 

@@ -18,6 +18,7 @@ default = ["compress"]
 aes256 = ["dep:aes", "dep:cbc", "dep:getrandom"]
 bzip2 = ["dep:bzip2"]
 compress = ["lzma-rust2/encoder"]
+zstd = ["dep:zstd"]
 
 [dependencies]
 aes = { version = "0.8", optional = true }
