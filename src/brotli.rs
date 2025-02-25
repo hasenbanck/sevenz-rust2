@@ -2,16 +2,22 @@ use crate::Error;
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{self, Cursor, Read};
 
-const BROTLI_ZSTDMT_MAGIC: u32 = 0x184D2A50;
+/// Magic bytes of a skippable frame as used in L4, ZSTD and the custom format for Botlin by zstdmt.
+/// ZSTD even defines that 0x184D2A50 to 0x184D2A5F are valid marker.
+const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;
 /// "BR" in little-endian
 const BROTLI_MAGIC: u16 = 0x5242;
 
-pub struct BrotliDecoder<R: Read> {
+/// Custom decoder to support the custom format first implemented by zstdmt, which allows to have
+/// optional skippable frames. The skippable frame format is based on LZ4 and ZSTD's format.
+///
+/// [Specification](https://github.com/facebook/zstd/blob/76779f52c2d7203ec284b825725954a66a6f98a5/doc/zstd_compression_format.md#skippable-frames)
+pub(crate) struct BrotliDecoder<R: Read> {
     inner: brotli::Decompressor<InnerReader<R>>,
 }
 
 impl<R: Read> BrotliDecoder<R> {
-    pub fn new(mut input: R, buffer_size: usize) -> Result<Self, Error> {
+    pub(crate) fn new(mut input: R, buffer_size: usize) -> Result<Self, Error> {
         let mut header = [0u8; 16];
         let header_read = match Read::read(&mut input, &mut header) {
             Ok(n) if n >= 4 => n,
@@ -21,7 +27,7 @@ impl<R: Read> BrotliDecoder<R> {
 
         let zstdmt_magic = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
 
-        if zstdmt_magic == BROTLI_ZSTDMT_MAGIC && header_read >= 16 {
+        if zstdmt_magic == SKIPPABLE_FRAME_MAGIC && header_read >= 16 {
             // This is a zstdmt Brotli stream
             let skippable_size = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
             if skippable_size != 8 {
@@ -97,7 +103,7 @@ impl<R: Read> InnerReader<R> {
     ) -> io::Result<bool> {
         match reader.read_u32::<LittleEndian>() {
             Ok(magic) => {
-                if magic != BROTLI_ZSTDMT_MAGIC {
+                if magic != SKIPPABLE_FRAME_MAGIC {
                     return Ok(false);
                 }
 
