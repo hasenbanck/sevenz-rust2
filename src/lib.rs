@@ -35,6 +35,8 @@ extern crate wasm_bindgen;
 mod aes256sha256;
 mod bcj;
 mod bcj2;
+#[cfg(feature = "brotli")]
+mod brotli;
 #[cfg(not(target_arch = "wasm32"))]
 mod de_funcs;
 mod delta;
@@ -67,5 +69,6 @@ pub use reader::{BlockDecoder, SevenZReader};
 #[cfg(feature = "compress")]
 pub use writer::*;
 pub(crate) mod archive;
+
 pub(crate) mod decoders;
 pub(crate) mod folder;
