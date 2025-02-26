@@ -8,7 +8,7 @@ name = "sevenz-rust2"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/sevenz-rust"
 rust-version = "1.82.0"
-version = "0.9.0"
+version = "0.10.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

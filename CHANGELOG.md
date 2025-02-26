@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.10.0 - 2025-02-26
+
+### Changed
+
+- The Brotli codec now supports the skippable frame encoding found in zstdmt (used by 7zip ZS and NanaZip).
+  This is the default format, since it seems to be the default for user facing programs. The default data a frame
+  contains is 128 KiB.
+
 ### 0.9.0 - 2025-02-25
 
 ### Added

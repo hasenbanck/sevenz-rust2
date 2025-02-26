@@ -24,10 +24,16 @@ impl Default for Bzip2Options {
 }
 
 #[cfg(feature = "brotli")]
+const MINIMAL_SKIPPABLE_FRAME_SIZE: u32 = 64 * 1024;
+#[cfg(feature = "brotli")]
+const DEFAULT_SKIPPABLE_FRAME_SIZE: u32 = 128 * 1024;
+
+#[cfg(feature = "brotli")]
 #[derive(Debug, Copy, Clone)]
 pub struct BrotliOptions {
     pub(crate) quality: u32,
     pub(crate) window: u32,
+    pub(crate) skippable_frame_size: u32,
 }
 
 #[cfg(feature = "brotli")]
@@ -35,7 +41,30 @@ impl BrotliOptions {
     pub const fn from_quality_window(quality: u32, window: u32) -> Self {
         let quality = if quality > 11 { 11 } else { quality };
         let window = if window > 24 { 24 } else { window };
-        Self { quality, window }
+        Self {
+            quality,
+            window,
+            skippable_frame_size: DEFAULT_SKIPPABLE_FRAME_SIZE,
+        }
+    }
+
+    /// Set's the skippable frame size. The size is defined as the size of uncompressed data a frame
+    /// contains. A value of 0 deactivates skippable frames and uses the native brotli bitstream.
+    /// If a value is set, then a similar skippable frame format used by LZ4 and ZSTD is used.
+    ///
+    /// Af value between 1..=64KiB will be set to 64KiB.
+    ///
+    /// This was first implemented by zstdmt. The default value is 128 KiB.
+    pub fn with_skippable_frame_size(mut self, skippable_frame_size: u32) -> Self {
+        if skippable_frame_size == 0 {
+            self.skippable_frame_size = 0;
+        } else if skippable_frame_size < MINIMAL_SKIPPABLE_FRAME_SIZE {
+            self.skippable_frame_size = MINIMAL_SKIPPABLE_FRAME_SIZE;
+        } else {
+            self.skippable_frame_size = skippable_frame_size;
+        }
+
+        self
     }
 }
 
@@ -45,6 +74,7 @@ impl Default for BrotliOptions {
         Self {
             quality: 11,
             window: 22,
+            skippable_frame_size: DEFAULT_SKIPPABLE_FRAME_SIZE,
         }
     }
 }
@@ -183,6 +213,13 @@ impl From<BrotliOptions> for MethodOptions {
 impl From<DeflateOptions> for MethodOptions {
     fn from(o: DeflateOptions) -> Self {
         Self::DEFLATE(o)
+    }
+}
+
+#[cfg(feature = "lz4")]
+impl From<LZ4Options> for MethodOptions {
+    fn from(o: LZ4Options) -> Self {
+        Self::LZ4(o)
     }
 }
 

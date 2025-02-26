@@ -16,6 +16,9 @@ use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
 
+#[cfg(feature = "brotli")]
+use crate::brotli::BrotliDecoder;
+
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),
@@ -24,7 +27,7 @@ pub enum Decoder<R: Read> {
     BCJ(SimpleReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
-    Brotli(brotli::Decompressor<R>),
+    Brotli(BrotliDecoder<R>),
     #[cfg(feature = "bzip2")]
     BZip2(BzDecoder<R>),
     #[cfg(feature = "deflate")]
@@ -104,7 +107,7 @@ pub fn add_decoder<I: Read>(
         }
         #[cfg(feature = "brotli")]
         SevenZMethod::ID_BROTLI => {
-            let de = brotli::Decompressor::new(input, 4096);
+            let de = BrotliDecoder::new(input, 4096)?;
             Ok(Decoder::Brotli(de))
         }
         #[cfg(feature = "bzip2")]

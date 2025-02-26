@@ -137,14 +137,14 @@ fn decompress_bzip2_file() {
     assert_eq!(read_to_string(foo_path).unwrap(), "bar\n");
 }
 
-// This file was created with 7-Zip ZS 24.09 - v1.5.6 - Release 1, but can't be decoded by us.
-// On the opposite side, 7-Zip ZS can't read our brotli encoded folders.
+/// zstdmt (which 7zip ZS uses), does encapsulate brotli data in a special frames,
+/// for which we need to have custom logic to decode and encode to.
 #[cfg(feature = "brotli")]
 #[test]
-#[ignore]
-fn decompress_brotli_file() {
+fn decompress_zstdmt_brotli_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    source_file.push("tests/resources/brotli.7z");
+    source_file.push("tests/resources/zstdmt-brotli.7z");
+
     let temp_dir = tempdir().unwrap();
     let target = temp_dir.path().to_path_buf();
 

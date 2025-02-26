@@ -10,7 +10,7 @@ use crate::{
 use std::io::Write;
 
 #[cfg(feature = "brotli")]
-use crate::BrotliOptions;
+use crate::{brotli::BrotliEncoder, BrotliOptions};
 
 #[cfg(feature = "bzip2")]
 use crate::Bzip2Options;
@@ -30,7 +30,7 @@ pub enum Encoder<W: Write> {
     LZMA(LZMAWriter<W>),
     LZMA2(LZMA2Writer<W>),
     #[cfg(feature = "brotli")]
-    BROTLI(brotli::CompressorWriter<CountingWriter<W>>),
+    BROTLI(BrotliEncoder<CountingWriter<W>>),
     #[cfg(feature = "bzip2")]
     BZIP2(bzip2::write::BzEncoder<CountingWriter<W>>),
     #[cfg(feature = "deflate")]
@@ -112,8 +112,13 @@ pub fn add_encoder<W: Write>(
                 _ => BrotliOptions::default(),
             };
 
-            let brotli_encoder =
-                brotli::CompressorWriter::new(input, 4096, options.quality, options.window);
+            let brotli_encoder = BrotliEncoder::new(
+                input,
+                options.quality,
+                options.window,
+                options.skippable_frame_size as usize,
+            )?;
+
             Ok(Encoder::BROTLI(brotli_encoder))
         }
         #[cfg(feature = "bzip2")]
