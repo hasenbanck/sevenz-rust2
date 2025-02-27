@@ -1,7 +1,7 @@
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
 use crate::{
-    Error,
+    DeltaOptions, Error,
     archive::{SevenZMethod, SevenZMethodConfiguration},
     lzma::CountingWriter,
     lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
@@ -17,9 +17,9 @@ use crate::Bzip2Options;
 
 #[cfg(feature = "deflate")]
 use crate::DeflateOptions;
-
 #[cfg(feature = "lz4")]
 use crate::LZ4Options;
+use crate::delta::DeltaWriter;
 
 #[cfg(feature = "zstd")]
 use crate::ZStandardOptions;
@@ -27,6 +27,7 @@ use crate::ZStandardOptions;
 #[allow(clippy::upper_case_acronyms)]
 pub enum Encoder<W: Write> {
     COPY(CountingWriter<W>),
+    DELTA(DeltaWriter<CountingWriter<W>>),
     LZMA(LZMAWriter<W>),
     LZMA2(LZMA2Writer<W>),
     #[cfg(feature = "brotli")]
@@ -47,6 +48,7 @@ impl<W: Write> Write for Encoder<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
             Encoder::COPY(w) => w.write(buf),
+            Encoder::DELTA(w) => w.write(buf),
             Encoder::LZMA(w) => w.write(buf),
             Encoder::LZMA2(w) => w.write(buf),
             #[cfg(feature = "brotli")]
@@ -67,6 +69,7 @@ impl<W: Write> Write for Encoder<W> {
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
             Encoder::COPY(w) => w.flush(),
+            Encoder::DELTA(w) => w.flush(),
             Encoder::LZMA(w) => w.flush(),
             Encoder::LZMA2(w) => w.flush(),
             #[cfg(feature = "brotli")]
@@ -93,6 +96,14 @@ pub fn add_encoder<W: Write>(
 
     match method.id() {
         SevenZMethod::ID_COPY => Ok(Encoder::COPY(input)),
+        SevenZMethod::ID_DELTA => {
+            let options = match method_config.options {
+                Some(MethodOptions::Delta(options)) => options,
+                _ => DeltaOptions::default(),
+            };
+            let dw = DeltaWriter::new(input, options.0 as usize);
+            Ok(Encoder::DELTA(dw))
+        }
         SevenZMethod::ID_LZMA => {
             let mut def_opts = LZMA2Options::default();
             let options = get_lzma2_options(method_config.options.as_ref(), &mut def_opts);
@@ -185,6 +196,15 @@ pub(crate) fn get_options_as_properties<'a>(
     out: &'a mut [u8],
 ) -> &'a [u8] {
     match method.id() {
+        SevenZMethod::ID_DELTA => {
+            let options = match options {
+                Some(MethodOptions::Delta(options)) => *options,
+                _ => DeltaOptions::default(),
+            };
+
+            out[0] = options.0.saturating_sub(1) as u8;
+            &out[0..1]
+        }
         SevenZMethod::ID_LZMA2 => {
             let dict_size = options
                 .map(|o| o.get_lzma2_dict_size())

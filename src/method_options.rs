@@ -81,6 +81,31 @@ impl Default for BrotliOptions {
     }
 }
 
+#[cfg(feature = "compress")]
+#[derive(Debug, Copy, Clone)]
+pub struct DeltaOptions(pub(crate) u32);
+
+#[cfg(feature = "compress")]
+impl DeltaOptions {
+    pub const fn from_distance(distance: u32) -> Self {
+        let distance = if distance == 0 {
+            1
+        } else if distance > 256 {
+            256
+        } else {
+            distance
+        };
+        Self(distance)
+    }
+}
+
+#[cfg(feature = "compress")]
+impl Default for DeltaOptions {
+    fn default() -> Self {
+        Self(1)
+    }
+}
+
 #[cfg(feature = "deflate")]
 #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
 #[derive(Debug, Copy, Clone)]
@@ -152,6 +177,9 @@ pub enum MethodOptions {
     Num(u32),
     #[cfg(feature = "compress")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+    Delta(DeltaOptions),
+    #[cfg(feature = "compress")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
     LZMA2(LZMA2Options),
     #[cfg(feature = "brotli")]
     #[cfg_attr(docsrs, doc(cfg(feature = "brotli")))]
@@ -188,15 +216,64 @@ impl From<AesEncoderOptions> for crate::SevenZMethodConfiguration {
 }
 
 #[cfg(feature = "compress")]
+impl From<DeltaOptions> for crate::SevenZMethodConfiguration {
+    fn from(options: DeltaOptions) -> Self {
+        Self::new(crate::SevenZMethod::DELTA_FILTER).with_options(MethodOptions::Delta(options))
+    }
+}
+
+#[cfg(feature = "compress")]
 impl From<LZMA2Options> for crate::SevenZMethodConfiguration {
-    fn from(value: LZMA2Options) -> Self {
-        Self::new(crate::SevenZMethod::LZMA2).with_options(MethodOptions::LZMA2(value))
+    fn from(options: LZMA2Options) -> Self {
+        Self::new(crate::SevenZMethod::LZMA2).with_options(MethodOptions::LZMA2(options))
+    }
+}
+
+#[cfg(feature = "bzip2")]
+impl From<Bzip2Options> for crate::SevenZMethodConfiguration {
+    fn from(options: Bzip2Options) -> Self {
+        Self::new(crate::SevenZMethod::BZIP2).with_options(MethodOptions::BZIP2(options))
+    }
+}
+
+#[cfg(feature = "brotli")]
+impl From<BrotliOptions> for crate::SevenZMethodConfiguration {
+    fn from(options: BrotliOptions) -> Self {
+        Self::new(crate::SevenZMethod::BROTLI).with_options(MethodOptions::BROTLI(options))
+    }
+}
+
+#[cfg(feature = "deflate")]
+impl From<DeflateOptions> for crate::SevenZMethodConfiguration {
+    fn from(options: DeflateOptions) -> Self {
+        Self::new(crate::SevenZMethod::DEFLATE).with_options(MethodOptions::DEFLATE(options))
+    }
+}
+
+#[cfg(feature = "lz4")]
+impl From<LZ4Options> for crate::SevenZMethodConfiguration {
+    fn from(options: LZ4Options) -> Self {
+        Self::new(crate::SevenZMethod::LZ4).with_options(MethodOptions::LZ4(options))
+    }
+}
+
+#[cfg(feature = "zstd")]
+impl From<ZStandardOptions> for crate::SevenZMethodConfiguration {
+    fn from(options: ZStandardOptions) -> Self {
+        Self::new(crate::SevenZMethod::ZSTD).with_options(MethodOptions::ZSTD(options))
     }
 }
 
 impl From<u32> for MethodOptions {
     fn from(n: u32) -> Self {
         Self::Num(n)
+    }
+}
+
+#[cfg(feature = "compress")]
+impl From<DeltaOptions> for MethodOptions {
+    fn from(o: DeltaOptions) -> Self {
+        Self::Delta(o)
     }
 }
 

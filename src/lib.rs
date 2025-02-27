@@ -25,7 +25,7 @@
 //! | BCJ ARM       | ✓             |             |
 //! | BCJ ARM_THUMB | ✓             |             |
 //! | BCJ SPARC     | ✓             |             |
-//! | DELTA         | ✓             |             |
+//! | DELTA         | ✓             | ✓           |
 //! | BCJ2          | ✓             |             |
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

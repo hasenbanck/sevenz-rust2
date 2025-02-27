@@ -361,6 +361,7 @@ impl<W: Write + Seek> SevenZWriter<W> {
 
         self.output.seek(std::io::SeekFrom::Start(0))?;
         self.output.write_all(&hh)?;
+        self.output.flush()?;
         Ok(self.output)
     }
 

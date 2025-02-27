@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 0.11.0 - 2025-02-26
+## Unreleased
+
+### Added
+
+- Support for Delta filter compression
+
+## 0.11.0 - 2025-02-26
 
 ### Updated
 
@@ -17,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a lot of documentation tags for docs.rs
 - Update of nt-time introduce the need to increase MSRV to 1.85
 
-### 0.10.0 - 2025-02-26
+## 0.10.0 - 2025-02-26
 
 ### Changed
 
@@ -25,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is the default format, since it seems to be the default for user facing programs. The default data a frame
   contains is 128 KiB.
 
-### 0.9.0 - 2025-02-25
+## 0.9.0 - 2025-02-25
 
 ### Added
 
@@ -36,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve compatibility with third party programs (tested with 7-Zip ZS 1.5.6)
   bzip2, LZ4 and ZSTD now work flawless. BROTLI isn't compatible right now.
 
-### 0.8.0 - 2025-02-25
+## 0.8.0 - 2025-02-25
 
 ### Added
 
@@ -53,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update of the documentation
 - Removed the need to provide the length of a reader when reading an archive file
 
-### 0.7.0 - 2025-02-24
+## 0.7.0 - 2025-02-24
 
 This release should be mostly compatible with the old 0.6.1. The breaking changes are:
 
@@ -84,67 +90,67 @@ This release should be mostly compatible with the old 0.6.1. The breaking change
 - Removed deprecated `FolderDecoder`. Use `BlockDecoder` instead
 - Removed deprecated `SevenZWriter::create_archive_entry()`. Use `SevenZArchiveEntry::from_path()` instead
 
-### 0.6.1 - 2024-07-17
+## 0.6.1 - 2024-07-17
 
 - Fixed 'unsafe precondition(s) violated'. Closed #63
 
-### 0.6.0 - 2024-04-05
+## 0.6.0 - 2024-04-05
 
 - Added support for encrypted headers - close #55
 - Return a consistent error in case the password is invalid - close #53
 
-### 0.5.4 - 2023-12-13
+## 0.5.4 - 2023-12-13
 
 - Added docs
 - Renamed `FolderDecoder` to `BlockDecoder`
 - Added method to compress paths in non-solid mode
 - Fixed entry's compressed_size is always 0 when reading archives.
 
-### 0.5.3
+## 0.5.3
 
 Fixed 'Too many open files'
 Reduce unnecessary public items #37
 
-### 0.5.2 - 2023-08-24
+## 0.5.2 - 2023-08-24
 
 Fixed file separator issue on Windows system #35
 
-### 0.5.1 - 2023-08-23
+## 0.5.1 - 2023-08-23
 
 Sub crate `lzma-rust` code optimization
 
-### 0.5.0 - 2023-08-19
+## 0.5.0 - 2023-08-19
 
 - Added support for BCJ2.
 - Added multi-thread decompress example
 
-### 0.4.3 - 2023-06-16
+## 0.4.3 - 2023-06-16
 
 - Support write encoded header
 - Added `LZMAWriter`
 
-### 0.4.2 - 2023-06-10
+## 0.4.2 - 2023-06-10
 
 - Removed unsafe code
 - Changed `SevenZWriter.finish` method return inner writer
 - Added wasm compress function
 - Updates bzip dependency to the patch version of 0.4.4([#23](https://github.com/dyz1990/sevenz-rust/pull/23))
 
-### 0.4.1 - 2023-06-07
+## 0.4.1 - 2023-06-07
 
 - Fixed unable to build without default features
 
-### 0.4.0 - 2023-06-03 - Solid compression
+## 0.4.0 - 2023-06-03 - Solid compression
 
-### 0.3.0 - 2023-06-02 - Encrypted compression
+## 0.3.0 - 2023-06-02 - Encrypted compression
 
 - Added Encrypted compression
 
-### 0.2.11 - 2023-05-24
+## 0.2.11 - 2023-05-24
 
 - Fixed numerical overflow
 
-### 0.2.10 - 2023-04-18
+## 0.2.10 - 2023-04-18
 
 - Change to use nt-time crate([#20](https://github.com/dyz1990/sevenz-rust/pull/20))
 - Fix typo([#18](https://github.com/dyz1990/sevenz-rust/pull/18))
@@ -152,62 +158,62 @@ Sub crate `lzma-rust` code optimization
 - Solve warnings ([#16](https://github.com/dyz1990/sevenz-rust/pull/16))
 - run rustfmt on code ([#15](https://github.com/dyz1990/sevenz-rust/pull/15))
 
-### 0.2.9 - 2023-03-16
+## 0.2.9 - 2023-03-16
 
 - Added bzip2 support([#14](https://github.com/dyz1990/sevenz-rust/pull/14))
 
-### 0.2.8 - 2023-03-06
+## 0.2.8 - 2023-03-06
 
 - Fixed write bitset bugs
 
-### 0.2.7 - 2023-03-05
+## 0.2.7 - 2023-03-05
 
 - Fixed bug while read files info
 
-### 0.2.6 - 2023-02-23
+## 0.2.6 - 2023-02-23
 
 - Added zstd support and use enhanced filetime lib([#11](https://github.com/dyz1990/sevenz-rust/pull/11))
 - Fixed lzma encoder bugs
 
-### 0.2.4 - 2023-02-16
+## 0.2.4 - 2023-02-16
 
 - Changed return entry ref when pushing to writer([#10](https://github.com/dyz1990/sevenz-rust/pull/10))
 
-### 0.2.3 - 2023-02-07
+## 0.2.3 - 2023-02-07
 
 - Fixed incorrect handling of 7z time
 
-### 0.2.2 - 2023-01-31 - Create sub crate `lzma-rust`
+## 0.2.2 - 2023-01-31 - Create sub crate `lzma-rust`
 
 - Move mod `lzma` to sub crate `lzma-rust`
 - Modify GitHub Actions to run tests with --all-features
 
-### 0.2.0 - 2023-01-08 - Added compression supporting
+## 0.2.0 - 2023-01-08 - Added compression supporting
 
 - Added compression supporting
 
-### 0.1.5 - 2022-11-01 - Encrypted 7z files decompression supported
+## 0.1.5 - 2022-11-01 - Encrypted 7z files decompression supported
 
 - Added aes256sha256 decode method
 - Added wasm support
 - Added new tests (for Delta and Copy) and GitHub Actions CI([#5](https://github.com/dyz1990/sevenz-rust/pull/5))
   by [bfrazho](https://github.com/bfrazho)
 
-### 0.1.4 - 2022-09-20 - Replace lzma/lzma2 decoder
+## 0.1.4 - 2022-09-20 - Replace lzma/lzma2 decoder
 
 - Chnaged new lzma/lzma2 decoder
 
-### 0.1.3 - 2022-09-18 - add more bcj filters
+## 0.1.3 - 2022-09-18 - add more bcj filters
 
 - Added bcj arm/ppc/sparc and delta filters
 - Added test for bcj x86 ([#3](https://github.com/dyz1990/sevenz-rust/pull/3)) by [bfrazho](https://github.com/bfrazho)
 
-### 0.1.2 - 2022-09-14 - bcj x86 filter supported
+## 0.1.2 - 2022-09-14 - bcj x86 filter supported
 
 - Added bcj x86 filter
 - Added LZMA tests ([#2](https://github.com/dyz1990/sevenz-rust/pull/2)) by [bfrazho](https://github.com/bfrazho)
 - Fixed extract empty file
 
-### 0.1.1 - 2022-08-10 - Modify decompression function
+## 0.1.1 - 2022-08-10 - Modify decompression function
 
-### 0.1.0 - 2022-08-10 - Decompression
+## 0.1.0 - 2022-08-10 - Decompression
