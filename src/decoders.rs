@@ -2,6 +2,8 @@ use std::io::Read;
 
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Decoder;
+#[cfg(feature = "brotli")]
+use crate::brotli::BrotliDecoder;
 use crate::{
     archive::SevenZMethod,
     bcj::SimpleReader,
@@ -16,14 +18,18 @@ use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
 
-#[cfg(feature = "brotli")]
-use crate::brotli::BrotliDecoder;
+#[cfg(feature = "ppmd")]
+use ppmd_rust::{
+    PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
+};
 
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),
     LZMA(LZMAReader<R>),
     LZMA2(LZMA2Reader<R>),
+    #[cfg(feature = "ppmd")]
+    PPMD(Ppmd7Decoder<R>),
     BCJ(SimpleReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
@@ -46,6 +52,8 @@ impl<R: Read> Read for Decoder<R> {
             Decoder::COPY(r) => r.read(buf),
             Decoder::LZMA(r) => r.read(buf),
             Decoder::LZMA2(r) => r.read(buf),
+            #[cfg(feature = "ppmd")]
+            Decoder::PPMD(r) => r.read(buf),
             Decoder::BCJ(r) => r.read(buf),
             Decoder::Delta(r) => r.read(buf),
             #[cfg(feature = "brotli")]
@@ -104,6 +112,13 @@ pub fn add_decoder<I: Read>(
             }
             let lz = LZMA2Reader::new(input, dic_size, None);
             Ok(Decoder::LZMA2(lz))
+        }
+        #[cfg(feature = "ppmd")]
+        SevenZMethod::ID_PPMD => {
+            let (order, memory_size) = get_ppmd_order_memory_size(coder, max_mem_limit_kb)?;
+            let ppmd = Ppmd7Decoder::new(input, order, memory_size)
+                .map_err(|err| Error::other(err.to_string()))?;
+            Ok(Decoder::PPMD(ppmd))
         }
         #[cfg(feature = "brotli")]
         SevenZMethod::ID_BROTLI => {
@@ -174,7 +189,49 @@ pub fn add_decoder<I: Read>(
     }
 }
 
-#[inline]
+#[cfg(feature = "ppmd")]
+fn get_ppmd_order_memory_size(coder: &Coder, max_mem_limit_kb: usize) -> Result<(u32, u32), Error> {
+    if coder.properties.len() < 5 {
+        return Err(Error::other("PPMD properties too short"));
+    }
+    let order = coder.properties[0] as u32;
+    let memory_size = u32::from_le_bytes([
+        coder.properties[1],
+        coder.properties[2],
+        coder.properties[3],
+        coder.properties[4],
+    ]);
+
+    if order < PPMD7_MIN_ORDER {
+        return Err(Error::other("PPMD order smaller than PPMD7_MIN_ORDER"));
+    }
+
+    if order > PPMD7_MAX_ORDER {
+        return Err(Error::other("PPMD order larger than PPMD7_MAX_ORDER"));
+    }
+
+    if memory_size < PPMD7_MIN_MEM_SIZE {
+        return Err(Error::other(
+            "PPMD memory size smaller than PPMD7_MIN_MEM_SIZE",
+        ));
+    }
+
+    if memory_size > PPMD7_MAX_MEM_SIZE {
+        return Err(Error::other(
+            "PPMD memory size larger than PPMD7_MAX_MEM_SIZE",
+        ));
+    }
+
+    if memory_size as usize > max_mem_limit_kb {
+        return Err(Error::MaxMemLimited {
+            max_kb: max_mem_limit_kb,
+            actaul_kb: memory_size as usize,
+        });
+    }
+
+    Ok((order, memory_size))
+}
+
 fn get_lzma2_dic_size(coder: &Coder) -> Result<u32, Error> {
     if coder.properties.is_empty() {
         return Err(Error::other("LZMA2 properties too short"));
@@ -193,7 +250,6 @@ fn get_lzma2_dic_size(coder: &Coder) -> Result<u32, Error> {
     Ok(size)
 }
 
-#[inline]
 fn get_lzma_dic_size(coder: &Coder) -> Result<u32, Error> {
     let mut props = &coder.properties[1..5];
     props.read_u32::<LittleEndian>().map_err(Error::io)

@@ -15,6 +15,7 @@ This is a fork of the original, unmaintained sevenz-rust crate to continue the d
 | BROTLI (*)  | ✓             | ✓           |
 | BZIP2 (*)   | ✓             | ✓           |
 | DEFLATE (*) | ✓             | ✓           |
+| PPMD (*)    | ✓             | ✓           |
 | LZ4 (*)     | ✓             | ✓           |
 | ZSTD (*)    | ✓             | ✓           |
 

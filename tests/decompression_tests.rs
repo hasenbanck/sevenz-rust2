@@ -117,6 +117,23 @@ fn decompress_copy_lzma2_single_file() {
     assert_eq!(read_to_string(file1_path).unwrap(), "simple copy encoding");
 }
 
+#[cfg(feature = "ppmd")]
+#[test]
+fn decompress_ppmd_single_file() {
+    let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    source_file.push("tests/resources/ppmd.7z");
+
+    let temp_dir = tempdir().unwrap();
+    let target = temp_dir.path().to_path_buf();
+    let mut file1_path = target.clone();
+    file1_path.push("text.txt");
+
+    decompress_file(source_file, target).unwrap();
+    let decompressed_content = read_to_string(file1_path).unwrap();
+
+    assert_eq!(decompressed_content, "Lorem ipsum dolor sit amet. ");
+}
+
 #[cfg(feature = "bzip2")]
 #[test]
 fn decompress_bzip2_file() {

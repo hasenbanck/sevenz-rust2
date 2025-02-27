@@ -8,7 +8,7 @@ name = "sevenz-rust2"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/sevenz-rust"
 rust-version = "1.85"
-version = "0.11.0"
+version = "0.12.0"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -21,6 +21,7 @@ bzip2 = ["dep:bzip2"]
 compress = ["lzma-rust2/encoder"]
 deflate = ["dep:flate2"]
 lz4 = ["dep:lz4"]
+ppmd = ["dep:ppmd-rust"]
 util = ["dep:filetime_creation"]
 zstd = ["dep:zstd"]
 
@@ -36,6 +37,7 @@ flate2 = { version = "1.1", optional = true, features = ["zlib-rs"] }
 filetime_creation = { version = "0.2", optional = true }
 getrandom = { version = "0.3", optional = true }
 lzma-rust2 = { version = "0.1.8", default-features = false, path = "lzma-rust2" }
+ppmd-rust = { version = "0.2", optional = true, path = "ppmd-rust" }
 lz4 = { version = "1.28", optional = true }
 nt-time = "0.11"
 sha2 = { version = "0.10", optional = true }
@@ -62,8 +64,8 @@ name = "advance"
 required-features = ["aes256", "compress", "util"]
 
 [workspace]
-members = ["lzma-rust2"]
+members = ["lzma-rust2", "ppmd-rust"]
 
 [package.metadata.docs.rs]
-features = ["aes256", "brotli", "bzip2", "compress", "deflate", "lz4", "util", "zstd"]
+features = ["aes256", "brotli", "bzip2", "compress", "deflate", "lz4", "util", "ppmd", "zstd"]
 rustdoc-args = ["--cfg", "docsrs"]

@@ -274,6 +274,12 @@ fn compress_with_lzma2_algorithm() {
     test_compression_method(&[SevenZMethod::LZMA2.into()]);
 }
 
+#[cfg(feature = "ppmd")]
+#[test]
+fn compress_with_ppmd_algorithm() {
+    test_compression_method(&[SevenZMethod::PPMD.into()]);
+}
+
 #[cfg(feature = "brotli")]
 #[test]
 fn compress_with_brotli_standard_algorithm() {

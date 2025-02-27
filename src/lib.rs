@@ -1,6 +1,7 @@
 //! This project is a 7z compressor/decompressor written in pure Rust.
 //!
-//! This is a fork of the original, unmaintained sevenz-rust crate to continue the development and maintenance.
+//! This is a fork of the original, unmaintained sevenz-rust crate to continue the development
+//! and maintenance.
 //!
 //! ## Supported Codecs & filters
 //!
@@ -12,6 +13,7 @@
 //! | BROTLI (*)     | ✓             | ✓           |
 //! | BZIP2 (*)      | ✓             | ✓           |
 //! | DEFLATE (*)    | ✓             | ✓           |
+//! | PPMD (*)       | ✓             | ✓           |
 //! | LZ4 (*)        | ✓             | ✓           |
 //! | ZSTD (*)       | ✓             | ✓           |
 //!

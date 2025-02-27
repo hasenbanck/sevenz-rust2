@@ -228,6 +228,7 @@ impl SevenZMethod {
     pub const ID_BCJ_ARM: &'static [u8] = &[0x03, 0x03, 0x05, 0x01];
     pub const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
     pub const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
+    pub const ID_PPMD: &'static [u8] = &[0x03, 0x04, 0x01];
 
     pub const ID_LZMA2: &'static [u8] = &[0x21];
     pub const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
@@ -243,6 +244,7 @@ impl SevenZMethod {
     pub const COPY: Self = Self("COPY", Self::ID_COPY);
     pub const LZMA: Self = Self("LZMA", Self::ID_LZMA);
     pub const LZMA2: Self = Self("LZMA2", Self::ID_LZMA2);
+    pub const PPMD: Self = Self("PPMD", Self::ID_PPMD);
     pub const BZIP2: Self = Self("BZIP2", Self::ID_BZIP2);
     pub const ZSTD: Self = Self("ZSTD", Self::ID_ZSTD);
     pub const BROTLI: Self = Self("BROTLI", Self::ID_BROTLI);
@@ -266,6 +268,7 @@ impl SevenZMethod {
         &Self::COPY,
         &Self::LZMA,
         &Self::LZMA2,
+        &Self::PPMD,
         &Self::BZIP2,
         &Self::ZSTD,
         &Self::BROTLI,

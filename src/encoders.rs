@@ -1,5 +1,11 @@
+#[cfg(feature = "bzip2")]
+use crate::Bzip2Options;
+#[cfg(feature = "ppmd")]
+use crate::PPMDOptions;
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
+#[cfg(feature = "brotli")]
+use crate::{BrotliOptions, brotli::BrotliEncoder};
 use crate::{
     DeltaOptions, Error,
     archive::{SevenZMethod, SevenZMethodConfiguration},
@@ -7,13 +13,8 @@ use crate::{
     lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
     method_options::MethodOptions,
 };
+
 use std::io::Write;
-
-#[cfg(feature = "brotli")]
-use crate::{BrotliOptions, brotli::BrotliEncoder};
-
-#[cfg(feature = "bzip2")]
-use crate::Bzip2Options;
 
 #[cfg(feature = "deflate")]
 use crate::DeflateOptions;
@@ -30,6 +31,8 @@ pub enum Encoder<W: Write> {
     DELTA(DeltaWriter<CountingWriter<W>>),
     LZMA(LZMAWriter<W>),
     LZMA2(LZMA2Writer<W>),
+    #[cfg(feature = "ppmd")]
+    PPMD(ppmd_rust::Ppmd7Encoder<CountingWriter<W>>),
     #[cfg(feature = "brotli")]
     BROTLI(BrotliEncoder<CountingWriter<W>>),
     #[cfg(feature = "bzip2")]
@@ -51,6 +54,8 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::DELTA(w) => w.write(buf),
             Encoder::LZMA(w) => w.write(buf),
             Encoder::LZMA2(w) => w.write(buf),
+            #[cfg(feature = "ppmd")]
+            Encoder::PPMD(w) => w.write(buf),
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.write(buf),
             #[cfg(feature = "bzip2")]
@@ -74,6 +79,8 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::LZMA2(w) => w.flush(),
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.flush(),
+            #[cfg(feature = "ppmd")]
+            Encoder::PPMD(w) => w.flush(),
             #[cfg(feature = "bzip2")]
             Encoder::BZIP2(w) => w.flush(),
             #[cfg(feature = "deflate")]
@@ -116,6 +123,19 @@ pub fn add_encoder<W: Write>(
             let lz = LZMA2Writer::new(input, options);
             Ok(Encoder::LZMA2(lz))
         }
+        #[cfg(feature = "ppmd")]
+        SevenZMethod::ID_PPMD => {
+            let options = match method_config.options {
+                Some(MethodOptions::PPMD(options)) => options,
+                _ => PPMDOptions::default(),
+            };
+
+            let ppmd_encoder =
+                ppmd_rust::Ppmd7Encoder::new(input, options.order, options.memory_size)
+                    .map_err(|err| Error::other(err.to_string()))?;
+
+            Ok(Encoder::PPMD(ppmd_encoder))
+        }
         #[cfg(feature = "brotli")]
         SevenZMethod::ID_BROTLI => {
             let options = match method_config.options {
@@ -141,6 +161,7 @@ pub fn add_encoder<W: Write>(
 
             let bzip2_encoder =
                 bzip2::write::BzEncoder::new(input, bzip2::Compression::new(options.0));
+
             Ok(Encoder::BZIP2(bzip2_encoder))
         }
         #[cfg(feature = "deflate")]
@@ -165,6 +186,7 @@ pub fn add_encoder<W: Write>(
                 .level(options.0)
                 .build(input)
                 .map_err(Error::io)?;
+
             Ok(Encoder::LZ4(lz4_encoder))
         }
         #[cfg(feature = "zstd")]
@@ -173,7 +195,9 @@ pub fn add_encoder<W: Write>(
                 Some(MethodOptions::ZSTD(options)) => *options,
                 _ => ZStandardOptions::default(),
             };
+
             let zstd_encoder = zstd::Encoder::new(input, options.0 as i32).map_err(Error::io)?;
+
             Ok(Encoder::ZSTD(zstd_encoder))
         }
         #[cfg(feature = "aes256")]
@@ -221,6 +245,17 @@ pub(crate) fn get_options_as_properties<'a>(
             let dict_size = options.dict_size;
             out[0] = options.get_props();
             out[1..5].copy_from_slice(dict_size.to_le_bytes().as_ref());
+            &out[0..5]
+        }
+        #[cfg(feature = "ppmd")]
+        SevenZMethod::ID_PPMD => {
+            let options = match options {
+                Some(MethodOptions::PPMD(options)) => *options,
+                _ => PPMDOptions::default(),
+            };
+
+            out[0] = options.order as u8;
+            out[1..5].copy_from_slice(&options.memory_size.to_le_bytes());
             &out[0..5]
         }
         #[cfg(feature = "brotli")]

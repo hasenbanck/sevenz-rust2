@@ -3,6 +3,8 @@ use lzma_rust2::LZMA2Options;
 
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::AesEncoderOptions;
+#[cfg(feature = "ppmd")]
+use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
 use std::fmt::Debug;
 
 #[cfg(feature = "bzip2")]
@@ -82,6 +84,7 @@ impl Default for BrotliOptions {
 }
 
 #[cfg(feature = "compress")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[derive(Debug, Copy, Clone)]
 pub struct DeltaOptions(pub(crate) u32);
 
@@ -152,6 +155,52 @@ impl Default for LZ4Options {
     }
 }
 
+#[cfg(feature = "ppmd")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
+#[derive(Debug, Copy, Clone)]
+pub struct PPMDOptions {
+    pub(crate) order: u32,
+    pub(crate) memory_size: u32,
+}
+
+#[cfg(feature = "ppmd")]
+impl PPMDOptions {
+    pub const fn from_level(level: u32) -> Self {
+        const ORDERS: [u32; 10] = [3, 4, 4, 5, 5, 6, 8, 16, 24, 32];
+
+        let level = if level > 9 { 9 } else { level };
+        let order = ORDERS[level as usize];
+        let memory_size = 1 << (level + 19);
+
+        Self { order, memory_size }
+    }
+
+    pub const fn from_order_memory_size(order: u32, memory_size: u32) -> Self {
+        let order = if order > PPMD7_MAX_ORDER {
+            PPMD7_MAX_ORDER
+        } else if order < PPMD7_MIN_ORDER {
+            PPMD7_MIN_ORDER
+        } else {
+            order
+        };
+        let memory_size = if memory_size > PPMD7_MAX_MEM_SIZE {
+            PPMD7_MAX_MEM_SIZE
+        } else if memory_size < PPMD7_MIN_MEM_SIZE {
+            PPMD7_MIN_MEM_SIZE
+        } else {
+            memory_size
+        };
+        Self { order, memory_size }
+    }
+}
+
+#[cfg(feature = "ppmd")]
+impl Default for PPMDOptions {
+    fn default() -> Self {
+        Self::from_level(6)
+    }
+}
+
 #[cfg(feature = "zstd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
 #[derive(Debug, Copy, Clone)]
@@ -193,6 +242,9 @@ pub enum MethodOptions {
     #[cfg(feature = "lz4")]
     #[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
     LZ4(LZ4Options),
+    #[cfg(feature = "ppmd")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
+    PPMD(PPMDOptions),
     #[cfg(feature = "zstd")]
     #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
     ZSTD(ZStandardOptions),
@@ -257,6 +309,13 @@ impl From<LZ4Options> for crate::SevenZMethodConfiguration {
     }
 }
 
+#[cfg(feature = "lz4")]
+impl From<PPMDOptions> for crate::SevenZMethodConfiguration {
+    fn from(options: PPMDOptions) -> Self {
+        Self::new(crate::SevenZMethod::PPMD).with_options(MethodOptions::PPMD(options))
+    }
+}
+
 #[cfg(feature = "zstd")]
 impl From<ZStandardOptions> for crate::SevenZMethodConfiguration {
     fn from(options: ZStandardOptions) -> Self {
@@ -309,6 +368,13 @@ impl From<DeflateOptions> for MethodOptions {
 impl From<LZ4Options> for MethodOptions {
     fn from(o: LZ4Options) -> Self {
         Self::LZ4(o)
+    }
+}
+
+#[cfg(feature = "ppmd")]
+impl From<PPMDOptions> for MethodOptions {
+    fn from(o: PPMDOptions) -> Self {
+        Self::PPMD(o)
     }
 }
 
