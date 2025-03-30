@@ -3,7 +3,7 @@ use std::io::{Read, Seek, Write};
 #[cfg(feature = "compress")]
 pub use self::enc::*;
 use crate::Password;
-use aes::cipher::{generic_array::GenericArray, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, generic_array::GenericArray};
 use sha2::Digest;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
@@ -223,7 +223,7 @@ mod enc {
         output: W,
         enc: Aes256CbcEnc,
         buffer: Vec<u8>,
-        done: bool,
+        finished: bool,
         write_size: u32,
     }
 
@@ -276,7 +276,7 @@ mod enc {
                 output,
                 enc: Aes256CbcEnc::new(&GenericArray::from(key), &iv.into()),
                 buffer: Default::default(),
-                done: false,
+                finished: false,
                 write_size: 0,
             })
         }
@@ -296,11 +296,11 @@ mod enc {
 
     impl<W: Write> Write for Aes256Sha256Encoder<W> {
         fn write(&mut self, mut buf: &[u8]) -> std::io::Result<usize> {
-            if self.done && !buf.is_empty() {
+            if self.finished && !buf.is_empty() {
                 return Ok(0);
             }
             if buf.is_empty() {
-                self.done = true;
+                self.finished = true;
                 self.flush()?;
                 return self.output.write(buf);
             }
@@ -337,7 +337,7 @@ mod enc {
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            if !self.buffer.is_empty() && self.done {
+            if !self.buffer.is_empty() && self.finished {
                 assert!(self.buffer.len() < 16);
                 let mut block = [0u8; 16];
                 block[..self.buffer.len()].copy_from_slice(&self.buffer);

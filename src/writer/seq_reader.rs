@@ -1,10 +1,7 @@
 use crc32fast::Hasher;
-use std::{
-    fs::File,
-    io::Read,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
+#[cfg(feature = "util")]
+use std::path::PathBuf;
+use std::{fs::File, io::Read, ops::Deref, path::Path};
 
 #[derive(Default)]
 pub struct SeqReader<R> {
@@ -121,12 +118,14 @@ impl<R> SourceReader<R> {
     }
 }
 
+#[cfg(feature = "util")]
 pub(crate) struct LazyFileReader {
     path: PathBuf,
     reader: Option<File>,
     end: bool,
 }
 
+#[cfg(feature = "util")]
 impl LazyFileReader {
     pub fn new(path: PathBuf) -> Self {
         Self {
@@ -137,6 +136,7 @@ impl LazyFileReader {
     }
 }
 
+#[cfg(feature = "util")]
 impl Read for LazyFileReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.end {

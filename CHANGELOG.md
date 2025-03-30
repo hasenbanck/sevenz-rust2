@@ -7,9 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Fix the bug where the optional compression methods did not finish properly
+  and created invalid entries when writing 7z archives.
+
 ### Changed
 
 - Moved `CountingWriter` from lzma2 to sevenz crate, since it was an internal implementation detail of the sevenz crate.
+- Remove implicit way to call `finish()` by `calling write(&[])` on the lzma and lzma2 writer. This was again an
+  implementation detail of the sevenz. `finish()` now also takes `self`, like other compression libraries.
+
+### Added
+
+- `LZMAWriter` and `LZMA2Writer` no expose the inner writer and also return it on calling `finish()`.
 
 ## 0.12.1 - 2025-03-10
 

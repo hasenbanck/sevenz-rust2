@@ -23,7 +23,7 @@ pub struct RangeEncoder<W> {
     range: u32,
     cache_size: u32,
     cache: u8,
-    inner: W,
+    pub(crate) inner: W,
 }
 
 impl<W: Write> RangeEncoder<W> {

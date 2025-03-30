@@ -20,15 +20,13 @@ use super::encoder::{LZMAEncoder, LZMAEncoderModes};
 ///
 /// let mut w = LZMAWriter::new_no_header(&mut out, &options, false).unwrap();
 /// w.write_all(s).unwrap();
-/// w.write(&[]).unwrap();
-///
+/// w.finish().unwrap();
 /// ```
 ///
 pub struct LZMAWriter<W: Write> {
     rc: RangeEncoder<W>,
     lzma: LZMAEncoder,
     use_end_marker: bool,
-    finished: bool,
     current_uncompressed_size: u64,
     expected_uncompressed_size: Option<u64>,
     props: u8,
@@ -82,7 +80,6 @@ impl<W: Write> LZMAWriter<W> {
             rc,
             lzma,
             use_end_marker,
-            finished: false,
             current_uncompressed_size: 0,
             expected_uncompressed_size,
             props,
@@ -118,41 +115,34 @@ impl<W: Write> LZMAWriter<W> {
         self.current_uncompressed_size
     }
 
-    pub fn finish(&mut self) -> std::io::Result<()> {
-        if !self.finished {
-            if let Some(exp) = self.expected_uncompressed_size {
-                if exp != self.current_uncompressed_size {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "Expected compressed size does not match actual compressed size",
-                    ));
-                }
+    pub fn inner(&mut self) -> &mut W {
+        self.rc.inner()
+    }
+
+    pub fn finish(mut self) -> std::io::Result<W> {
+        if let Some(exp) = self.expected_uncompressed_size {
+            if exp != self.current_uncompressed_size {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Expected compressed size does not match actual compressed size",
+                ));
             }
-            self.lzma.lz.set_finishing();
-            self.lzma.encode_for_lzma1(&mut self.rc, &mut self.mode)?;
-            if self.use_end_marker {
-                self.lzma.encode_lzma1_end_marker(&mut self.rc)?;
-            }
-            self.rc.finish()?;
-            self.finished = true;
         }
-        Ok(())
+        self.lzma.lz.set_finishing();
+        self.lzma.encode_for_lzma1(&mut self.rc, &mut self.mode)?;
+        if self.use_end_marker {
+            self.lzma.encode_lzma1_end_marker(&mut self.rc)?;
+        }
+        self.rc.finish()?;
+
+        let RangeEncoder { inner, .. } = self.rc;
+
+        Ok(inner)
     }
 }
 
 impl<W: Write> Write for LZMAWriter<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if self.finished {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Already finished",
-            ));
-        }
-        if buf.is_empty() {
-            self.finish()?;
-            self.rc.inner().write(buf)?;
-            return Ok(0);
-        }
         if let Some(exp) = self.expected_uncompressed_size {
             if exp < self.current_uncompressed_size + buf.len() as u64 {
                 return Err(std::io::Error::new(

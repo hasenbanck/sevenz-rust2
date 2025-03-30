@@ -1,4 +1,4 @@
-use std::io::{ErrorKind, Write};
+use std::io::Write;
 
 use byteorder::WriteBytesExt;
 
@@ -148,9 +148,8 @@ pub fn get_extra_size_before(dict_size: u32) -> u32 {
 /// use lzma_rust2::{LZMA2Options, LZMA2Writer};
 ///
 /// let mut writer = LZMA2Writer::new(Vec::new(), &LZMA2Options::default());
-///    writer.write_all(b"hello world").unwrap();
-///    let compressed = writer.finish().unwrap();
-///
+/// writer.write_all(b"hello world").unwrap();
+/// writer.finish().unwrap();
 /// ```
 pub struct LZMA2Writer<W: Write> {
     inner: W,
@@ -162,7 +161,6 @@ pub struct LZMA2Writer<W: Write> {
     state_reset_needed: bool,
     props_needed: bool,
     pending_size: u32,
-    finished: bool,
 }
 
 impl<W: Write> LZMA2Writer<W> {
@@ -196,7 +194,6 @@ impl<W: Write> LZMA2Writer<W> {
             state_reset_needed: true,
             props_needed: true,
             pending_size: 0,
-            finished: false,
         }
     }
 
@@ -276,9 +273,11 @@ impl<W: Write> LZMA2Writer<W> {
         Ok(())
     }
 
-    fn write_end_marker(&mut self) -> std::io::Result<()> {
-        assert!(!self.finished);
+    pub fn inner(&mut self) -> &mut W {
+        &mut self.inner
+    }
 
+    pub fn finish(mut self) -> std::io::Result<W> {
         self.lzma.lz.set_finishing();
 
         while self.pending_size > 0 {
@@ -287,30 +286,14 @@ impl<W: Write> LZMA2Writer<W> {
         }
 
         self.inner.write_u8(0x00)?;
-        self.finished = true;
 
-        Ok(())
-    }
-
-    pub fn finish(&mut self) -> std::io::Result<()> {
-        if !self.finished {
-            self.write_end_marker()?;
-        }
-        Ok(())
+        Ok(self.inner)
     }
 }
 
 impl<W: Write> Write for LZMA2Writer<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let mut len = buf.len();
-        if len == 0 && !self.finished {
-            self.finish()?;
-            self.inner.write(buf)?;
-            return Ok(0);
-        }
-        if self.finished {
-            return Err(std::io::Error::new(ErrorKind::Other, "LZMA2 finished"));
-        }
 
         let mut off = 0;
         while len > 0 {
@@ -326,12 +309,6 @@ impl<W: Write> Write for LZMA2Writer<W> {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        if self.finished {
-            return Err(std::io::Error::new(
-                ErrorKind::Other,
-                "LZMA2 flush finished",
-            ));
-        }
         self.lzma.lz.set_flushing();
         while self.pending_size > 0 {
             self.lzma.encode_for_lzma2(&mut self.rc, &mut self.mode)?;

@@ -1,25 +1,25 @@
-#[cfg(feature = "aes256")]
-use crate::aes256sha256::Aes256Sha256Encoder;
 #[cfg(feature = "bzip2")]
 use crate::Bzip2Options;
 #[cfg(feature = "ppmd")]
 use crate::PPMDOptions;
-use crate::{
-    archive::{SevenZMethod, SevenZMethodConfiguration}, lzma::{LZMA2Options, LZMA2Writer, LZMAWriter}, method_options::MethodOptions,
-    CountingWriter,
-    DeltaOptions,
-    Error,
-};
+#[cfg(feature = "aes256")]
+use crate::aes256sha256::Aes256Sha256Encoder;
 #[cfg(feature = "brotli")]
-use crate::{brotli::BrotliEncoder, BrotliOptions};
+use crate::{BrotliOptions, brotli::BrotliEncoder};
+use crate::{
+    CountingWriter, DeltaOptions, Error,
+    archive::{SevenZMethod, SevenZMethodConfiguration},
+    lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
+    method_options::MethodOptions,
+};
 
 use std::io::Write;
 
-use crate::delta::DeltaWriter;
 #[cfg(feature = "deflate")]
 use crate::DeflateOptions;
 #[cfg(feature = "lz4")]
 use crate::LZ4Options;
+use crate::delta::DeltaWriter;
 
 #[cfg(feature = "zstd")]
 use crate::ZStandardOptions;
@@ -28,43 +28,98 @@ use crate::ZStandardOptions;
 pub enum Encoder<W: Write> {
     COPY(CountingWriter<W>),
     DELTA(DeltaWriter<CountingWriter<W>>),
-    LZMA(LZMAWriter<CountingWriter<W>>),
-    LZMA2(LZMA2Writer<CountingWriter<W>>),
+    LZMA(Option<LZMAWriter<CountingWriter<W>>>),
+    LZMA2(Option<LZMA2Writer<CountingWriter<W>>>),
     #[cfg(feature = "ppmd")]
     PPMD(ppmd_rust::Ppmd7Encoder<CountingWriter<W>>),
     #[cfg(feature = "brotli")]
     BROTLI(BrotliEncoder<CountingWriter<W>>),
     #[cfg(feature = "bzip2")]
-    BZIP2(bzip2::write::BzEncoder<CountingWriter<W>>),
+    BZIP2(Option<bzip2::write::BzEncoder<CountingWriter<W>>>),
     #[cfg(feature = "deflate")]
-    DEFLATE(flate2::write::DeflateEncoder<CountingWriter<W>>),
+    DEFLATE(Option<flate2::write::DeflateEncoder<CountingWriter<W>>>),
     #[cfg(feature = "lz4")]
-    LZ4(lz4::Encoder<CountingWriter<W>>),
+    LZ4(Option<lz4::Encoder<CountingWriter<W>>>),
     #[cfg(feature = "zstd")]
-    ZSTD(zstd::Encoder<'static, CountingWriter<W>>),
+    ZSTD(Option<zstd::Encoder<'static, CountingWriter<W>>>),
     #[cfg(feature = "aes256")]
     AES(Aes256Sha256Encoder<CountingWriter<W>>),
 }
 
 impl<W: Write> Write for Encoder<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // Some encoder need to finish the encoding process. Because of lifetime limitations on
+        // dynamic dispatch, we need to implement an implicit contract, where empty writes with
+        // "&[]" trigger the call to "finish()". We need to also make sure to propagate the empty
+        // write into the inner writer, so that the whole chain of encoders can properly finish
+        // their data stream. Not a great way to do it, but I couldn't get a proper dynamic
+        // dispatch based approach to work.
         match self {
             Encoder::COPY(w) => w.write(buf),
             Encoder::DELTA(w) => w.write(buf),
-            Encoder::LZMA(w) => w.write(buf),
-            Encoder::LZMA2(w) => w.write(buf),
+            Encoder::LZMA(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
+            Encoder::LZMA2(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             #[cfg(feature = "ppmd")]
             Encoder::PPMD(w) => w.write(buf),
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.write(buf),
             #[cfg(feature = "bzip2")]
-            Encoder::BZIP2(w) => w.write(buf),
+            Encoder::BZIP2(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             #[cfg(feature = "deflate")]
-            Encoder::DEFLATE(w) => w.write(buf),
+            Encoder::DEFLATE(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             #[cfg(feature = "lz4")]
-            Encoder::LZ4(w) => w.write(buf),
+            Encoder::LZ4(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let (mut inner, result) = writer.finish();
+                    result?;
+                    inner.write(buf)?;
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             #[cfg(feature = "zstd")]
-            Encoder::ZSTD(w) => w.write(buf),
+            Encoder::ZSTD(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             #[cfg(feature = "aes256")]
             Encoder::AES(w) => w.write(buf),
         }
@@ -74,27 +129,27 @@ impl<W: Write> Write for Encoder<W> {
         match self {
             Encoder::COPY(w) => w.flush(),
             Encoder::DELTA(w) => w.flush(),
-            Encoder::LZMA(w) => w.flush(),
-            Encoder::LZMA2(w) => w.flush(),
+            Encoder::LZMA(w) => w.as_mut().unwrap().flush(),
+            Encoder::LZMA2(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.flush(),
             #[cfg(feature = "ppmd")]
             Encoder::PPMD(w) => w.flush(),
             #[cfg(feature = "bzip2")]
-            Encoder::BZIP2(w) => w.flush(),
+            Encoder::BZIP2(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "deflate")]
-            Encoder::DEFLATE(w) => w.flush(),
+            Encoder::DEFLATE(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "lz4")]
-            Encoder::LZ4(w) => w.flush(),
+            Encoder::LZ4(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "zstd")]
-            Encoder::ZSTD(w) => w.flush(),
+            Encoder::ZSTD(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "aes256")]
             Encoder::AES(w) => w.flush(),
         }
     }
 }
 
-pub fn add_encoder<W: Write>(
+pub(crate) fn add_encoder<W: Write>(
     input: CountingWriter<W>,
     method_config: &SevenZMethodConfiguration,
 ) -> Result<Encoder<W>, Error> {
@@ -114,13 +169,13 @@ pub fn add_encoder<W: Write>(
             let mut def_opts = LZMA2Options::default();
             let options = get_lzma2_options(method_config.options.as_ref(), &mut def_opts);
             let lz = LZMAWriter::new_no_header(input, options, false).map_err(Error::io)?;
-            Ok(Encoder::LZMA(lz))
+            Ok(Encoder::LZMA(Some(lz)))
         }
         SevenZMethod::ID_LZMA2 => {
             let mut def_opts = LZMA2Options::default();
             let options = get_lzma2_options(method_config.options.as_ref(), &mut def_opts);
             let lz = LZMA2Writer::new(input, options);
-            Ok(Encoder::LZMA2(lz))
+            Ok(Encoder::LZMA2(Some(lz)))
         }
         #[cfg(feature = "ppmd")]
         SevenZMethod::ID_PPMD => {
@@ -161,7 +216,7 @@ pub fn add_encoder<W: Write>(
             let bzip2_encoder =
                 bzip2::write::BzEncoder::new(input, bzip2::Compression::new(options.0));
 
-            Ok(Encoder::BZIP2(bzip2_encoder))
+            Ok(Encoder::BZIP2(Some(bzip2_encoder)))
         }
         #[cfg(feature = "deflate")]
         SevenZMethod::ID_DEFLATE => {
@@ -172,7 +227,7 @@ pub fn add_encoder<W: Write>(
 
             let deflate_encoder =
                 flate2::write::DeflateEncoder::new(input, flate2::Compression::new(options.0));
-            Ok(Encoder::DEFLATE(deflate_encoder))
+            Ok(Encoder::DEFLATE(Some(deflate_encoder)))
         }
         #[cfg(feature = "lz4")]
         SevenZMethod::ID_LZ4 => {
@@ -186,7 +241,7 @@ pub fn add_encoder<W: Write>(
                 .build(input)
                 .map_err(Error::io)?;
 
-            Ok(Encoder::LZ4(lz4_encoder))
+            Ok(Encoder::LZ4(Some(lz4_encoder)))
         }
         #[cfg(feature = "zstd")]
         SevenZMethod::ID_ZSTD => {
@@ -197,7 +252,7 @@ pub fn add_encoder<W: Write>(
 
             let zstd_encoder = zstd::Encoder::new(input, options.0 as i32).map_err(Error::io)?;
 
-            Ok(Encoder::ZSTD(zstd_encoder))
+            Ok(Encoder::ZSTD(Some(zstd_encoder)))
         }
         #[cfg(feature = "aes256")]
         SevenZMethod::ID_AES256SHA256 => {
