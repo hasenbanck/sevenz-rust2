@@ -2,8 +2,6 @@ use std::io::{ErrorKind, Write};
 
 use byteorder::WriteBytesExt;
 
-use super::counting::CountingWriter;
-
 use super::encoder::LZMAEncoderModes;
 use super::{
     encoder::{EncodeMode, LZMAEncoder},
@@ -147,15 +145,15 @@ pub fn get_extra_size_before(dict_size: u32) -> u32 {
 /// # Examples
 /// ```
 /// use std::io::Write;
-/// use lzma_rust2::{LZMA2Options, LZMA2Writer, CountingWriter};
+/// use lzma_rust2::{LZMA2Options, LZMA2Writer};
 ///
-/// let mut writer = LZMA2Writer::new(CountingWriter::new(Vec::new()), &LZMA2Options::default());
+/// let mut writer = LZMA2Writer::new(Vec::new(), &LZMA2Options::default());
 ///    writer.write_all(b"hello world").unwrap();
 ///    let compressed = writer.finish().unwrap();
 ///
 /// ```
 pub struct LZMA2Writer<W: Write> {
-    inner: CountingWriter<W>,
+    inner: W,
     rc: RangeEncoder<RangeEncoderBuffer>,
     lzma: LZMAEncoder,
     mode: LZMAEncoderModes,
@@ -168,7 +166,7 @@ pub struct LZMA2Writer<W: Write> {
 }
 
 impl<W: Write> LZMA2Writer<W> {
-    pub fn new(inner: CountingWriter<W>, options: &LZMA2Options) -> Self {
+    pub fn new(inner: W, options: &LZMA2Options) -> Self {
         let dict_size = options.dict_size;
         let rc = RangeEncoder::new_buffer(COMPRESSED_SIZE_MAX as usize);
         let (mut lzma, mode) = LZMAEncoder::new(

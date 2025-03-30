@@ -2,7 +2,7 @@ use std::io::Write;
 
 use byteorder::WriteBytesExt;
 
-use super::{range_enc::RangeEncoder, CountingWriter, LZMA2Options};
+use super::{range_enc::RangeEncoder, LZMA2Options};
 
 use super::encoder::{LZMAEncoder, LZMAEncoderModes};
 
@@ -11,21 +11,21 @@ use super::encoder::{LZMAEncoder, LZMAEncoderModes};
 /// # Examples
 /// ```
 /// use std::io::Write;
-/// use lzma_rust2::{CountingWriter, LZMA2Options, LZMAWriter};
+/// use lzma_rust2::{LZMA2Options, LZMAWriter};
 ///
 /// let s = b"Hello, world!";
 /// let mut out = Vec::new();
 /// let mut options = LZMA2Options::with_preset(6);
 /// options.dict_size = LZMA2Options::DICT_SIZE_DEFAULT;
 ///
-/// let mut w = LZMAWriter::new_no_header(CountingWriter::new(&mut out), &options, false).unwrap();
+/// let mut w = LZMAWriter::new_no_header(&mut out, &options, false).unwrap();
 /// w.write_all(s).unwrap();
 /// w.write(&[]).unwrap();
 ///
 /// ```
 ///
 pub struct LZMAWriter<W: Write> {
-    rc: RangeEncoder<CountingWriter<W>>,
+    rc: RangeEncoder<W>,
     lzma: LZMAEncoder,
     use_end_marker: bool,
     finished: bool,
@@ -37,7 +37,7 @@ pub struct LZMAWriter<W: Write> {
 
 impl<W: Write> LZMAWriter<W> {
     pub fn new(
-        mut out: CountingWriter<W>,
+        mut out: W,
         options: &LZMA2Options,
         use_header: bool,
         use_end_marker: bool,
@@ -92,7 +92,7 @@ impl<W: Write> LZMAWriter<W> {
 
     #[inline]
     pub fn new_use_header(
-        out: CountingWriter<W>,
+        out: W,
         options: &LZMA2Options,
         input_size: Option<u64>,
     ) -> Result<Self, std::io::Error> {
@@ -101,7 +101,7 @@ impl<W: Write> LZMAWriter<W> {
 
     #[inline]
     pub fn new_no_header(
-        out: CountingWriter<W>,
+        out: W,
         options: &LZMA2Options,
         use_end_marker: bool,
     ) -> Result<Self, std::io::Error> {

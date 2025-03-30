@@ -1,10 +1,12 @@
+mod counting;
 mod pack_info;
 mod seq_reader;
 mod unpack_info;
 
+pub use self::counting::CountingWriter;
 pub use self::seq_reader::*;
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
-use crate::{Error, SevenZArchiveEntry, archive::*, encoders, lzma::*};
+use crate::{archive::*, encoders, Error, SevenZArchiveEntry};
 use bit_set::BitSet;
 use byteorder::*;
 use crc32fast::Hasher;

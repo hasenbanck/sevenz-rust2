@@ -3,8 +3,7 @@ use std::io::{Read, Seek, Write};
 #[cfg(feature = "compress")]
 pub use self::enc::*;
 use crate::Password;
-use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, generic_array::GenericArray};
-use lzma_rust2::CountingWriter;
+use aes::cipher::{generic_array::GenericArray, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use sha2::Digest;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
@@ -216,11 +215,12 @@ impl Cipher {
 #[cfg(feature = "compress")]
 mod enc {
     type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
+
     use super::*;
 
     #[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
     pub struct Aes256Sha256Encoder<W> {
-        output: CountingWriter<W>,
+        output: W,
         enc: Aes256CbcEnc,
         buffer: Vec<u8>,
         done: bool,
@@ -269,10 +269,7 @@ mod enc {
     }
 
     impl<W> Aes256Sha256Encoder<W> {
-        pub fn new(
-            output: CountingWriter<W>,
-            options: &AesEncoderOptions,
-        ) -> Result<Self, crate::Error> {
+        pub fn new(output: W, options: &AesEncoderOptions) -> Result<Self, crate::Error> {
             let (key, iv) = get_aes_key(&options.properties(), options.password.as_slice())?;
 
             Ok(Self {
@@ -355,13 +352,14 @@ mod enc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[allow(clippy::unused_io_amount)]
     #[cfg(feature = "compress")]
     #[test]
     fn test_aes_codec() {
         let mut encoded = vec![];
-        let writer = CountingWriter::new(&mut encoded);
+        let writer = Cursor::new(&mut encoded);
         let pwd: Password = "1234".into();
         let options = AesEncoderOptions::new(pwd.clone());
         let mut enc = Aes256Sha256Encoder::new(writer, &options).unwrap();

@@ -1,4 +1,3 @@
-mod counting;
 mod encoder;
 mod encoder_fast;
 mod encoder_normal;
@@ -8,7 +7,6 @@ mod range_enc;
 
 use super::*;
 
-pub use counting::*;
 pub use lzma2_writer::*;
 
 pub use lzma_writer::*;

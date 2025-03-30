@@ -1,26 +1,25 @@
+#[cfg(feature = "aes256")]
+use crate::aes256sha256::Aes256Sha256Encoder;
 #[cfg(feature = "bzip2")]
 use crate::Bzip2Options;
 #[cfg(feature = "ppmd")]
 use crate::PPMDOptions;
-#[cfg(feature = "aes256")]
-use crate::aes256sha256::Aes256Sha256Encoder;
-#[cfg(feature = "brotli")]
-use crate::{BrotliOptions, brotli::BrotliEncoder};
 use crate::{
-    DeltaOptions, Error,
-    archive::{SevenZMethod, SevenZMethodConfiguration},
-    lzma::CountingWriter,
-    lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
-    method_options::MethodOptions,
+    archive::{SevenZMethod, SevenZMethodConfiguration}, lzma::{LZMA2Options, LZMA2Writer, LZMAWriter}, method_options::MethodOptions,
+    CountingWriter,
+    DeltaOptions,
+    Error,
 };
+#[cfg(feature = "brotli")]
+use crate::{brotli::BrotliEncoder, BrotliOptions};
 
 use std::io::Write;
 
+use crate::delta::DeltaWriter;
 #[cfg(feature = "deflate")]
 use crate::DeflateOptions;
 #[cfg(feature = "lz4")]
 use crate::LZ4Options;
-use crate::delta::DeltaWriter;
 
 #[cfg(feature = "zstd")]
 use crate::ZStandardOptions;
@@ -29,8 +28,8 @@ use crate::ZStandardOptions;
 pub enum Encoder<W: Write> {
     COPY(CountingWriter<W>),
     DELTA(DeltaWriter<CountingWriter<W>>),
-    LZMA(LZMAWriter<W>),
-    LZMA2(LZMA2Writer<W>),
+    LZMA(LZMAWriter<CountingWriter<W>>),
+    LZMA2(LZMA2Writer<CountingWriter<W>>),
     #[cfg(feature = "ppmd")]
     PPMD(ppmd_rust::Ppmd7Encoder<CountingWriter<W>>),
     #[cfg(feature = "brotli")]
@@ -44,7 +43,7 @@ pub enum Encoder<W: Write> {
     #[cfg(feature = "zstd")]
     ZSTD(zstd::Encoder<'static, CountingWriter<W>>),
     #[cfg(feature = "aes256")]
-    AES(Aes256Sha256Encoder<W>),
+    AES(Aes256Sha256Encoder<CountingWriter<W>>),
 }
 
 impl<W: Write> Write for Encoder<W> {
