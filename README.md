@@ -36,7 +36,7 @@ This is a fork of the original, unmaintained sevenz-rust crate to continue the d
 
 ```toml
 [dependencies]
-sevenz-rust = { version = "0.11" }
+sevenz-rust = { version = "0.17" }
 ```
 
 Decompress source file "data/sample.7z" to destination path "data/sample":
@@ -51,7 +51,7 @@ Add the 'aes256' feature:
 
 ```toml
 [dependencies]
-sevenz-rust2 = { version = "0.11", features = ["aes256"] }
+sevenz-rust2 = { version = "0.17", features = ["aes256"] }
 ```
 
 ```rust
@@ -64,7 +64,7 @@ Add the 'compress' feature:
 
 ```toml
 [dependencies]
-sevenz-rust2 = { version = "0.11", features = ["compress"] }
+sevenz-rust2 = { version = "0.17", features = ["compress"] }
 ```
 
 Use the helper function to create a 7z file with source path:
@@ -79,7 +79,7 @@ Add the 'compress' and 'aes256' feature:
 
 ```toml
 [dependencies]
-sevenz-rust2 = { version = "0.11", features = ["compress", "aes256"] }
+sevenz-rust2 = { version = "0.17", features = ["compress", "aes256"] }
 ```
 
 Use the helper function to create a 7z file with source path and password:
@@ -117,6 +117,20 @@ sz.set_content_methods(vec![
 ]);
 sz.push_source_path("path/to/compress", | _ | true).expect("pack ok");
 sz.finish().expect("compress ok");
+```
+
+### WASM support
+
+Not all optional features are supported. To build default feature and compression:
+
+```bash
+cargo build --target wasm32-unknown-unknown --features=compress
+```
+
+Encryption is supported, but need a special feature and RUSTFLAGS option:
+
+```bash
+RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown --features=aes256_wasm
 ```
 
 ## Licence

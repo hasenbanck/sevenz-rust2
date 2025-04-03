@@ -41,6 +41,31 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --release --all-features
 
+  build-wasm:
+    runs-on: ${{matrix.os}}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+        toolchain:
+          - stable
+          - 1.85.0 # MSRV
+        include:
+          - os: ubuntu-latest
+            target: wasm32-unknown-unknown
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rust version
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{matrix.toolchain}}
+          target: ${{matrix.target}}
+      - uses: actions/checkout@v4
+      - name: Build Default
+        run: cargo build --target wasm32-unknown-unknown --release
+      - name: Build Compress and Encryption
+        run: RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown --release --features=compress,aes256_wasm
+
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-24.04

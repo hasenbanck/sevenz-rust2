@@ -7,14 +7,11 @@ use wasm_bindgen::prelude::*;
 pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String> {
     let mut src_reader = Uint8ArrayStream::new(src);
     let pos = src_reader.stream_position().map_err(|e| e.to_string())?;
-    let len = src_reader
-        .seek(SeekFrom::End(0))
-        .map_err(|e| e.to_string())?;
     src_reader
         .seek(SeekFrom::Start(pos))
         .map_err(|e| e.to_string())?;
     let mut seven =
-        SevenZReader::new(src_reader, len, Password::from(pwd)).map_err(|e| e.to_string())?;
+        SevenZReader::new(src_reader, Password::from(pwd)).map_err(|e| e.to_string())?;
     seven
         .for_each_entries(|entry, reader| {
             if !entry.is_directory() {
@@ -23,7 +20,7 @@ pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String
                 if entry.size() > 0 {
                     let mut writer = Vec::new();
                     std::io::copy(reader, &mut writer).map_err(crate::Error::io)?;
-                    f.call2(
+                    let _ = f.call2(
                         &JsValue::NULL,
                         &JsValue::from(path),
                         &Uint8Array::from(&writer[..]),

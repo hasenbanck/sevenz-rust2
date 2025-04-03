@@ -12,12 +12,13 @@ use byteorder::*;
 use crc32fast::Hasher;
 use std::{
     cell::Cell,
-    fs::File,
     io::{Read, Seek, Write},
-    path::Path,
     rc::Rc,
     sync::Arc,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::{fs::File, path::Path};
 
 macro_rules! write_times {
     //write_i64
