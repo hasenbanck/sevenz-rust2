@@ -29,7 +29,7 @@ zstd = ["dep:zstd"]
 [dependencies]
 aes = { version = "0.8", optional = true }
 bit-set = "0.8"
-brotli = { version = "7", default-features = false, optional = true, features = ["std"] }
+brotli = { version = "8", default-features = false, optional = true, features = ["std"] }
 byteorder = "1.5"
 bzip2 = { version = "0.5", optional = true, features = ["libbz2-rs-sys"] }
 cbc = { version = "0.1", optional = true }
