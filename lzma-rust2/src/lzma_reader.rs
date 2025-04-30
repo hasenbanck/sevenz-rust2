@@ -199,12 +199,12 @@ impl<R: Read> LZMAReader<R> {
             return Ok(0);
         }
         let mut size = 0;
-        let mut len = buf.len() as u32;
-        let mut off = 0u32;
+        let mut len = buf.len() as u64;
+        let mut off = 0;
         while len > 0 {
             let mut copy_size_max = len;
-            if self.remaining_size <= u64::MAX / 2 && (self.remaining_size as u32) < len {
-                copy_size_max = self.remaining_size as u32;
+            if self.remaining_size <= u64::MAX / 2 && self.remaining_size < len {
+                copy_size_max = self.remaining_size;
             }
             self.lz.set_limit(copy_size_max as usize);
 
@@ -219,12 +219,12 @@ impl<R: Read> LZMAReader<R> {
                 }
             }
 
-            let copied_size = self.lz.flush(buf, off as _) as u32;
+            let copied_size = self.lz.flush(buf, off as _) as u64;
             off += copied_size;
             len -= copied_size;
             size += copied_size;
             if self.remaining_size <= u64::MAX / 2 {
-                self.remaining_size -= copied_size as u64;
+                self.remaining_size -= copied_size;
                 if self.remaining_size == 0 {
                     self.end_reached = true;
                 }
