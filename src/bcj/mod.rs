@@ -58,6 +58,10 @@ impl<R> SimpleReader<R> {
         Self::new(inner, BCJFilter::new_arm(0, false))
     }
     #[inline]
+    pub fn new_arm64(inner: R) -> Self {
+        Self::new(inner, BCJFilter::new_arm64(0, false))
+    }
+    #[inline]
     pub fn new_arm_thumb(inner: R) -> Self {
         Self::new(inner, BCJFilter::new_arm_thumb(0, false))
     }
