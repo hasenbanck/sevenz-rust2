@@ -144,7 +144,7 @@ impl BCJFilter {
                         let dest = dest | ((addr & 3) << 29);
                         let dest = dest | (addr & 0x0003FFFC) << 3;
 
-                        let dest = dest | (0 - (dest & 0x00020000)) & 0x00E00000;
+                        let dest = dest | (0i32.wrapping_sub(addr & 0x00020000)) & 0x00E00000;
 
                         buf[i + 3] = ((dest >> 24) & 0xff) as u8;
                         buf[i + 2] = ((dest >> 16) & 0xff) as u8;
