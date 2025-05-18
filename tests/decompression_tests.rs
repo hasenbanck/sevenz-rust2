@@ -73,6 +73,27 @@ fn decompress_lzma2_bcj_x86_file() {
 }
 
 #[test]
+fn decompress_lzma2_bcj_arm64_file() {
+    let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    source_file.push("tests/resources/decompress_example_bcj_arm64.7z");
+    let temp_dir = tempdir().unwrap();
+    let target = temp_dir.path().to_path_buf();
+    let mut file1_path = target.clone();
+    file1_path.push("decompress.exe");
+
+    decompress_file(source_file, target).unwrap();
+
+    let mut expected_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    expected_file.push("tests/resources/decompress_arm64.exe");
+
+    assert_eq!(
+        read(file1_path).unwrap(),
+        read(expected_file).unwrap(),
+        "decompressed files do not match!"
+    );
+}
+
+#[test]
 fn decompress_lzma_multiple_files_encoded_header() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     source_file.push("tests/resources/two_files_with_content_lzma.7z");

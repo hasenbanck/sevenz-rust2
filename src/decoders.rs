@@ -154,6 +154,10 @@ pub fn add_decoder<I: Read>(
             let de = SimpleReader::new_arm(input);
             Ok(Decoder::BCJ(de))
         }
+        SevenZMethod::ID_BCJ_ARM64 => {
+            let de = SimpleReader::new_arm64(input);
+            Ok(Decoder::BCJ(de))
+        }
         SevenZMethod::ID_BCJ_ARM_THUMB => {
             let de = SimpleReader::new_arm_thumb(input);
             Ok(Decoder::BCJ(de))
