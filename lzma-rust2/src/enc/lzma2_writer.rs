@@ -135,7 +135,7 @@ const COMPRESSED_SIZE_MAX: u32 = 64 << 10;
 
 pub fn get_extra_size_before(dict_size: u32) -> u32 {
     if COMPRESSED_SIZE_MAX > dict_size {
-        COMPRESSED_SIZE_MAX - dict_size
+        COMPRESSED_SIZE_MAX.saturating_sub(dict_size)
     } else {
         0
     }
