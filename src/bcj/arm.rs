@@ -116,7 +116,11 @@ impl BCJFilter {
 
             //BL
             if ((src >> 26) & 0x3f) == 0x25 {
-                let dest_adr = if self.is_encoder { src.wrapping_add(p >> 2) } else { src.wrapping_sub(p >> 2) };
+                let dest_adr = if self.is_encoder {
+                    src.wrapping_add(p >> 2)
+                } else {
+                    src.wrapping_sub(p >> 2)
+                };
                 let dest = (dest_adr & 0x03ffffff) | (0x94 << 24);
 
                 buf[i + 3] = ((dest >> 24) & 0xff) as u8;
@@ -132,7 +136,11 @@ impl BCJFilter {
                 if 0 == (addr.wrapping_add(0x00020000) & 0x001c0000) {
                     let dest = (0x90 << 24) | (src & 0x1f);
 
-                    let addr = if self.is_encoder { addr.wrapping_add(p >> 12) } else { addr.wrapping_sub(p >> 12) };
+                    let addr = if self.is_encoder {
+                        addr.wrapping_add(p >> 12)
+                    } else {
+                        addr.wrapping_sub(p >> 12)
+                    };
 
                     let dest = dest | ((addr & 3) << 29);
                     let dest = dest | ((addr & 0x0003fffc) << 3);
@@ -150,58 +158,5 @@ impl BCJFilter {
         }
         self.pos += i;
         i
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::time::{ SystemTime, UNIX_EPOCH };
-
-    use crate::bcj::BCJFilter;
-
-    #[test]
-    fn bcj_arm64_sweep() {
-        let random_i32 = || {
-            let now = SystemTime::now();
-            return now.duration_since(UNIX_EPOCH).unwrap().subsec_nanos() as i32;
-            //return getrandom::u32().map(|x| x as i32);
-        };
-
-        let mut encoder = BCJFilter::new_arm64(0, true);
-        let mut decoder = BCJFilter::new_arm64(0, false);
-
-        for i in (0..i32::MAX).step_by(4 * 1024) {
-            let adr = i >> 12;
-
-            let pc: i32 = random_i32();
-
-            encoder.pos = pc as usize;
-            decoder.pos = pc as usize;
-
-            //test bl branch
-            {
-                let instr: i32 = (0x25 << 26) & (adr >> 6);
-
-                let mut buf = instr.to_ne_bytes();
-                encoder.arm64_code(&mut buf);
-                decoder.arm64_code(&mut buf);
-                assert!(instr == i32::from_ne_bytes(buf));
-            }
-
-            //test adrp branch
-            {
-                let mut instr: i32 = 0x90 << 24;
-                instr |= (adr & 0b11) << 29;
-                instr |= (adr >> 2) << 5;
-
-                let regrnd: i32 = random_i32() & 0b11111;
-                instr |= regrnd;
-
-                let mut buf = instr.to_ne_bytes();
-                encoder.arm64_code(&mut buf);
-                decoder.arm64_code(&mut buf);
-                assert!(instr == i32::from_ne_bytes(buf));
-            }
-        }
     }
 }

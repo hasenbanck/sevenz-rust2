@@ -82,7 +82,7 @@ fn decompress_bcj_arm64_file() {
     file1_path.push("decompress_arm64.exe");
 
     decompress_file(source_file, target).unwrap();
-    
+
     let mut expected_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     expected_file.push("tests/resources/decompress_arm64.exe");
 
