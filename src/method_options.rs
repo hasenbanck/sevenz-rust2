@@ -129,32 +129,6 @@ impl Default for DeflateOptions {
     }
 }
 
-#[cfg(feature = "lz4")]
-#[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
-#[derive(Debug, Copy, Clone)]
-pub struct LZ4Options(pub(crate) u32);
-
-#[cfg(feature = "lz4")]
-impl LZ4Options {
-    pub const fn from_level(level: u32) -> Self {
-        let level = if level == 0 {
-            1
-        } else if level > 12 {
-            12
-        } else {
-            level
-        };
-        Self(level)
-    }
-}
-
-#[cfg(feature = "lz4")]
-impl Default for LZ4Options {
-    fn default() -> Self {
-        Self(1)
-    }
-}
-
 #[cfg(feature = "ppmd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
 #[derive(Debug, Copy, Clone)]
@@ -239,9 +213,6 @@ pub enum MethodOptions {
     #[cfg(feature = "deflate")]
     #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
     DEFLATE(DeflateOptions),
-    #[cfg(feature = "lz4")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
-    LZ4(LZ4Options),
     #[cfg(feature = "ppmd")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
     PPMD(PPMDOptions),
@@ -302,13 +273,6 @@ impl From<DeflateOptions> for crate::SevenZMethodConfiguration {
     }
 }
 
-#[cfg(feature = "lz4")]
-impl From<LZ4Options> for crate::SevenZMethodConfiguration {
-    fn from(options: LZ4Options) -> Self {
-        Self::new(crate::SevenZMethod::LZ4).with_options(MethodOptions::LZ4(options))
-    }
-}
-
 #[cfg(feature = "ppmd")]
 impl From<PPMDOptions> for crate::SevenZMethodConfiguration {
     fn from(options: PPMDOptions) -> Self {
@@ -361,13 +325,6 @@ impl From<BrotliOptions> for MethodOptions {
 impl From<DeflateOptions> for MethodOptions {
     fn from(o: DeflateOptions) -> Self {
         Self::DEFLATE(o)
-    }
-}
-
-#[cfg(feature = "lz4")]
-impl From<LZ4Options> for MethodOptions {
-    fn from(o: LZ4Options) -> Self {
-        Self::LZ4(o)
     }
 }
 

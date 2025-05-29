@@ -17,8 +17,6 @@ use std::io::Write;
 
 #[cfg(feature = "deflate")]
 use crate::DeflateOptions;
-#[cfg(feature = "lz4")]
-use crate::LZ4Options;
 use crate::delta::DeltaWriter;
 
 #[cfg(feature = "zstd")]
@@ -39,7 +37,7 @@ pub enum Encoder<W: Write> {
     #[cfg(feature = "deflate")]
     DEFLATE(Option<flate2::write::DeflateEncoder<CountingWriter<W>>>),
     #[cfg(feature = "lz4")]
-    LZ4(Option<lz4::Encoder<CountingWriter<W>>>),
+    LZ4(Option<lz4_flex::frame::FrameEncoder<CountingWriter<W>>>),
     #[cfg(feature = "zstd")]
     ZSTD(Option<zstd::Encoder<'static, CountingWriter<W>>>),
     #[cfg(feature = "aes256")]
@@ -103,9 +101,8 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::LZ4(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
-                    let (mut inner, result) = writer.finish();
-                    result?;
-                    inner.write(buf)?;
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
                     Ok(0)
                 }
                 false => w.as_mut().unwrap().write(buf),
@@ -231,15 +228,7 @@ pub(crate) fn add_encoder<W: Write>(
         }
         #[cfg(feature = "lz4")]
         SevenZMethod::ID_LZ4 => {
-            let options = match method_config.options.as_ref() {
-                Some(MethodOptions::LZ4(options)) => *options,
-                _ => LZ4Options::default(),
-            };
-
-            let lz4_encoder = lz4::EncoderBuilder::new()
-                .level(options.0)
-                .build(input)
-                .map_err(Error::io)?;
+            let lz4_encoder = lz4_flex::frame::FrameEncoder::new(input);
 
             Ok(Encoder::LZ4(Some(lz4_encoder)))
         }
@@ -328,17 +317,11 @@ pub(crate) fn get_options_as_properties<'a>(
         }
         #[cfg(feature = "lz4")]
         SevenZMethod::ID_LZ4 => {
-            let version = lz4::version();
-            let version_major = version / (10000);
-            let version_minor = (version / 100) % 100;
-            let options = match options {
-                Some(MethodOptions::LZ4(options)) => *options,
-                _ => LZ4Options::default(),
-            };
-
-            out[0] = version_major as u8;
-            out[1] = version_minor as u8;
-            out[2] = options.0 as u8;
+            // Since we use lz4_flex, we only support one compression level
+            // and set the version to 1.0 for best compatibility.
+            out[0] = 1; // Major version
+            out[1] = 0; // Minor version
+            out[2] = 3; // Fast compression
             &out[0..3]
         }
         #[cfg(feature = "zstd")]

@@ -21,7 +21,7 @@ brotli = ["dep:brotli"]
 bzip2 = ["dep:bzip2"]
 compress = ["lzma-rust2/encoder"]
 deflate = ["dep:flate2"]
-lz4 = ["dep:lz4"]
+lz4 = ["dep:lz4_flex"]
 ppmd = ["dep:ppmd-rust"]
 util = ["dep:filetime_creation"]
 zstd = ["dep:zstd"]
@@ -39,7 +39,7 @@ filetime_creation = { version = "0.2", optional = true }
 getrandom = { version = "0.3", optional = true }
 lzma-rust2 = { version = "0.2", default-features = false, path = "lzma-rust2" }
 ppmd-rust = { version = "0.2", optional = true, path = "ppmd-rust" }
-lz4 = { version = "1", optional = true }
+lz4_flex = { version = "0.11", optional = true, default-features = false, features = ["frame", "std"] }
 nt-time = "0.11"
 sha2 = { version = "0.10", optional = true }
 zstd = { version = "0.13", optional = true }

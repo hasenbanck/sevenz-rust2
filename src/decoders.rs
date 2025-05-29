@@ -4,6 +4,8 @@ use std::io::Read;
 use crate::aes256sha256::Aes256Sha256Decoder;
 #[cfg(feature = "brotli")]
 use crate::brotli::BrotliDecoder;
+#[cfg(feature = "lz4")]
+use crate::lz4::Lz4Decoder;
 use crate::{
     archive::SevenZMethod,
     bcj::SimpleReader,
@@ -17,7 +19,6 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
-
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{
     PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
@@ -39,7 +40,7 @@ pub enum Decoder<R: Read> {
     #[cfg(feature = "deflate")]
     Deflate(DeflateDecoder<std::io::BufReader<R>>),
     #[cfg(feature = "lz4")]
-    LZ4(lz4::Decoder<R>),
+    LZ4(Lz4Decoder<R>),
     #[cfg(feature = "zstd")]
     ZSTD(zstd::Decoder<'static, std::io::BufReader<R>>),
     #[cfg(feature = "aes256")]
@@ -138,7 +139,7 @@ pub fn add_decoder<I: Read>(
         }
         #[cfg(feature = "lz4")]
         SevenZMethod::ID_LZ4 => {
-            let de = lz4::Decoder::new(input).map_err(Error::io)?;
+            let de = Lz4Decoder::new(input)?;
             Ok(Decoder::LZ4(de))
         }
         #[cfg(feature = "zstd")]

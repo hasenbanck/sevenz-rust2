@@ -198,6 +198,27 @@ fn decompress_zstdmt_brotli_file() {
     );
 }
 
+#[cfg(feature = "lz4")]
+#[test]
+fn decompress_zstdmt_lz4_file() {
+    let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    source_file.push("tests/resources/zstdmt-lz4.7z");
+
+    let temp_dir = tempdir().unwrap();
+    let target = temp_dir.path().to_path_buf();
+
+    let mut license_path = target.clone();
+    license_path.push("LICENSE");
+
+    decompress_file(source_file, target).unwrap();
+
+    assert!(
+        read_to_string(license_path)
+            .unwrap()
+            .contains("Apache License")
+    );
+}
+
 #[test]
 fn test_bcj2() {
     let mut file = File::open("tests/resources/7za433_7zip_lzma2_bcj2.7z").unwrap();

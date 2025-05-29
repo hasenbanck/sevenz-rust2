@@ -47,6 +47,8 @@ mod en_funcs;
 #[cfg(feature = "compress")]
 mod encoders;
 mod error;
+#[cfg(feature = "lz4")]
+mod lz4;
 mod method_options;
 mod password;
 mod reader;

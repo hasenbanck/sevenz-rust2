@@ -13,7 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed brotli version requirement to also allow all major 8 versions
+- Fixed decompressing LZ4 that contain skippable frames
+
+### Changed
+
+- Use lz4_flex instead of lz4, which is a faster Rust native implementation. The only downside is, that only one
+  compression level is supported.
 
 ## 0.13.2 - 2025-05-01
 
