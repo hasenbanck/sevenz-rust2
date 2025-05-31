@@ -26,7 +26,7 @@ impl BCJFilter {
                 let b1 = buf[i + 1] as i32;
 
                 let src =
-                    ((b0 & 0x03) << 24) | ((b1 & 0xff) << 16) | ((b2 & 0xff) << 8) | (b3 & 0xFC);
+                    ((b0 & 0x03) << 24) | ((b1 & 0xFF) << 16) | ((b2 & 0xFF) << 8) | (b3 & 0xFC);
 
                 let p = (self.pos + i) as i32;
                 let dest = if self.is_encoder { src + p } else { src - p };

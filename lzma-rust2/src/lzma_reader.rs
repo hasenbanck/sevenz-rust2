@@ -2,10 +2,7 @@ use std::io::{Error, ErrorKind, Read};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use super::decoder::LZMADecoder;
-use super::lz::LZDecoder;
-use super::range_dec::RangeDecoder;
-use super::*;
+use super::{decoder::LZMADecoder, lz::LZDecoder, range_dec::RangeDecoder, *};
 
 pub fn get_memory_usage_by_props(dict_size: u32, props_byte: u8) -> std::io::Result<u32> {
     if dict_size > DICT_SIZE_MAX {
@@ -38,18 +35,22 @@ fn get_dict_size(dict_size: u32) -> std::io::Result<u32> {
 /// # Examples
 /// ```
 /// use std::io::Read;
+///
 /// use lzma_rust2::LZMAReader;
 ///
-/// let compressed: Vec<u8> = vec![93, 0, 0, 128, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0, 36, 25, 73, 152, 111, 22, 2, 140, 232, 230, 91, 177, 71, 198, 206, 183, 99, 255, 255, 60, 172, 0, 0];
+/// let compressed: Vec<u8> = vec![
+///     93, 0, 0, 128, 0, 255, 255, 255, 255, 255, 255, 255, 255, 0, 36, 25, 73, 152, 111, 22, 2,
+///     140, 232, 230, 91, 177, 71, 198, 206, 183, 99, 255, 255, 60, 172, 0, 0,
+/// ];
 /// let mut reader = LZMAReader::new_mem_limit(compressed.as_slice(), u32::MAX, None).unwrap();
 /// let mut buf = [0; 1024];
 /// let mut out = Vec::new();
 /// loop {
-///    let n = reader.read(&mut buf).unwrap();
-///   if n == 0 {
-///      break;
-///   }
-///   out.extend_from_slice(&buf[..n]);
+///     let n = reader.read(&mut buf).unwrap();
+///     if n == 0 {
+///         break;
+///     }
+///     out.extend_from_slice(&buf[..n]);
 /// }
 /// assert_eq!(out, b"Hello, world!");
 /// ```

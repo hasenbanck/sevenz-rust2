@@ -14,12 +14,11 @@ mod enc;
 
 #[cfg(feature = "encoder")]
 pub use enc::*;
-pub use lzma2_reader::get_memory_usage as lzma2_get_memory_usage;
-pub use lzma2_reader::LZMA2Reader;
-pub use lzma_reader::get_memory_usage as lzma_get_memory_usage;
-pub use lzma_reader::get_memory_usage_by_props as lzma_get_memory_usage_by_props;
-pub use lzma_reader::LZMAReader;
-
+pub use lzma2_reader::{get_memory_usage as lzma2_get_memory_usage, LZMA2Reader};
+pub use lzma_reader::{
+    get_memory_usage as lzma_get_memory_usage,
+    get_memory_usage_by_props as lzma_get_memory_usage_by_props, LZMAReader,
+};
 use state::*;
 
 pub const DICT_SIZE_MIN: u32 = 4096;

@@ -1,17 +1,13 @@
-use crate::Error;
-use crate::byte_writer::ByteWriter;
-use crate::memory::Memory;
-use ppmd_sys::{
-    CPpmd7, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7_Alloc,
-    Ppmd7_Construct, Ppmd7_Init, Ppmd7z_EncodeSymbols, Ppmd7z_Flush_RangeEnc, Ppmd7z_Init_RangeEnc,
-};
 use std::io::Write;
+
+use crate::{
+    Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER,
+    internal::ppmd7::{Pppmd7, RangeEncoder},
+};
 
 /// An encoder to encode data using PPMd7 (PPMdH) with the 7z range coder.
 pub struct Ppmd7Encoder<W: Write> {
-    ppmd: CPpmd7,
-    writer: ByteWriter<W>,
-    _memory: Memory,
+    ppmd: Pppmd7<RangeEncoder<W>>,
 }
 
 impl<W: Write> Ppmd7Encoder<W> {
@@ -23,34 +19,13 @@ impl<W: Write> Ppmd7Encoder<W> {
             return Err(Error::InvalidParameter);
         }
 
-        let mut ppmd = unsafe { std::mem::zeroed::<CPpmd7>() };
-        unsafe { Ppmd7_Construct(&mut ppmd) };
+        let ppmd = Pppmd7::new_encoder(writer, order, mem_size)?;
 
-        let mut memory = Memory::new(mem_size);
-
-        let success = unsafe { Ppmd7_Alloc(&mut ppmd, mem_size, memory.allocation()) };
-
-        if success == 0 {
-            return Err(Error::InternalError("Failed to initialize range decoder"));
-        }
-
-        let mut writer = ByteWriter::new(writer);
-        let range_encoder = unsafe { &mut ppmd.rc.enc };
-        range_encoder.Stream = writer.byte_out_ptr();
-
-        unsafe { Ppmd7z_Init_RangeEnc(&mut ppmd) };
-        unsafe { Ppmd7_Init(&mut ppmd, order) };
-
-        Ok(Self {
-            ppmd,
-            writer,
-            _memory: memory,
-        })
+        Ok(Self { ppmd })
     }
 
-    fn inner_flush(&mut self) {
-        unsafe { Ppmd7z_Flush_RangeEnc(&mut self.ppmd) };
-        self.writer.flush();
+    fn inner_flush(&mut self) -> Result<(), std::io::Error> {
+        self.ppmd.flush_range_encoder()
     }
 }
 
@@ -60,37 +35,29 @@ impl<W: Write> Write for Ppmd7Encoder<W> {
             return Ok(0);
         }
 
-        let pointer_range = buf.as_ptr_range();
-        unsafe { Ppmd7z_EncodeSymbols(&mut self.ppmd, pointer_range.start, pointer_range.end) };
+        self.ppmd.encode_symbols(buf)?;
 
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.inner_flush();
-        Ok(())
+        self.inner_flush()
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::io::{Read, Write};
+
     use super::Ppmd7Encoder;
     use crate::Ppmd7Decoder;
-    use std::io::{Read, Write};
 
     const ORDER: u32 = 8;
     const MEM_SIZE: u32 = 262144;
 
     #[test]
-    fn ppmd7encoder_init_drop() {
-        let writer = Vec::new();
-        let encoder = Ppmd7Encoder::new(writer, ORDER, MEM_SIZE).unwrap();
-        assert!(!encoder.ppmd.Base.is_null());
-    }
-
-    #[test]
     fn ppmd7encoder_encode_decode() {
-        let test_data = "Lorem ipsum dolor sit amet. ";
+        let test_data = include_str!("../tests/fixtures/apache2.txt");
 
         let mut writer = Vec::new();
         {

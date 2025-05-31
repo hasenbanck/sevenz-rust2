@@ -1,5 +1,15 @@
 use std::io::Read;
 
+use byteorder::{LittleEndian, ReadBytesExt};
+#[cfg(feature = "bzip2")]
+use bzip2::read::BzDecoder;
+#[cfg(feature = "deflate")]
+use flate2::bufread::DeflateDecoder;
+#[cfg(feature = "ppmd")]
+use ppmd_rust::{
+    PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
+};
+
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Decoder;
 #[cfg(feature = "brotli")]
@@ -13,15 +23,6 @@ use crate::{
     error::Error,
     folder::Coder,
     lzma::{LZMA2Reader, LZMAReader, lzma2_get_memory_usage},
-};
-use byteorder::{LittleEndian, ReadBytesExt};
-#[cfg(feature = "bzip2")]
-use bzip2::read::BzDecoder;
-#[cfg(feature = "deflate")]
-use flate2::bufread::DeflateDecoder;
-#[cfg(feature = "ppmd")]
-use ppmd_rust::{
-    PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
 };
 
 #[allow(clippy::upper_case_acronyms)]
@@ -241,8 +242,8 @@ fn get_lzma2_dic_size(coder: &Coder) -> Result<u32, Error> {
     if coder.properties.is_empty() {
         return Err(Error::other("LZMA2 properties too short"));
     }
-    let dict_size_bits = 0xff & coder.properties[0] as u32;
-    if (dict_size_bits & (!0x3f)) != 0 {
+    let dict_size_bits = 0xFF & coder.properties[0] as u32;
+    if (dict_size_bits & (!0x3F)) != 0 {
         return Err(Error::other("Unsupported LZMA2 property bits"));
     }
     if dict_size_bits > 40 {

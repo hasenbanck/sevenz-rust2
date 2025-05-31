@@ -1,13 +1,15 @@
-use crate::{archive::*, decoders::add_decoder, error::Error, folder::*, password::Password};
-use bit_set::BitSet;
-use crc32fast::Hasher;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     fs::File,
     io::{Read, Seek, SeekFrom},
+    rc::Rc,
 };
+
+use bit_set::BitSet;
+use crc32fast::Hasher;
+
+use crate::{archive::*, decoders::add_decoder, error::Error, folder::*, password::Password};
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 
@@ -165,8 +167,11 @@ impl Archive {
     /// # Example
     ///
     /// ```no_run
-    /// use std::io::{Read,Seek};
-    /// use std::fs::File;
+    /// use std::{
+    ///     fs::File,
+    ///     io::{Read, Seek},
+    /// };
+    ///
     /// use sevenz_rust2::*;
     ///
     /// let mut reader = File::open("example.7z").unwrap();
@@ -891,7 +896,7 @@ impl Archive {
         for _i in 0..num_coders {
             let mut coder = Coder::default();
             let bits = read_u8(header)?;
-            let id_size = bits & 0xf;
+            let id_size = bits & 0xF;
             let is_simple = (bits & 0x10) == 0;
             let has_attributes = (bits & 0x20) != 0;
             let more_alternative_methods = (bits & 0x80) != 0;

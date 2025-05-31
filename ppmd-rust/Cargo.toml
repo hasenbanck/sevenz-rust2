@@ -5,9 +5,6 @@ homepage = "https://github.com/hasenbanck/sevenz-rust2/tree/main/ppmd-rust"
 repository = "https://github.com/hasenbanck/sevenz-rust2/tree/main/ppmd-rust"
 edition = "2024"
 rust-version = "1.85"
-version = "0.2.0"
+version = "0.3.0"
 keywords = ["ppmd"]
 license = "CC0-1.0"
-
-[dependencies]
-ppmd-sys = { version = "0.2", path = "./ppmd-sys" }

@@ -1,5 +1,8 @@
-use std::io::{Seek, SeekFrom};
-use std::{cell::Cell, io::Write, rc::Rc};
+use std::{
+    cell::Cell,
+    io::{Seek, SeekFrom, Write},
+    rc::Rc,
+};
 
 pub struct CountingWriter<W> {
     inner: W,

@@ -108,8 +108,9 @@ impl<W: Write> Write for DeltaWriter<W> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Cursor;
+
+    use super::*;
 
     #[cfg(feature = "compress")]
     #[test]

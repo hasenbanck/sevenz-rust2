@@ -39,8 +39,8 @@ impl HC4 {
         let avail = encoder.move_pos(4, 4);
         if avail != 0 {
             self.lz_pos += 1;
-            if self.lz_pos == 0x7fffffff {
-                let norm_offset = 0x7fffffff - self.cyclic_size;
+            if self.lz_pos == 0x7FFFFFFF {
+                let norm_offset = 0x7FFFFFFF - self.cyclic_size;
                 self.hash.normalize(norm_offset);
                 LZEncoder::normalize(&mut self.chain[..self.cyclic_size as usize], norm_offset);
                 self.lz_pos = self.lz_pos.wrapping_sub(norm_offset);

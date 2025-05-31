@@ -1,10 +1,11 @@
 use std::io::{Read, Seek, Write};
 
+use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, generic_array::GenericArray};
+use sha2::Digest;
+
 #[cfg(feature = "compress")]
 pub use self::enc::*;
 use crate::Password;
-use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, generic_array::GenericArray};
-use sha2::Digest;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
@@ -132,7 +133,7 @@ fn get_aes_key(properties: &[u8], password: &[u8]) -> Result<([u8; 32], [u8; 16]
     if password.is_empty() {
         return Err(crate::Error::PasswordRequired);
     }
-    let aes_key = if num_cycles_power == 0x3f {
+    let aes_key = if num_cycles_power == 0x3F {
         let mut aes_key = [0u8; 32];
         aes_key.copy_from_slice(&salt[..salt_size]);
         let n = password.len().min(aes_key.len() - salt_size);
@@ -261,8 +262,8 @@ mod enc {
         #[inline]
         pub fn write_properties(&self, props: &mut [u8]) {
             assert!(props.len() >= 34);
-            props[0] = (self.num_cycles_power & 0x3f) | 0xc0;
-            props[1] = 0xff;
+            props[0] = (self.num_cycles_power & 0x3F) | 0xC0;
+            props[1] = 0xFF;
             props[2..18].copy_from_slice(&self.salt);
             props[18..34].copy_from_slice(&self.iv);
         }
@@ -351,8 +352,9 @@ mod enc {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Cursor;
+
+    use super::*;
 
     #[allow(clippy::unused_io_amount)]
     #[cfg(feature = "compress")]

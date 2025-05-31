@@ -1,10 +1,10 @@
-use crc32fast::Hasher;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
 #[cfg(feature = "util")]
 use std::path::PathBuf;
 use std::{fs::File, io::Read, ops::Deref};
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::Path;
+use crc32fast::Hasher;
 
 #[derive(Default)]
 pub struct SeqReader<R> {

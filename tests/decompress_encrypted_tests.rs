@@ -1,8 +1,9 @@
 #[cfg(feature = "aes256")]
 #[test]
 fn test_decompress_file_with_password() {
-    use sevenz_rust2::decompress_file_with_password;
     use std::{fs::read_to_string, path::PathBuf};
+
+    use sevenz_rust2::decompress_file_with_password;
     use tempfile::tempdir;
 
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

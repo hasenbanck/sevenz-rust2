@@ -1,9 +1,11 @@
-use crate::Error;
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use lz4_flex::frame::{FrameDecoder, FrameEncoder, FrameInfo};
 #[cfg(feature = "compress")]
 use std::io::Write;
 use std::io::{Cursor, Read};
+
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use lz4_flex::frame::{FrameDecoder, FrameEncoder, FrameInfo};
+
+use crate::Error;
 
 /// Magic bytes of a skippable frame as used in LZ4 by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;

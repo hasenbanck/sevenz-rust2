@@ -3,22 +3,22 @@ mod pack_info;
 mod seq_reader;
 mod unpack_info;
 
-pub use self::counting::CountingWriter;
-pub use self::seq_reader::*;
-use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
-use crate::{Error, SevenZArchiveEntry, archive::*, encoders};
-use bit_set::BitSet;
-use byteorder::*;
-use crc32fast::Hasher;
 use std::{
     cell::Cell,
     io::{Read, Seek, Write},
     rc::Rc,
     sync::Arc,
 };
-
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::File, path::Path};
+
+use bit_set::BitSet;
+use byteorder::*;
+use crc32fast::Hasher;
+
+pub use self::{counting::CountingWriter, seq_reader::*};
+use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
+use crate::{Error, SevenZArchiveEntry, archive::*, encoders};
 
 macro_rules! write_times {
     //write_i64
@@ -125,17 +125,18 @@ impl<W: Write + Seek> SevenZWriter<W> {
     ///
     /// # Example
     /// ```no_run
+    /// use std::{fs::File, path::Path};
+    ///
     /// use sevenz_rust2::*;
-    /// use std::fs::File;
-    /// use std::path::Path;
     /// let mut sz = SevenZWriter::create("path/to/dest.7z").expect("create writer ok");
     /// let src = Path::new("path/to/source.txt");
     /// let name = "source.txt".to_string();
-    /// let entry = sz.push_archive_entry(
-    ///               SevenZArchiveEntry::from_path(&src, name),
-    ///               Some(File::open(src).unwrap()),
-    ///           )
-    ///           .expect("ok");
+    /// let entry = sz
+    ///     .push_archive_entry(
+    ///         SevenZArchiveEntry::from_path(&src, name),
+    ///         Some(File::open(src).unwrap()),
+    ///     )
+    ///     .expect("ok");
     /// let compressed_size = entry.compressed_size;
     /// sz.finish().expect("done");
     /// ```
@@ -358,7 +359,7 @@ impl<W: Write + Seek> SevenZWriter<W> {
 
             // start header
             hhw.write_u64::<LittleEndian>(header_pos - SIGNATURE_HEADER_SIZE)?;
-            hhw.write_u64::<LittleEndian>(0xffffffff & header.len() as u64)?;
+            hhw.write_u64::<LittleEndian>(0xFFFFFFFF & header.len() as u64)?;
             hhw.write_u32::<LittleEndian>(crc32)?;
         }
         let crc32 = crc32fast::hash(&hh[12..]);
@@ -598,9 +599,9 @@ pub(crate) fn write_u64<W: Write>(header: &mut W, mut value: u64) -> std::io::Re
         mask >>= 1;
         i += 1;
     }
-    header.write_u8((first & 0xff) as u8)?;
+    header.write_u8((first & 0xFF) as u8)?;
     while i > 0 {
-        header.write_u8((value & 0xff) as u8)?;
+        header.write_u8((value & 0xFF) as u8)?;
         value >>= 8;
         i -= 1;
     }

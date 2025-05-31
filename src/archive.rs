@@ -1,7 +1,8 @@
 #![allow(unused)]
-use crate::{folder::*, method_options::MethodOptions};
 use bit_set::BitSet;
 use nt_time::FileTime;
+
+use crate::{folder::*, method_options::MethodOptions};
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -226,21 +227,21 @@ impl SevenZMethod {
     pub const ID_BCJ_PPC: &'static [u8] = &[0x03, 0x03, 0x02, 0x05];
     pub const ID_BCJ_IA64: &'static [u8] = &[0x03, 0x03, 0x04, 0x01];
     pub const ID_BCJ_ARM: &'static [u8] = &[0x03, 0x03, 0x05, 0x01];
-    pub const ID_BCJ_ARM64: &'static [u8] = &[0xa];
+    pub const ID_BCJ_ARM64: &'static [u8] = &[0xA];
     pub const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
     pub const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
     pub const ID_PPMD: &'static [u8] = &[0x03, 0x04, 0x01];
 
     pub const ID_LZMA2: &'static [u8] = &[0x21];
     pub const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
-    pub const ID_ZSTD: &'static [u8] = &[0x04, 0xf7, 0x11, 0x01];
-    pub const ID_BROTLI: &'static [u8] = &[0x04, 0xf7, 0x11, 0x02];
-    pub const ID_LZ4: &'static [u8] = &[0x04, 0xf7, 0x11, 0x04];
-    pub const ID_LZS: &'static [u8] = &[0x04, 0xf7, 0x11, 0x05];
-    pub const ID_LIZARD: &'static [u8] = &[0x04, 0xf7, 0x11, 0x06];
+    pub const ID_ZSTD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x01];
+    pub const ID_BROTLI: &'static [u8] = &[0x04, 0xF7, 0x11, 0x02];
+    pub const ID_LZ4: &'static [u8] = &[0x04, 0xF7, 0x11, 0x04];
+    pub const ID_LZS: &'static [u8] = &[0x04, 0xF7, 0x11, 0x05];
+    pub const ID_LIZARD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x06];
     pub const ID_DEFLATE: &'static [u8] = &[0x04, 0x01, 0x08];
     pub const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
-    pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xf1, 0x07, 0x01];
+    pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xF1, 0x07, 0x01];
 
     pub const COPY: Self = Self("COPY", Self::ID_COPY);
     pub const LZMA: Self = Self("LZMA", Self::ID_LZMA);

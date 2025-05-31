@@ -10,7 +10,7 @@ pub struct BT4 {
     lz_pos: i32,
 }
 
-const MAX_POS: i32 = 0x7fffffff;
+const MAX_POS: i32 = 0x7FFFFFFF;
 
 #[inline(always)]
 fn sh_left(i: i32) -> i32 {

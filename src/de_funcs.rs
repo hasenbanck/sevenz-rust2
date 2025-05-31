@@ -1,6 +1,9 @@
+use std::{
+    io::{Read, Seek},
+    path::{Path, PathBuf},
+};
+
 use crate::{Error, password::Password, *};
-use std::io::{Read, Seek};
-use std::path::{Path, PathBuf};
 
 /// Decompresses a 7z file.
 ///
@@ -8,7 +11,6 @@ use std::path::{Path, PathBuf};
 /// ```no_run
 /// sevenz_rust2::decompress_file("sample.7z", "sample").expect("complete");
 /// ```
-///
 #[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn decompress_file(src_path: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
     let file = std::fs::File::open(src_path.as_ref())
@@ -48,7 +50,8 @@ pub fn decompress_with_extract_fn<R: Read + Seek>(
 ///
 /// # Example
 /// ```no_run
-/// sevenz_rust2::decompress_file_with_password("sample.7z", "sample", "password".into()).expect("complete");
+/// sevenz_rust2::decompress_file_with_password("sample.7z", "sample", "password".into())
+///     .expect("complete");
 /// ```
 #[cfg_attr(docsrs, doc(cfg(all(feature = "aes256", feature = "util"))))]
 pub fn decompress_file_with_password(

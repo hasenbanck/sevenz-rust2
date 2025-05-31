@@ -2,9 +2,9 @@ use std::{
     fs::{File, read, read_to_string},
     path::PathBuf,
 };
-use tempfile::tempdir;
 
 use sevenz_rust2::{Archive, BlockDecoder, Password, SevenZReader, decompress_file};
+use tempfile::tempdir;
 
 #[test]
 fn decompress_single_empty_file_unencoded_header() {
@@ -147,12 +147,14 @@ fn decompress_ppmd_single_file() {
     let temp_dir = tempdir().unwrap();
     let target = temp_dir.path().to_path_buf();
     let mut file1_path = target.clone();
-    file1_path.push("text.txt");
+    file1_path.push("apache2.txt");
 
     decompress_file(source_file, target).unwrap();
     let decompressed_content = read_to_string(file1_path).unwrap();
 
-    assert_eq!(decompressed_content, "Lorem ipsum dolor sit amet. ");
+    let expected = read_to_string("tests/resources/apache2.txt").unwrap();
+
+    assert_eq!(decompressed_content, expected);
 }
 
 #[cfg(feature = "bzip2")]

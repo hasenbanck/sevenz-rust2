@@ -1,10 +1,12 @@
-use crate::Error;
-#[cfg(feature = "compress")]
-use byteorder::WriteBytesExt;
-use byteorder::{LittleEndian, ReadBytesExt};
 #[cfg(feature = "compress")]
 use std::io::{self, Write};
 use std::io::{Cursor, Read};
+
+#[cfg(feature = "compress")]
+use byteorder::WriteBytesExt;
+use byteorder::{LittleEndian, ReadBytesExt};
+
+use crate::Error;
 
 /// Magic bytes of a skippable frame format as used in brotli by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;

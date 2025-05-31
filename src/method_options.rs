@@ -1,11 +1,12 @@
+use std::fmt::Debug;
+
 #[cfg(feature = "compress")]
 use lzma_rust2::LZMA2Options;
+#[cfg(feature = "ppmd")]
+use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
 
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::AesEncoderOptions;
-#[cfg(feature = "ppmd")]
-use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
-use std::fmt::Debug;
 
 #[cfg(feature = "bzip2")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]

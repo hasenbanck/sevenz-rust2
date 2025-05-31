@@ -1,9 +1,8 @@
+use std::io::{ErrorKind, Read};
+
 use byteorder::{BigEndian, ReadBytesExt};
 
 use super::*;
-
-use std::io::ErrorKind;
-use std::io::Read;
 
 pub trait RangeSource {
     fn next_byte(&mut self) -> std::io::Result<u8>;

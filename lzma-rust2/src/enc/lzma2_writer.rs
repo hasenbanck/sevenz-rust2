@@ -2,9 +2,8 @@ use std::io::Write;
 
 use byteorder::WriteBytesExt;
 
-use super::encoder::LZMAEncoderModes;
 use super::{
-    encoder::{EncodeMode, LZMAEncoder},
+    encoder::{EncodeMode, LZMAEncoder, LZMAEncoderModes},
     lz::MFType,
     range_enc::{RangeEncoder, RangeEncoderBuffer},
 };
@@ -141,6 +140,7 @@ pub fn get_extra_size_before(dict_size: u32) -> u32 {
 /// # Examples
 /// ```
 /// use std::io::Write;
+///
 /// use lzma_rust2::{LZMA2Options, LZMA2Writer};
 ///
 /// let mut writer = LZMA2Writer::new(Vec::new(), &LZMA2Options::default());

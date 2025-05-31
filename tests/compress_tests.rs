@@ -1,7 +1,10 @@
+use std::{
+    fs::File,
+    hash::{Hash, Hasher},
+    io::{Cursor, Read},
+};
+
 use sevenz_rust2::*;
-use std::fs::File;
-use std::hash::{Hash, Hasher};
-use std::io::{Cursor, Read};
 use tempfile::*;
 
 #[cfg(feature = "compress")]

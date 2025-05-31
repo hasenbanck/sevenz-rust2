@@ -1,13 +1,10 @@
-use crate::range_dec::RangeSource;
-
-use super::lz::LZDecoder;
-use super::range_dec::RangeDecoder;
-use super::*;
-
 use std::{
     io::Result,
     ops::{Deref, DerefMut},
 };
+
+use super::{lz::LZDecoder, range_dec::RangeDecoder, *};
+use crate::range_dec::RangeSource;
 
 pub struct LZMADecoder {
     coder: LZMACoder,

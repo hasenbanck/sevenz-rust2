@@ -1,14 +1,15 @@
+use std::{
+    io::Write,
+    ops::{Deref, DerefMut},
+    vec,
+};
+
 use super::{
     encoder_fast::FashEncoderMode,
     encoder_normal::NormalEncoderMode,
     lz::{LZEncoder, MFType},
     range_enc::{RangeEncoder, RangeEncoderBuffer},
     *,
-};
-use std::{
-    io::Write,
-    ops::{Deref, DerefMut},
-    vec,
 };
 
 const LZMA2_UNCOMPRESSED_LIMIT: u32 = (2 << 20) - MATCH_LEN_MAX as u32;

@@ -66,7 +66,7 @@ impl BCJFilter {
                     }
 
                     let index = MASK_TO_BIT_NUMBER[prev_mask as usize] * 8;
-                    if !test_86_ms_byte(((dest >> (24 - index)) & 0xff) as u8) {
+                    if !test_86_ms_byte(((dest >> (24 - index)) & 0xFF) as u8) {
                         break;
                     }
 
@@ -99,5 +99,5 @@ impl BCJFilter {
 
 #[inline(always)]
 fn test_86_ms_byte(b: u8) -> bool {
-    b == 0x00 || b == 0xff
+    b == 0x00 || b == 0xFF
 }

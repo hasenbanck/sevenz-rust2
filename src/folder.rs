@@ -54,7 +54,7 @@ impl Folder {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Coder {
-    decompression_method_id: [u8; 0xf],
+    decompression_method_id: [u8; 0xF],
     pub id_size: usize,
     pub num_in_streams: u64,
     pub num_out_streams: u64,

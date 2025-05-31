@@ -1,7 +1,9 @@
-use super::{password::Password, *};
-use js_sys::*;
 use std::io::{Read, Seek, SeekFrom, Write};
+
+use js_sys::*;
 use wasm_bindgen::prelude::*;
+
+use super::{password::Password, *};
 
 #[wasm_bindgen]
 pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String> {

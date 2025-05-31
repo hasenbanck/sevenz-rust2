@@ -2,15 +2,18 @@ use std::io::Write;
 
 use byteorder::WriteBytesExt;
 
-use super::{range_enc::RangeEncoder, LZMA2Options};
-
-use super::encoder::{LZMAEncoder, LZMAEncoderModes};
+use super::{
+    encoder::{LZMAEncoder, LZMAEncoderModes},
+    range_enc::RangeEncoder,
+    LZMA2Options,
+};
 
 /// Compresses into the legacy .lzma file format or into a raw LZMA stream
 ///
 /// # Examples
 /// ```
 /// use std::io::Write;
+///
 /// use lzma_rust2::{LZMA2Options, LZMAWriter};
 ///
 /// let s = b"Hello, world!";
@@ -22,7 +25,6 @@ use super::encoder::{LZMAEncoder, LZMAEncoderModes};
 /// w.write_all(s).unwrap();
 /// w.finish().unwrap();
 /// ```
-///
 pub struct LZMAWriter<W: Write> {
     rc: RangeEncoder<W>,
     lzma: LZMAEncoder,

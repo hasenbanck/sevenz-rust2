@@ -1,10 +1,13 @@
+use std::io::Write;
+
 #[cfg(feature = "bzip2")]
 use crate::Bzip2Options;
+#[cfg(feature = "deflate")]
+use crate::DeflateOptions;
 #[cfg(feature = "ppmd")]
 use crate::PPMDOptions;
-#[cfg(feature = "lz4")]
-use crate::{LZ4Options, lz4::Lz4Encoder};
-
+#[cfg(feature = "zstd")]
+use crate::ZStandardOptions;
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
 #[cfg(feature = "brotli")]
@@ -12,18 +15,12 @@ use crate::{BrotliOptions, brotli::BrotliEncoder};
 use crate::{
     CountingWriter, DeltaOptions, Error,
     archive::{SevenZMethod, SevenZMethodConfiguration},
+    delta::DeltaWriter,
     lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
     method_options::MethodOptions,
 };
-
-use std::io::Write;
-
-#[cfg(feature = "deflate")]
-use crate::DeflateOptions;
-use crate::delta::DeltaWriter;
-
-#[cfg(feature = "zstd")]
-use crate::ZStandardOptions;
+#[cfg(feature = "lz4")]
+use crate::{LZ4Options, lz4::Lz4Encoder};
 
 #[allow(clippy::upper_case_acronyms)]
 pub enum Encoder<W: Write> {

@@ -29,7 +29,7 @@ impl BCJFilter {
         while i <= end {
             let b3 = buf[i + 3];
 
-            if b3 == 0xeb {
+            if b3 == 0xEB {
                 let b2 = buf[i + 2] as i32;
                 let b1 = buf[i + 1] as i32;
                 let b0 = buf[i] as i32;
@@ -38,9 +38,9 @@ impl BCJFilter {
                 let p = (self.pos + i) as i32;
                 let dest = if self.is_encoder { src + p } else { src - p };
                 let dest = dest >> 2;
-                buf[i + 2] = ((dest >> 16) & 0xff) as u8;
-                buf[i + 1] = ((dest >> 8) & 0xff) as u8;
-                buf[i] = (dest & 0xff) as u8;
+                buf[i + 2] = ((dest >> 16) & 0xFF) as u8;
+                buf[i + 1] = ((dest >> 8) & 0xFF) as u8;
+                buf[i] = (dest & 0xFF) as u8;
             }
             i += 4;
         }
@@ -61,12 +61,12 @@ impl BCJFilter {
             let b1 = buf[i + 1] as i32;
             let b3 = buf[i + 3] as i32;
 
-            if (b3 & 0xf8) == 0xf8 && (b1 & 0xf8) == 0xf0 {
+            if (b3 & 0xF8) == 0xF8 && (b1 & 0xF8) == 0xF0 {
                 let b2 = buf[i + 2] as i32;
                 let b0 = buf[i] as i32;
 
                 let src =
-                    ((b1 & 0x07) << 19) | ((b0 & 0xff) << 11) | ((b3 & 0x07) << 8) | (b2 & 0xff);
+                    ((b1 & 0x07) << 19) | ((b0 & 0xFF) << 11) | ((b3 & 0x07) << 8) | (b2 & 0xFF);
                 let src = src << 1;
 
                 let dest = if self.is_encoder {
@@ -75,10 +75,10 @@ impl BCJFilter {
                     src - ((self.pos + i) as i32)
                 };
                 let dest = dest >> 1;
-                buf[i + 1] = (0xf0 | ((dest >> 19) & 0x07)) as u8;
+                buf[i + 1] = (0xF0 | ((dest >> 19) & 0x07)) as u8;
                 buf[i] = (dest >> 11) as u8;
-                buf[i + 3] = (0xf8 | ((dest >> 8) & 0x07)) as u8;
-                buf[i + 2] = (dest & 0xff) as u8;
+                buf[i + 3] = (0xF8 | ((dest >> 8) & 0x07)) as u8;
+                buf[i + 2] = (dest & 0xFF) as u8;
                 i += 2;
             }
             i += 2;
@@ -115,26 +115,26 @@ impl BCJFilter {
             let p = (self.pos + i) as i32;
 
             //BL
-            if ((src >> 26) & 0x3f) == 0x25 {
+            if ((src >> 26) & 0x3F) == 0x25 {
                 let dest_adr = if self.is_encoder {
                     src.wrapping_add(p >> 2)
                 } else {
                     src.wrapping_sub(p >> 2)
                 };
-                let dest = (dest_adr & 0x03ffffff) | (0x94 << 24);
+                let dest = (dest_adr & 0x03FFFFFF) | (0x94 << 24);
 
-                buf[i + 3] = ((dest >> 24) & 0xff) as u8;
-                buf[i + 2] = ((dest >> 16) & 0xff) as u8;
-                buf[i + 1] = ((dest >> 8) & 0xff) as u8;
-                buf[i] = (dest & 0xff) as u8;
+                buf[i + 3] = ((dest >> 24) & 0xFF) as u8;
+                buf[i + 2] = ((dest >> 16) & 0xFF) as u8;
+                buf[i + 1] = ((dest >> 8) & 0xFF) as u8;
+                buf[i] = (dest & 0xFF) as u8;
             }
 
             //ADRP
-            if ((src >> 24) & 0x9f) == 0x90 {
-                let addr = ((src >> 29) & 3) | ((src >> 3) & 0x001ffffc);
+            if ((src >> 24) & 0x9F) == 0x90 {
+                let addr = ((src >> 29) & 3) | ((src >> 3) & 0x001FFFFC);
 
-                if 0 == (addr.wrapping_add(0x00020000) & 0x001c0000) {
-                    let dest = (0x90 << 24) | (src & 0x1f);
+                if 0 == (addr.wrapping_add(0x00020000) & 0x001C0000) {
+                    let dest = (0x90 << 24) | (src & 0x1F);
 
                     let addr = if self.is_encoder {
                         addr.wrapping_add(p >> 12)
@@ -143,14 +143,14 @@ impl BCJFilter {
                     };
 
                     let dest = dest | ((addr & 3) << 29);
-                    let dest = dest | ((addr & 0x0003fffc) << 3);
+                    let dest = dest | ((addr & 0x0003FFFC) << 3);
 
-                    let dest = dest | (0i32.wrapping_sub(addr & 0x00020000) & 0x00e00000);
+                    let dest = dest | (0i32.wrapping_sub(addr & 0x00020000) & 0x00E00000);
 
-                    buf[i + 3] = ((dest >> 24) & 0xff) as u8;
-                    buf[i + 2] = ((dest >> 16) & 0xff) as u8;
-                    buf[i + 1] = ((dest >> 8) & 0xff) as u8;
-                    buf[i] = (dest & 0xff) as u8;
+                    buf[i + 3] = ((dest >> 24) & 0xFF) as u8;
+                    buf[i + 2] = ((dest >> 16) & 0xFF) as u8;
+                    buf[i + 1] = ((dest >> 8) & 0xFF) as u8;
+                    buf[i] = (dest & 0xFF) as u8;
                 }
             }
 
