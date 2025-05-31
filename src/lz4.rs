@@ -1,14 +1,17 @@
 use crate::Error;
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use lz4_flex::frame::{FrameDecoder, FrameEncoder, FrameInfo};
+#[cfg(feature = "compress")]
+use std::io::Write;
 use std::io::{Cursor, Read};
 
-/// Magic bytes of a skippable frame as used in L4 by zstdmt.
+/// Magic bytes of a skippable frame as used in LZ4 by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;
 
 /// Custom decoder to support the custom format first implemented by zstdmt, which allows to have
 /// optional skippable frames.
 pub(crate) struct Lz4Decoder<R: Read> {
-    inner: Option<lz4_flex::frame::FrameDecoder<InnerReader<R>>>,
+    inner: Option<FrameDecoder<InnerReader<R>>>,
 }
 
 impl<R: Read> Lz4Decoder<R> {
@@ -36,7 +39,7 @@ impl<R: Read> Lz4Decoder<R> {
             InnerReader::new_standard(input, header[..header_read].to_vec())
         };
 
-        let decoder = lz4_flex::frame::FrameDecoder::new(inner_reader);
+        let decoder = FrameDecoder::new(inner_reader);
 
         Ok(Lz4Decoder {
             inner: Some(decoder),
@@ -53,9 +56,9 @@ impl<R: Read> Read for Lz4Decoder<R> {
 
                     if inner_reader.read_next_frame_header()? {
                         let reader = std::mem::replace(inner_reader, InnerReader::empty());
-                        let mut decompressor = lz4_flex::frame::FrameDecoder::new(reader);
-                        let result = decompressor.read(buf);
-                        self.inner = Some(decompressor);
+                        let mut deencoder = FrameDecoder::new(reader);
+                        let result = deencoder.read(buf);
+                        self.inner = Some(deencoder);
                         result
                     } else {
                         self.inner = None;
@@ -185,6 +188,157 @@ impl<R: Read> Read for InnerReader<R> {
                 }
 
                 Ok(bytes_read)
+            }
+        }
+    }
+}
+
+/// Custom encoder to support the custom format first implemented by zstdmt, which allows to have
+/// optional skippable frames.
+#[cfg(feature = "compress")]
+pub(crate) struct Lz4Encoder<W: Write> {
+    inner: InnerWriter<W>,
+}
+
+#[cfg(feature = "compress")]
+enum InnerWriter<W: Write> {
+    Standard(FrameEncoder<W>),
+    Framed {
+        writer: W,
+        frame_size: usize,
+        compressed_data: Vec<u8>,
+        uncompressed_data: Vec<u8>,
+        uncompressed_data_size: usize,
+    },
+}
+
+#[cfg(feature = "compress")]
+impl<W: Write> Lz4Encoder<W> {
+    pub(crate) fn new(writer: W, frame_size: usize) -> Result<Self, Error> {
+        let inner = if frame_size == 0 {
+            let encoder = FrameEncoder::new(writer);
+            InnerWriter::Standard(encoder)
+        } else {
+            InnerWriter::Framed {
+                writer,
+                frame_size,
+                compressed_data: Vec::with_capacity(frame_size),
+                uncompressed_data: vec![0; frame_size],
+                uncompressed_data_size: 0,
+            }
+        };
+
+        Ok(Self { inner })
+    }
+
+    fn write_frame(
+        writer: &mut W,
+        compressed_data: &mut Vec<u8>,
+        uncompressed_data: &[u8],
+    ) -> std::io::Result<()> {
+        if uncompressed_data.is_empty() {
+            return Ok(());
+        }
+        compressed_data.clear();
+
+        // zstdmt expects that the content size is set when using skippable frames with LZ4.
+        let frame_info = FrameInfo::default().content_size(Some(uncompressed_data.len() as u64));
+        let mut frame_encoder = FrameEncoder::with_frame_info(frame_info, compressed_data);
+        frame_encoder.write_all(uncompressed_data)?;
+        let compressed_data = frame_encoder.finish()?;
+
+        if compressed_data.is_empty() {
+            return Ok(());
+        }
+
+        writer.write_u32::<LittleEndian>(SKIPPABLE_FRAME_MAGIC)?;
+        writer.write_u32::<LittleEndian>(4)?;
+        writer.write_u32::<LittleEndian>(compressed_data.len() as u32)?;
+        writer.write_all(compressed_data.as_slice())?;
+
+        Ok(())
+    }
+
+    pub fn finish(self) -> std::io::Result<W> {
+        match self.inner {
+            InnerWriter::Standard(encoder) => Ok(encoder.finish()?),
+            InnerWriter::Framed {
+                mut writer,
+                mut compressed_data,
+                uncompressed_data,
+                uncompressed_data_size,
+                ..
+            } => {
+                Self::write_frame(
+                    &mut writer,
+                    &mut compressed_data,
+                    &uncompressed_data[..uncompressed_data_size],
+                )?;
+                Ok(writer)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "compress")]
+impl<W: Write> Write for Lz4Encoder<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match &mut self.inner {
+            InnerWriter::Standard(encoder) => encoder.write(buf),
+            InnerWriter::Framed {
+                writer,
+                frame_size,
+                compressed_data,
+                uncompressed_data,
+                uncompressed_data_size,
+            } => {
+                let mut bytes_consumed = 0;
+                let total_bytes = buf.len();
+
+                while bytes_consumed < total_bytes {
+                    let available_space = *frame_size - *uncompressed_data_size;
+                    let bytes_to_copy =
+                        std::cmp::min(total_bytes - bytes_consumed, available_space);
+
+                    uncompressed_data
+                        [*uncompressed_data_size..*uncompressed_data_size + bytes_to_copy]
+                        .copy_from_slice(&buf[bytes_consumed..bytes_consumed + bytes_to_copy]);
+
+                    *uncompressed_data_size += bytes_to_copy;
+                    bytes_consumed += bytes_to_copy;
+
+                    if *uncompressed_data_size >= *frame_size {
+                        Self::write_frame(
+                            writer,
+                            compressed_data,
+                            &uncompressed_data[..*uncompressed_data_size],
+                        )?;
+                        *uncompressed_data_size = 0;
+                    }
+                }
+
+                Ok(total_bytes)
+            }
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match &mut self.inner {
+            InnerWriter::Standard(encoder) => encoder.flush(),
+            InnerWriter::Framed {
+                writer,
+                compressed_data,
+                uncompressed_data,
+                uncompressed_data_size,
+                ..
+            } => {
+                Self::write_frame(
+                    writer,
+                    compressed_data,
+                    &uncompressed_data[..*uncompressed_data_size],
+                )?;
+                *uncompressed_data_size = 0;
+                writer.flush()
             }
         }
     }

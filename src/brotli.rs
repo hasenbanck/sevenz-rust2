@@ -6,8 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::{self, Write};
 use std::io::{Cursor, Read};
 
-/// Magic bytes of a skippable frame as used in L4, ZSTD and the custom format for Botlin by zstdmt.
-/// ZSTD even defines that 0x184D2A50 to 0x184D2A5F are valid marker.
+/// Magic bytes of a skippable frame format as used in brotli by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;
 /// "BR" in little-endian
 const BROTLI_MAGIC: u16 = 0x5242;
@@ -15,9 +14,7 @@ const BROTLI_MAGIC: u16 = 0x5242;
 const HINT_UNIT_SIZE: usize = 65536;
 
 /// Custom decoder to support the custom format first implemented by zstdmt, which allows to have
-/// optional skippable frames. The skippable frame format is based on LZ4 and ZSTD's format.
-///
-/// [Specification](https://github.com/facebook/zstd/blob/76779f52c2d7203ec284b825725954a66a6f98a5/doc/zstd_compression_format.md#skippable-frames)
+/// optional skippable frames.
 pub(crate) struct BrotliDecoder<R: Read> {
     inner: Option<brotli::Decompressor<InnerReader<R>>>,
     buffer_size: usize,
@@ -216,7 +213,7 @@ impl<R: Read> Read for InnerReader<R> {
 }
 
 /// Custom encoder to support the custom format first implemented by zstdmt, which allows to have
-/// optional skippable frames. The skippable frame format is based on LZ4 and ZSTD's format.
+/// optional skippable frames.
 #[cfg(feature = "compress")]
 pub(crate) struct BrotliEncoder<W: Write> {
     inner: InnerWriter<W>,

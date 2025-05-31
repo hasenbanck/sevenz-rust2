@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added support for ARM64 BCJ filter (by Benkol003)
+- Added support for ARM64 BCJ filter (by Benkol003).
+- Add support for encoding LZ4 with skippable frames.
 
 ### Fixed
 
-- Fixed decompressing LZ4 that contain skippable frames
+- Fixed decompressing LZ4 that contain skippable frames.
 
 ### Changed
 

@@ -2,6 +2,9 @@
 use crate::Bzip2Options;
 #[cfg(feature = "ppmd")]
 use crate::PPMDOptions;
+#[cfg(feature = "lz4")]
+use crate::{LZ4Options, lz4::Lz4Encoder};
+
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
 #[cfg(feature = "brotli")]
@@ -37,7 +40,7 @@ pub enum Encoder<W: Write> {
     #[cfg(feature = "deflate")]
     DEFLATE(Option<flate2::write::DeflateEncoder<CountingWriter<W>>>),
     #[cfg(feature = "lz4")]
-    LZ4(Option<lz4_flex::frame::FrameEncoder<CountingWriter<W>>>),
+    LZ4(Option<Lz4Encoder<CountingWriter<W>>>),
     #[cfg(feature = "zstd")]
     ZSTD(Option<zstd::Encoder<'static, CountingWriter<W>>>),
     #[cfg(feature = "aes256")]
@@ -75,6 +78,7 @@ impl<W: Write> Write for Encoder<W> {
             },
             #[cfg(feature = "ppmd")]
             Encoder::PPMD(w) => w.write(buf),
+            // TODO: Also add a proper "finish" method here.
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.write(buf),
             #[cfg(feature = "bzip2")]
@@ -228,7 +232,12 @@ pub(crate) fn add_encoder<W: Write>(
         }
         #[cfg(feature = "lz4")]
         SevenZMethod::ID_LZ4 => {
-            let lz4_encoder = lz4_flex::frame::FrameEncoder::new(input);
+            let options = match method_config.options.as_ref() {
+                Some(MethodOptions::LZ4(options)) => *options,
+                _ => LZ4Options::default(),
+            };
+
+            let lz4_encoder = Lz4Encoder::new(input, options.skippable_frame_size as usize)?;
 
             Ok(Encoder::LZ4(Some(lz4_encoder)))
         }

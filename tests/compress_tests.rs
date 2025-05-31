@@ -309,7 +309,15 @@ fn compress_with_deflate_algorithm() {
 #[cfg(feature = "lz4")]
 #[test]
 fn compress_with_lz4_algorithm() {
-    test_compression_method(&[SevenZMethod::LZ4.into()]);
+    test_compression_method(&[LZ4Options::default().with_skippable_frame_size(0).into()]);
+}
+
+#[cfg(feature = "lz4")]
+#[test]
+fn compress_with_lz4_skippable_algorithm() {
+    test_compression_method(&[LZ4Options::default()
+        .with_skippable_frame_size(128 * 1024)
+        .into()]);
 }
 
 #[cfg(feature = "zstd")]

@@ -26,7 +26,7 @@ impl Default for Bzip2Options {
     }
 }
 
-#[cfg(feature = "brotli")]
+#[cfg(any(feature = "brotli", feature = "lz4"))]
 const MINIMAL_SKIPPABLE_FRAME_SIZE: u32 = 64 * 1024;
 #[cfg(feature = "brotli")]
 const DEFAULT_SKIPPABLE_FRAME_SIZE: u32 = 128 * 1024;
@@ -62,10 +62,9 @@ impl BrotliOptions {
     pub fn with_skippable_frame_size(mut self, skippable_frame_size: u32) -> Self {
         if skippable_frame_size == 0 {
             self.skippable_frame_size = 0;
-        } else if skippable_frame_size < MINIMAL_SKIPPABLE_FRAME_SIZE {
-            self.skippable_frame_size = MINIMAL_SKIPPABLE_FRAME_SIZE;
         } else {
-            self.skippable_frame_size = skippable_frame_size;
+            self.skippable_frame_size =
+                u32::max(skippable_frame_size, MINIMAL_SKIPPABLE_FRAME_SIZE);
         }
 
         self
@@ -126,6 +125,37 @@ impl DeflateOptions {
 impl Default for DeflateOptions {
     fn default() -> Self {
         Self(6)
+    }
+}
+
+#[cfg(feature = "lz4")]
+#[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct LZ4Options {
+    pub(crate) skippable_frame_size: u32,
+}
+
+#[cfg(feature = "lz4")]
+impl LZ4Options {
+    /// Set's the skippable frame size. The size is defined as the size of uncompressed data a frame
+    /// contains. A value of 0 deactivates skippable frames and uses the native LZ4 bitstream.
+    /// If a value is set, then the similar skippable frame format is used.
+    ///
+    /// Af value between 1..=64KiB will be set to 64KiB.
+    ///
+    /// This was first implemented by zstdmt.
+    ///
+    /// Defaults to not use the skippable frame format at all, since LZ4 is extremely fast and will
+    /// most likely saturate IO even on a single thread.
+    pub fn with_skippable_frame_size(mut self, skippable_frame_size: u32) -> Self {
+        if skippable_frame_size == 0 {
+            self.skippable_frame_size = 0;
+        } else {
+            self.skippable_frame_size =
+                u32::max(skippable_frame_size, MINIMAL_SKIPPABLE_FRAME_SIZE);
+        }
+
+        self
     }
 }
 
@@ -213,6 +243,9 @@ pub enum MethodOptions {
     #[cfg(feature = "deflate")]
     #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
     DEFLATE(DeflateOptions),
+    #[cfg(feature = "lz4")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
+    LZ4(LZ4Options),
     #[cfg(feature = "ppmd")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
     PPMD(PPMDOptions),
@@ -273,6 +306,13 @@ impl From<DeflateOptions> for crate::SevenZMethodConfiguration {
     }
 }
 
+#[cfg(feature = "lz4")]
+impl From<LZ4Options> for crate::SevenZMethodConfiguration {
+    fn from(options: LZ4Options) -> Self {
+        Self::new(crate::SevenZMethod::LZ4).with_options(MethodOptions::LZ4(options))
+    }
+}
+
 #[cfg(feature = "ppmd")]
 impl From<PPMDOptions> for crate::SevenZMethodConfiguration {
     fn from(options: PPMDOptions) -> Self {
@@ -325,6 +365,13 @@ impl From<BrotliOptions> for MethodOptions {
 impl From<DeflateOptions> for MethodOptions {
     fn from(o: DeflateOptions) -> Self {
         Self::DEFLATE(o)
+    }
+}
+
+#[cfg(feature = "lz4")]
+impl From<LZ4Options> for MethodOptions {
+    fn from(o: LZ4Options) -> Self {
+        Self::LZ4(o)
     }
 }
 
