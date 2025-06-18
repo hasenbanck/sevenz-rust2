@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.15.0 - UNRELEASED
+
+### Updated
+
+- Target optional dependency bzip2 v0.6.
+
 ## 0.14.1 - 2025-06-02
 
 ### Added
