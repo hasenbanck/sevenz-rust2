@@ -39,7 +39,7 @@ filetime_creation = { version = "0.2", optional = true }
 getrandom = { version = "0.3", optional = true }
 lzma-rust2 = { version = "0.2", default-features = false, path = "lzma-rust2" }
 ppmd-rust = { version = "0.3", optional = true, path = "ppmd-rust" }
-lz4_flex = { version = "0.11", optional = true, default-features = false, features = ["frame", "std"] }
+lz4_flex = { version = "0.11", optional = true }
 nt-time = "0.11"
 sha2 = { version = "0.10", optional = true }
 zstd = { version = "0.13", optional = true }

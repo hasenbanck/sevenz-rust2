@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The PPMd crate is using a native Rust version that is validated with Miri. All 7zip supported compression algorithms
   (LZMA, LZMA2, BZIP2 and PPMd) have now Rust native implementations and don't need a C compiler.
 - All standard compression algorithms of 7zip are enabled by default.
+- Use default feature of lz4_flex
 
 ## 0.14.1 - 2025-06-02
 
