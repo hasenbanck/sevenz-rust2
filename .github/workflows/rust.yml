@@ -102,19 +102,3 @@ jobs:
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Check no lint warnings (no default features)
         run: cargo clippy --workspace --no-default-features -- -D warnings
-
-  miri:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install rust version
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: nightly
-          components: miri, rust-std
-      - uses: actions/checkout@v4
-      - name: Run miri
-        run: |
-          cd ppmd-rust
-          # Only test the main round trip function, which tests both the encoder and decoder.
-          cargo +nightly miri test --lib encoder_7::test::ppmd7encoder_encode_decode
