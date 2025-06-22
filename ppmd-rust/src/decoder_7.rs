@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use crate::{
-    Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, PPMD7_SYM_END,
+    Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, SYM_END,
     internal::ppmd7::{Pppmd7, RangeDecoder},
 };
 
@@ -68,7 +68,7 @@ impl<R: Read> Read for Ppmd7Decoder<R> {
 
         let code = self.ppmd.range_decoder_code();
 
-        if sym != PPMD7_SYM_END || code != 0 {
+        if sym != SYM_END || code != 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Error during PPMd decoding",

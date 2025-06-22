@@ -8,3 +8,6 @@ rust-version = "1.85"
 version = "0.3.0"
 keywords = ["ppmd"]
 license = "CC0-1.0"
+
+[dependencies]
+ppmd-sys = { version = "0.2.0", path = "ppmd-sys" }

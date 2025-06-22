@@ -2,7 +2,7 @@ use std::io::Read;
 
 use super::{Pppmd7, RangeDecoder};
 use crate::{
-    PPMD7_SYM_END, PPMD8_SYM_ERROR,
+    SYM_END, SYM_ERROR,
     internal::{PPMD_INT_BITS, ppmd_update_prob_1},
 };
 
@@ -45,7 +45,7 @@ impl<R: Read> Pppmd7<RangeDecoder<R>> {
                 }
 
                 if hi_cnt >= summ_freq {
-                    return Ok(PPMD8_SYM_ERROR);
+                    return Ok(SYM_ERROR);
                 }
 
                 let hi_cnt = hi_cnt.wrapping_sub(count);
@@ -91,7 +91,7 @@ impl<R: Read> Pppmd7<RangeDecoder<R>> {
                 while mc.as_ref().num_stats as u32 == num_masked {
                     self.order_fall += 1;
                     if mc.as_ref().suffix == 0 {
-                        return Ok(PPMD7_SYM_END);
+                        return Ok(SYM_END);
                     }
                     mc = self.get_context(mc.as_ref().suffix);
                 }
@@ -155,7 +155,7 @@ impl<R: Read> Pppmd7<RangeDecoder<R>> {
                 }
 
                 if count >= freq_sum {
-                    return Ok(PPMD8_SYM_ERROR);
+                    return Ok(SYM_ERROR);
                 }
 
                 self.rc.decode(hi_cnt, freq_sum - hi_cnt);
