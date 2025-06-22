@@ -2,6 +2,8 @@ mod decoder;
 mod encoder;
 mod range_coding;
 
+use super::PPMD_NUM_INDEXES;
+
 pub(crate) use decoder::{decode_symbol, init_range_dec};
 pub(crate) use encoder::{encode_symbol, flush_range_enc};
 
@@ -154,16 +156,7 @@ pub unsafe fn construct(mut p: *mut Ppmd8) {
     (*p).base = 0 as *mut u8;
     i = 0 as i32 as u32;
     k = 0 as i32 as u32;
-    while i
-        < (4 as i32
-            + 4 as i32
-            + 4 as i32
-            + (128 as i32 + 3 as i32
-                - 1 as i32 * 4 as i32
-                - 2 as i32 * 4 as i32
-                - 3 as i32 * 4 as i32)
-                / 4 as i32) as u32
-    {
+    while i < PPMD_NUM_INDEXES {
         let mut step: u32 = if i >= 12 as i32 as u32 {
             4 as i32 as u32
         } else {
@@ -278,16 +271,7 @@ unsafe fn glue_free_blocks(mut p: *mut Ppmd8) {
     let mut prev: *mut u32 = &mut n;
     let mut i: u32 = 0;
     i = 0 as i32 as u32;
-    while i
-        < (4 as i32
-            + 4 as i32
-            + 4 as i32
-            + (128 as i32 + 3 as i32
-                - 1 as i32 * 4 as i32
-                - 2 as i32 * 4 as i32
-                - 3 as i32 * 4 as i32)
-                / 4 as i32) as u32
-    {
+    while i < PPMD_NUM_INDEXES {
         let mut next: u32 = (*p).free_list[i as usize];
         (*p).free_list[i as usize] = 0 as i32 as u32;
         while next != 0 as i32 as u32 {
@@ -322,19 +306,7 @@ unsafe fn glue_free_blocks(mut p: *mut Ppmd8) {
             continue;
         }
         while nu_0 > 128 as i32 as u32 {
-            insert_node(
-                p,
-                node_0 as *mut u8,
-                (4 as i32
-                    + 4 as i32
-                    + 4 as i32
-                    + (128 as i32 + 3 as i32
-                        - 1 as i32 * 4 as i32
-                        - 2 as i32 * 4 as i32
-                        - 3 as i32 * 4 as i32)
-                        / 4 as i32
-                    - 1 as i32) as u32,
-            );
+            insert_node(p, node_0 as *mut u8, PPMD_NUM_INDEXES - 1);
             nu_0 = nu_0.wrapping_sub(128 as i32 as u32);
             node_0 = node_0.offset(128 as i32 as isize);
         }
@@ -364,15 +336,7 @@ unsafe fn alloc_units_rare(mut p: *mut Ppmd8, mut index: u32) -> *mut u8 {
     i = index;
     loop {
         i = i.wrapping_add(1);
-        if i == (4 as i32
-            + 4 as i32
-            + 4 as i32
-            + (128 as i32 + 3 as i32
-                - 1 as i32 * 4 as i32
-                - 2 as i32 * 4 as i32
-                - 3 as i32 * 4 as i32)
-                / 4 as i32) as u32
-        {
+        if i == PPMD_NUM_INDEXES {
             let mut numBytes: u32 = (*p).index2units[index as usize] as u32 * 12 as i32 as u32;
             let mut us: *mut u8 = (*p).units_start;
             (*p).glue_count = ((*p).glue_count).wrapping_sub(1);
@@ -478,16 +442,7 @@ unsafe fn expand_text_area(mut p: *mut Ppmd8) {
     }
     (*p).units_start = node as *mut u8;
     i = 0 as i32 as u32;
-    while i
-        < (4 as i32
-            + 4 as i32
-            + 4 as i32
-            + (128 as i32 + 3 as i32
-                - 1 as i32 * 4 as i32
-                - 2 as i32 * 4 as i32
-                - 3 as i32 * 4 as i32)
-                / 4 as i32) as u32
-    {
+    while i < PPMD_NUM_INDEXES {
         let mut cnt: u32 = count[i as usize];
         if !(cnt == 0 as i32 as u32) {
             let mut prev: *mut u32 =
@@ -804,16 +759,7 @@ unsafe fn get_used_memory(mut p: *const Ppmd8) -> u32 {
     let mut v: u32 = 0 as i32 as u32;
     let mut i: u32 = 0;
     i = 0 as i32 as u32;
-    while i
-        < (4 as i32
-            + 4 as i32
-            + 4 as i32
-            + (128 as i32 + 3 as i32
-                - 1 as i32 * 4 as i32
-                - 2 as i32 * 4 as i32
-                - 3 as i32 * 4 as i32)
-                / 4 as i32) as u32
-    {
+    while i < PPMD_NUM_INDEXES {
         v = (v as u32).wrapping_add(
             ((*p).stamps[i as usize]).wrapping_mul((*p).index2units[i as usize] as u32),
         ) as u32 as u32;
