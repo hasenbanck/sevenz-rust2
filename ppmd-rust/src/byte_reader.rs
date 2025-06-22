@@ -19,7 +19,7 @@ impl<R: Read> ByteReader<R> {
     pub(crate) fn new(reader: R) -> Self {
         let reader = ByteReaderInner {
             byte_in: IByteIn {
-                Read: Some(Self::read_byte),
+                read: Some(Self::read_byte),
             },
             buffer: vec![0; 4096],
             reader,

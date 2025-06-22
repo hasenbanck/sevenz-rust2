@@ -1,14 +1,12 @@
 use crate::byte_writer::ByteWriter;
-use crate::internal::ppmd8::{
-    CPpmd8, Ppmd8_Alloc, Ppmd8_Construct, Ppmd8_EncodeSymbol, Ppmd8_Flush_RangeEnc, Ppmd8_Init,
-};
+use crate::internal::ppmd8::{Ppmd8, alloc, construct, encode_symbol, flush_range_enc, init};
 use crate::memory::Memory;
 use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod};
 use std::io::Write;
 
 /// A encoder to encode PPMd8 (PPMdI) compressed data.
 pub struct Ppmd8Encoder<W: Write> {
-    ppmd: CPpmd8,
+    ppmd: Ppmd8,
     writer: ByteWriter<W>,
     _memory: Memory,
 }
@@ -25,25 +23,25 @@ impl<W: Write> Ppmd8Encoder<W> {
             return Err(Error::InvalidParameter);
         }
 
-        let mut ppmd = unsafe { std::mem::zeroed::<CPpmd8>() };
-        unsafe { Ppmd8_Construct(&mut ppmd) };
+        let mut ppmd = unsafe { std::mem::zeroed::<Ppmd8>() };
+        unsafe { construct(&mut ppmd) };
 
         let mut memory = Memory::new(mem_size);
 
-        let success = unsafe { Ppmd8_Alloc(&mut ppmd, mem_size, memory.allocation()) };
+        let success = unsafe { alloc(&mut ppmd, mem_size, memory.allocation()) };
 
         if success == 0 {
             return Err(Error::InternalError("Failed to allocate memory"));
         }
 
         let mut writer = ByteWriter::new(writer);
-        ppmd.Stream.Out = writer.byte_out_ptr();
+        ppmd.stream.output = writer.byte_out_ptr();
 
-        // #define Ppmd8_Init_RangeEnc(p) { (p)->Low = 0; (p)->Range = 0xFFFFFFFF; }
-        ppmd.Low = 0;
-        ppmd.Range = 0xFFFFFFFF;
+        // #define Init_RangeEnc(p) { (p)->Low = 0; (p)->Range = 0xFFFFFFFF; }
+        ppmd.low = 0;
+        ppmd.range = 0xFFFFFFFF;
 
-        unsafe { Ppmd8_Init(&mut ppmd, order, restore_method as _) };
+        unsafe { init(&mut ppmd, order, restore_method as _) };
 
         Ok(Self {
             ppmd,
@@ -53,7 +51,7 @@ impl<W: Write> Ppmd8Encoder<W> {
     }
 
     fn inner_flush(&mut self) {
-        unsafe { Ppmd8_Flush_RangeEnc(&mut self.ppmd) };
+        unsafe { flush_range_enc(&mut self.ppmd) };
         self.writer.flush();
     }
 }
@@ -65,7 +63,7 @@ impl<W: Write> Write for Ppmd8Encoder<W> {
         }
 
         buf.iter()
-            .for_each(|byte| unsafe { Ppmd8_EncodeSymbol(&mut self.ppmd as *mut _, *byte as _) });
+            .for_each(|byte| unsafe { encode_symbol(&mut self.ppmd as *mut _, *byte as _) });
 
         Ok(buf.len())
     }
@@ -90,7 +88,7 @@ mod test {
     fn ppmd8encoder_init_drop() {
         let writer = Vec::new();
         let encoder = Ppmd8Encoder::new(writer, ORDER, MEM_SIZE, RESTORE_METHOD).unwrap();
-        assert!(!encoder.ppmd.Base.is_null());
+        assert!(!encoder.ppmd.base.is_null());
     }
 
     #[test]

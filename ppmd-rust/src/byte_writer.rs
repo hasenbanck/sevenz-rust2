@@ -18,7 +18,7 @@ impl<W: Write> ByteWriter<W> {
     pub(crate) fn new(writer: W) -> Self {
         let writer = ByteWriterInner {
             byte_out: IByteOut {
-                Write: Some(Self::write_byte),
+                write: Some(Self::write_byte),
             },
             writer,
             buffer: Vec::with_capacity(BUFFER_SIZE),
