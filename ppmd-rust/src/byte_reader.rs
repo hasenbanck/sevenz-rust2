@@ -1,5 +1,6 @@
-use crate::internal::ppmd8::{IByteIn, IByteInPtr};
 use std::io::Read;
+
+use crate::internal::ppmd8::{IByteIn, IByteInPtr};
 
 pub(crate) struct ByteReader<R: Read> {
     inner: Box<ByteReaderInner<R>>,

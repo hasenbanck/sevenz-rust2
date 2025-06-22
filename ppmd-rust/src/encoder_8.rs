@@ -1,8 +1,11 @@
-use crate::byte_writer::ByteWriter;
-use crate::internal::ppmd8::{Ppmd8, alloc, construct, encode_symbol, flush_range_enc, init};
-use crate::memory::Memory;
-use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod};
 use std::io::Write;
+
+use crate::{
+    Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod,
+    byte_writer::ByteWriter,
+    internal::ppmd8::{Ppmd8, alloc, construct, encode_symbol, flush_range_enc, init},
+    memory::Memory,
+};
 
 /// A encoder to encode PPMd8 (PPMdI) compressed data.
 pub struct Ppmd8Encoder<W: Write> {
@@ -76,9 +79,10 @@ impl<W: Write> Write for Ppmd8Encoder<W> {
 
 #[cfg(test)]
 mod test {
+    use std::io::{Read, Write};
+
     use super::Ppmd8Encoder;
     use crate::{Ppmd8Decoder, RestoreMethod};
-    use std::io::{Read, Write};
 
     const ORDER: u32 = 8;
     const MEM_SIZE: u32 = 262144;

@@ -1,8 +1,11 @@
-use crate::byte_reader::ByteReader;
-use crate::internal::ppmd8::{Ppmd8, alloc, construct, decode_symbol, free, init, init_range_dec};
-use crate::memory::Memory;
-use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod, SYM_END};
 use std::io::Read;
+
+use crate::{
+    Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod, SYM_END,
+    byte_reader::ByteReader,
+    internal::ppmd8::{Ppmd8, alloc, construct, decode_symbol, free, init, init_range_dec},
+    memory::Memory,
+};
 
 /// A decoder to decode PPMd8 (PPMdI) compressed data.
 pub struct Ppmd8Decoder<R: Read> {

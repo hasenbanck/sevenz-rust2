@@ -1,5 +1,6 @@
-use crate::internal::ppmd8::{IByteOut, IByteOutPtr};
 use std::io::Write;
+
+use crate::internal::ppmd8::{IByteOut, IByteOutPtr};
 
 const BUFFER_SIZE: usize = 4096;
 

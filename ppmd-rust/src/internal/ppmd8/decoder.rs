@@ -1,10 +1,10 @@
 use super::*;
 
-pub unsafe fn init_range_dec(mut p: *mut Ppmd8) -> i32 {
+pub unsafe fn init_range_dec(p: *mut Ppmd8) -> i32 {
     unsafe {
         let mut i: u32 = 0;
         (*p).code = 0 as i32 as u32;
-        (*p).range = 0xffffffff as u32;
+        (*p).range = 0xFFFFFFFF as u32;
         (*p).low = 0 as i32 as u32;
         i = 0 as i32 as u32;
         while i < 4 as i32 as u32 {
@@ -13,12 +13,12 @@ pub unsafe fn init_range_dec(mut p: *mut Ppmd8) -> i32 {
                     as u32;
             i = i.wrapping_add(1);
         }
-        ((*p).code < 0xffffffff as u32) as i32
+        ((*p).code < 0xFFFFFFFF as u32) as i32
     }
 }
 
 #[inline(always)]
-unsafe fn rd_decode(mut p: *mut Ppmd8, mut start: u32, mut size: u32) {
+unsafe fn rd_decode(p: *mut Ppmd8, mut start: u32, size: u32) {
     unsafe {
         start = start * (*p).range;
         (*p).low = ((*p).low).wrapping_add(start);
@@ -27,7 +27,7 @@ unsafe fn rd_decode(mut p: *mut Ppmd8, mut start: u32, mut size: u32) {
     }
 }
 
-pub unsafe fn decode_symbol(mut p: *mut Ppmd8) -> i32 {
+pub unsafe fn decode_symbol(p: *mut Ppmd8) -> i32 {
     unsafe {
         let mut charMask: [usize; 32] = [0; 32];
         if (*(*p).min_context).num_stats as i32 != 0 as i32 {
@@ -143,8 +143,8 @@ pub unsafe fn decode_symbol(mut p: *mut Ppmd8) -> i32 {
                 }
             }
         } else {
-            let mut s_0: *mut State = &mut (*(*p).min_context).union2 as *mut Union2 as *mut State;
-            let mut prob: *mut u16 = &mut *(*((*p).bin_summ).as_mut_ptr().offset(
+            let s_0: *mut State = &mut (*(*p).min_context).union2 as *mut Union2 as *mut State;
+            let prob: *mut u16 = &mut *(*((*p).bin_summ).as_mut_ptr().offset(
                 *((*p).ns2index).as_mut_ptr().offset(
                     ((*(&mut (*(*p).min_context).union2 as *mut Union2 as *mut State)).freq
                         as usize)
@@ -165,7 +165,7 @@ pub unsafe fn decode_symbol(mut p: *mut Ppmd8) -> i32 {
                     .wrapping_add((*(*p).min_context).flags as i32 as u32) as isize,
             ) as *mut u16;
             let mut pr: u32 = *prob as u32;
-            let mut size0: u32 = ((*p).range >> 14 as i32) * pr;
+            let size0: u32 = ((*p).range >> 14 as i32) * pr;
             pr = pr.wrapping_sub(
                 pr.wrapping_add(((1 as i32) << 7 as i32 - 2 as i32) as u32) >> 7 as i32,
             );
@@ -188,8 +188,8 @@ pub unsafe fn decode_symbol(mut p: *mut Ppmd8) -> i32 {
                     (*p).range <<= 8 as i32;
                     (*p).low <<= 8 as i32;
                 }
-                let mut freq: u32 = (*s_0).freq as u32;
-                let mut c: *mut Context = ((*p).base).offset(
+                let freq: u32 = (*s_0).freq as u32;
+                let c: *mut Context = ((*p).base).offset(
                     ((*s_0).successor_0 as u32 | ((*s_0).successor_1 as u32) << 16 as i32) as isize,
                 ) as *mut u8 as *mut Context;
                 sym_1 = (*s_0).symbol;

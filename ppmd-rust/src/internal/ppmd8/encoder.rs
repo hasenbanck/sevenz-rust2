@@ -1,6 +1,6 @@
 use super::*;
 
-pub unsafe fn flush_range_enc(mut p: *mut Ppmd8) {
+pub unsafe fn flush_range_enc(p: *mut Ppmd8) {
     unsafe {
         let mut i: u32 = 0;
         i = 0 as i32 as u32;
@@ -16,7 +16,7 @@ pub unsafe fn flush_range_enc(mut p: *mut Ppmd8) {
     }
 }
 
-unsafe fn range_enc_encode(mut p: *mut Ppmd8, mut start: u32, mut size: u32, mut total: u32) {
+unsafe fn range_enc_encode(p: *mut Ppmd8, start: u32, size: u32, total: u32) {
     unsafe {
         (*p).range = (*p).range / total;
         (*p).low = ((*p).low).wrapping_add(start * (*p).range);
@@ -24,7 +24,7 @@ unsafe fn range_enc_encode(mut p: *mut Ppmd8, mut start: u32, mut size: u32, mut
     }
 }
 
-pub unsafe fn encode_symbol(mut p: *mut Ppmd8, mut symbol: i32) {
+pub unsafe fn encode_symbol(p: *mut Ppmd8, symbol: i32) {
     unsafe {
         let mut charMask: [usize; 32] = [0; 32];
         if (*(*p).min_context).num_stats as i32 != 0 as i32 {
@@ -124,7 +124,7 @@ pub unsafe fn encode_symbol(mut p: *mut Ppmd8, mut symbol: i32) {
                 }
             }
         } else {
-            let mut prob: *mut u16 = &mut *(*((*p).bin_summ).as_mut_ptr().offset(
+            let prob: *mut u16 = &mut *(*((*p).bin_summ).as_mut_ptr().offset(
                 *((*p).ns2index).as_mut_ptr().offset(
                     ((*(&mut (*(*p).min_context).union2 as *mut Union2 as *mut State)).freq
                         as usize)
@@ -144,7 +144,7 @@ pub unsafe fn encode_symbol(mut p: *mut Ppmd8, mut symbol: i32) {
                     )
                     .wrapping_add((*(*p).min_context).flags as i32 as u32) as isize,
             ) as *mut u16;
-            let mut s_0: *mut State = &mut (*(*p).min_context).union2 as *mut Union2 as *mut State;
+            let s_0: *mut State = &mut (*(*p).min_context).union2 as *mut Union2 as *mut State;
             let mut pr: u32 = *prob as u32;
             let bound: u32 = ((*p).range >> 14 as i32) * pr;
             pr = pr.wrapping_sub(
@@ -169,7 +169,7 @@ pub unsafe fn encode_symbol(mut p: *mut Ppmd8, mut symbol: i32) {
                     (*p).low <<= 8 as i32;
                 }
                 let freq: u32 = (*s_0).freq as u32;
-                let mut c: *mut Context = ((*p).base).offset(
+                let c: *mut Context = ((*p).base).offset(
                     ((*s_0).successor_0 as u32 | ((*s_0).successor_1 as u32) << 16 as i32) as isize,
                 ) as *mut u8 as *mut Context;
                 (*p).found_state = s_0;
