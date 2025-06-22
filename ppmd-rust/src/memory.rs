@@ -1,4 +1,4 @@
-use ppmd_sys::{ISzAlloc, ISzAllocPtr};
+use crate::internal::ppmd8::{ISzAlloc, ISzAllocPtr};
 
 pub(crate) struct Memory {
     inner: Box<MemoryInner>,
@@ -34,13 +34,13 @@ impl Memory {
         unsafe { &mut *(p as *mut MemoryInner) }
     }
 
-    unsafe extern "C" fn alloc(p: ISzAllocPtr, size: usize) -> *mut std::os::raw::c_void {
+    fn alloc(p: ISzAllocPtr, size: usize) -> *mut u8 {
         let memory = Self::get_inner_memory(p);
         assert_eq!(size, memory.data.len());
-        memory.data.as_mut_ptr() as *mut std::os::raw::c_void
+        memory.data.as_mut_ptr()
     }
 
-    unsafe extern "C" fn free(p: ISzAllocPtr, address: *mut std::os::raw::c_void) {
+    fn free(p: ISzAllocPtr, address: *mut u8) {
         if address.is_null() {
             return;
         }

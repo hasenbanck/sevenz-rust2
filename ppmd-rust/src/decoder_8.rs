@@ -1,10 +1,10 @@
 use crate::byte_reader::ByteReader;
-use crate::memory::Memory;
-use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod, SYM_END};
-use ppmd_sys::{
+use crate::internal::ppmd8::{
     CPpmd8, Ppmd8_Alloc, Ppmd8_Construct, Ppmd8_DecodeSymbol, Ppmd8_Free, Ppmd8_Init,
     Ppmd8_Init_RangeDec,
 };
+use crate::memory::Memory;
+use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod, SYM_END};
 use std::io::Read;
 
 /// A decoder to decode PPMd8 (PPMdI) compressed data.

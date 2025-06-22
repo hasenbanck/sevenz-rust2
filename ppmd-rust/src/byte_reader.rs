@@ -1,4 +1,4 @@
-use ppmd_sys::{Byte, IByteIn_, IByteInPtr};
+use crate::internal::ppmd8::{IByteIn, IByteInPtr};
 use std::io::Read;
 
 pub(crate) struct ByteReader<R: Read> {
@@ -7,7 +7,7 @@ pub(crate) struct ByteReader<R: Read> {
 
 #[repr(C)]
 struct ByteReaderInner<R> {
-    byte_in: IByteIn_,
+    byte_in: IByteIn,
     buffer: Vec<u8>,
     reader: R,
     pos: usize,
@@ -18,7 +18,7 @@ struct ByteReaderInner<R> {
 impl<R: Read> ByteReader<R> {
     pub(crate) fn new(reader: R) -> Self {
         let reader = ByteReaderInner {
-            byte_in: IByteIn_ {
+            byte_in: IByteIn {
                 Read: Some(Self::read_byte),
             },
             buffer: vec![0; 4096],
@@ -44,7 +44,7 @@ impl<R: Read> ByteReader<R> {
         unsafe { &mut *(p as *mut ByteReaderInner<R>) }
     }
 
-    unsafe extern "C" fn read_byte(p: IByteInPtr) -> Byte {
+    unsafe extern "C" fn read_byte(p: IByteInPtr) -> u8 {
         let reader = Self::get_inner_reader(p);
 
         if reader.eof {

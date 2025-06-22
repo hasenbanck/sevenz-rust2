@@ -1,4 +1,4 @@
-use ppmd_sys::{Byte, IByteOut_, IByteOutPtr};
+use crate::internal::ppmd8::{IByteOut, IByteOutPtr};
 use std::io::Write;
 
 const BUFFER_SIZE: usize = 4096;
@@ -9,7 +9,7 @@ pub(crate) struct ByteWriter<W: Write> {
 
 #[repr(C)]
 struct ByteWriterInner<W> {
-    byte_out: IByteOut_,
+    byte_out: IByteOut,
     writer: W,
     buffer: Vec<u8>,
 }
@@ -17,7 +17,7 @@ struct ByteWriterInner<W> {
 impl<W: Write> ByteWriter<W> {
     pub(crate) fn new(writer: W) -> Self {
         let writer = ByteWriterInner {
-            byte_out: IByteOut_ {
+            byte_out: IByteOut {
                 Write: Some(Self::write_byte),
             },
             writer,
@@ -40,7 +40,7 @@ impl<W: Write> ByteWriter<W> {
         unsafe { &mut *(p as *mut ByteWriterInner<W>) }
     }
 
-    unsafe extern "C" fn write_byte(p: IByteOutPtr, byte: Byte) {
+    unsafe extern "C" fn write_byte(p: IByteOutPtr, byte: u8) {
         let writer = Self::get_inner_writer(p);
 
         writer.buffer.push(byte);

@@ -1,9 +1,9 @@
 use crate::byte_writer::ByteWriter;
-use crate::memory::Memory;
-use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod};
-use ppmd_sys::{
+use crate::internal::ppmd8::{
     CPpmd8, Ppmd8_Alloc, Ppmd8_Construct, Ppmd8_EncodeSymbol, Ppmd8_Flush_RangeEnc, Ppmd8_Init,
 };
+use crate::memory::Memory;
+use crate::{Error, PPMD8_MAX_ORDER, PPMD8_MIN_ORDER, RestoreMethod};
 use std::io::Write;
 
 /// A encoder to encode PPMd8 (PPMdI) compressed data.
