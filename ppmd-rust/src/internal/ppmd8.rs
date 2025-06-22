@@ -1461,17 +1461,16 @@ unsafe fn next_context(p: *mut Ppmd8) {
 
 pub unsafe fn update1(p: *mut Ppmd8) {
     unsafe {
-        let mut s: *mut State = (*p).found_state;
-        let mut freq: u32 = (*s).freq as u32;
-        freq = freq.wrapping_add(4 as i32 as u32);
-        (*(*p).min_context).union2.summ_freq =
-            ((*(*p).min_context).union2.summ_freq as i32 + 4 as i32) as u16;
+        let mut s = (*p).found_state;
+        let mut freq = (*s).freq as u32;
+        freq += 4;
+        (*(*p).min_context).union2.summ_freq += 4;
         (*s).freq = freq as u8;
-        if freq > (*s.offset(-(1 as i32) as isize)).freq as u32 {
-            swap_states(s, &mut *s.offset(-(1 as i32) as isize));
+        if freq > (*s.offset(-1)).freq as u32 {
+            swap_states(s, &mut *s.offset(-1));
             s = s.offset(-1);
             (*p).found_state = s;
-            if freq > MAX_FREQ as i32 as u32 {
+            if freq > MAX_FREQ as u32 {
                 rescale(p);
             }
         }
@@ -1481,16 +1480,16 @@ pub unsafe fn update1(p: *mut Ppmd8) {
 
 pub unsafe fn update1_0(p: *mut Ppmd8) {
     unsafe {
-        let s: *mut State = (*p).found_state;
-        let mc: *mut Context = (*p).min_context;
-        let mut freq: u32 = (*s).freq as u32;
-        let summ_freq: u32 = (*mc).union2.summ_freq as u32;
-        (*p).prev_success = ((2 as i32 as u32).wrapping_mul(freq) >= summ_freq) as i32 as u32;
+        let s = (*p).found_state;
+        let mc = (*p).min_context;
+        let mut freq = (*s).freq as u32;
+        let summ_freq = (*mc).union2.summ_freq as u32;
+        (*p).prev_success = (2 * freq >= summ_freq) as u32; // Ppmd8 (>=)
         (*p).run_length += (*p).prev_success as i32;
-        (*mc).union2.summ_freq = summ_freq.wrapping_add(4 as i32 as u32) as u16;
-        freq = freq.wrapping_add(4 as i32 as u32);
+        (*mc).union2.summ_freq = (summ_freq + 4) as u16;
+        freq += 4;
         (*s).freq = freq as u8;
-        if freq > MAX_FREQ as i32 as u32 {
+        if freq > MAX_FREQ as u32 {
             rescale(p);
         }
         next_context(p);
@@ -1503,9 +1502,9 @@ pub unsafe fn update2(p: *mut Ppmd8) {
         let mut freq = (*s).freq as u32;
         freq += 4;
         (*p).run_length = (*p).init_rl;
-        (*(*p).min_context).union2.summ_freq = (*(*p).min_context).union2.summ_freq + 4;
+        (*(*p).min_context).union2.summ_freq += 4;
         (*s).freq = freq as u8;
-        if freq > 124 {
+        if freq > MAX_FREQ as u32 {
             rescale(p);
         }
         update_model(p);
