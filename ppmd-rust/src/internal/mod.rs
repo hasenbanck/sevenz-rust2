@@ -1,4 +1,5 @@
 pub(crate) mod ppmd7;
+pub(crate) mod ppmd8;
 
 const PPMD_INT_BITS: u32 = 7;
 const PPMD_PERIOD_BITS: u32 = 7;
