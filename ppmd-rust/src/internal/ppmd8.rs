@@ -1496,7 +1496,6 @@ impl<RC> Ppmd8<RC> {
         num_stats: u32,
     ) -> (usize, usize) {
         unsafe {
-            // (3 <= num_stats + 2 <= 256)   (3 <= ns2index[3] and ns2index[256] === 26)
             let mc = self.min_context;
             let base_context_idx = self.ns2index[(num_stats + 2) as usize] as usize - 3;
 
