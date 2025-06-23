@@ -586,14 +586,15 @@ impl<RC> Ppmd8<RC> {
                 i = i.wrapping_add(1);
                 s = s.offset(1);
             }
-            let mut k = 0u32;
+
             let mut m = 0;
             i = m;
             while m < 25 {
                 while self.ns2index[i as usize] as u32 == m {
                     i = i.wrapping_add(1);
                 }
-                k = 0;
+
+                let mut k = 0u32;
                 while k < 8 {
                     let mut r = 0u32;
                     let dest: *mut u16 =
@@ -626,7 +627,8 @@ impl<RC> Ppmd8<RC> {
                     .wrapping_mul(i)
                     .wrapping_add(5 as i32 as u32)
                     << 7 - 4;
-                k = 0;
+
+                let mut k = 0u32;
                 while k < 32 {
                     (*s_0).summ = summ as u16;
                     (*s_0).shift = (7 as i32 - 4) as u8;
