@@ -322,23 +322,23 @@ impl<RC> Ppmd8<RC> {
     unsafe fn glue_free_blocks(&mut self) {
         unsafe {
             let mut n = 0;
-            self.glue_count = ((1 as i32) << 13 as i32) as u32;
+            self.glue_count = (1 << 13) as u32;
             self.stamps = [0; 38];
             if self.lo_unit != self.hi_unit {
-                (*(self.lo_unit as *mut Node)).stamp = 0 as i32 as u32;
+                (*(self.lo_unit as *mut Node)).stamp = 0;
             }
             let mut prev: *mut u32 = &mut n;
             let mut i = 0;
-            i = 0 as i32 as u32;
+            i = 0;
             while i < PPMD_NUM_INDEXES {
                 let mut next = self.free_list[i as usize];
-                self.free_list[i as usize] = 0 as i32 as u32;
-                while next != 0 as i32 as u32 {
+                self.free_list[i as usize] = 0;
+                while next != 0 {
                     let node: *mut Node = (self.base).offset(next as isize) as *mut Node;
                     let mut nu = (*node).nu;
                     *prev = next;
                     next = (*node).next;
-                    if nu != 0 as i32 as u32 {
+                    if nu != 0 {
                         let mut node2: *mut Node = 0 as *mut Node;
                         prev = &mut (*node).next;
                         loop {
@@ -347,7 +347,7 @@ impl<RC> Ppmd8<RC> {
                                 break;
                             }
                             nu = nu.wrapping_add((*node2).nu);
-                            (*node2).nu = 0 as i32 as u32;
+                            (*node2).nu = 0;
                             (*node).nu = nu;
                         }
                     }
@@ -355,16 +355,16 @@ impl<RC> Ppmd8<RC> {
                 i = i.wrapping_add(1);
                 i;
             }
-            *prev = 0 as i32 as u32;
-            while n != 0 as i32 as u32 {
+            *prev = 0;
+            while n != 0 {
                 let mut node_0: *mut Node = (self.base).offset(n as isize) as *mut Node;
                 let mut nu_0 = (*node_0).nu;
                 let mut i_0 = 0;
                 n = (*node_0).next;
-                if nu_0 == 0 as i32 as u32 {
+                if nu_0 == 0 {
                     continue;
                 }
-                while nu_0 > 128 as i32 as u32 {
+                while nu_0 > 128 {
                     self.insert_node(node_0 as *mut u8, PPMD_NUM_INDEXES - 1);
                     nu_0 = nu_0.wrapping_sub(128 as i32 as u32);
                     node_0 = node_0.offset(128 as i32 as isize);
@@ -388,9 +388,9 @@ impl<RC> Ppmd8<RC> {
     unsafe fn alloc_units_rare(&mut self, index: u32) -> *mut u8 {
         unsafe {
             let mut i = 0;
-            if self.glue_count == 0 as i32 as u32 {
+            if self.glue_count == 0 {
                 self.glue_free_blocks();
-                if self.free_list[index as usize] != 0 as i32 as u32 {
+                if self.free_list[index as usize] != 0 {
                     return self.remove_node(index);
                 }
             }
@@ -410,7 +410,7 @@ impl<RC> Ppmd8<RC> {
                         0 as *mut u8
                     });
                 }
-                if !(self.free_list[i as usize] == 0 as i32 as u32) {
+                if !(self.free_list[i as usize] == 0) {
                     break;
                 }
             }
@@ -422,7 +422,7 @@ impl<RC> Ppmd8<RC> {
 
     unsafe fn alloc_units(&mut self, index: u32) -> *mut u8 {
         unsafe {
-            if self.free_list[index as usize] != 0 as i32 as u32 {
+            if self.free_list[index as usize] != 0 {
                 return self.remove_node(index);
             }
             let numBytes = self.index2units[index as usize] as u32 * UNIT_SIZE as i32 as u32;
@@ -444,7 +444,7 @@ impl<RC> Ppmd8<RC> {
             if i0 == i1 {
                 return oldPtr as *mut u8;
             }
-            if self.free_list[i1 as usize] != 0 as i32 as u32 {
+            if self.free_list[i1 as usize] != 0 {
                 let ptr: *mut u8 = self.remove_node(i1);
                 let mut d: *mut u32 = ptr as *mut u32;
                 let mut z: *const u32 = oldPtr as *const u32;
@@ -480,7 +480,7 @@ impl<RC> Ppmd8<RC> {
     unsafe fn special_free_unit(&mut self, ptr: *mut u8) {
         unsafe {
             if ptr != self.units_start {
-                self.insert_node(ptr, 0 as i32 as u32);
+                self.insert_node(ptr, 0);
             } else {
                 self.units_start = (self.units_start).offset(UNIT_SIZE as i32 as isize);
             };
@@ -493,12 +493,12 @@ impl<RC> Ppmd8<RC> {
             let mut i = 0;
             count = [0; 38];
             if self.lo_unit != self.hi_unit {
-                (*(self.lo_unit as *mut Node)).stamp = 0 as i32 as u32;
+                (*(self.lo_unit as *mut Node)).stamp = 0;
             }
             let mut node: *mut Node = self.units_start as *mut Node;
             while (*node).stamp == EMPTY_NODE {
                 let nu = (*node).nu;
-                (*node).stamp = 0 as i32 as u32;
+                (*node).stamp = 0;
                 count[self.units2index[(nu as usize).wrapping_sub(1 as i32 as usize) as usize]
                     as usize] = (count[self.units2index
                     [(nu as usize).wrapping_sub(1 as i32 as usize) as usize]
@@ -509,10 +509,10 @@ impl<RC> Ppmd8<RC> {
                 node = node.offset(nu as isize);
             }
             self.units_start = node as *mut u8;
-            i = 0 as i32 as u32;
+            i = 0;
             while i < PPMD_NUM_INDEXES {
                 let mut cnt = count[i as usize];
-                if !(cnt == 0 as i32 as u32) {
+                if !(cnt == 0) {
                     let mut prev: *mut u32 = &mut *(self.free_list).as_mut_ptr().offset(i as isize)
                         as *mut u32 as *mut u32;
                     let mut n = *prev;
@@ -520,12 +520,12 @@ impl<RC> Ppmd8<RC> {
                     loop {
                         let node_0: *mut Node = (self.base).offset(n as isize) as *mut Node;
                         n = (*node_0).next;
-                        if (*node_0).stamp != 0 as i32 as u32 {
+                        if (*node_0).stamp != 0 {
                             prev = &mut (*node_0).next;
                         } else {
                             *prev = n;
                             cnt = cnt.wrapping_sub(1);
-                            if cnt == 0 as i32 as u32 {
+                            if cnt == 0 {
                                 break;
                             }
                         }
@@ -554,9 +554,8 @@ impl<RC> Ppmd8<RC> {
     #[inline(never)]
     unsafe fn restart_model(&mut self) {
         unsafe {
-            let mut i = 0;
-            let mut k = 0;
-            let mut m = 0;
+            let mut k = 0u32;
+            let mut m = 0u32;
             self.free_list = [0; 38];
             self.stamps = [0; 38];
             self.text = (self.base)
@@ -564,62 +563,60 @@ impl<RC> Ppmd8<RC> {
                 .offset(0 as i32 as isize);
             self.hi_unit = (self.text).offset(self.size as isize);
             self.units_start = (self.hi_unit).offset(
-                -((self.size / 8 as i32 as u32 / UNIT_SIZE as i32 as u32
-                    * 7 as i32 as u32
-                    * UNIT_SIZE as i32 as u32) as isize),
+                -((self.size / 8 / UNIT_SIZE as i32 as u32 * 7 * UNIT_SIZE as i32 as u32) as isize),
             );
             self.lo_unit = self.units_start;
-            self.glue_count = 0 as i32 as u32;
+            self.glue_count = 0;
             self.order_fall = self.max_order;
-            self.init_rl = -((if self.max_order < 12 as i32 as u32 {
+            self.init_rl = -((if self.max_order < 12 {
                 self.max_order
             } else {
-                12 as i32 as u32
+                12
             }) as i32)
-                - 1 as i32;
+                - 1;
             self.run_length = self.init_rl;
-            self.prev_success = 0 as i32 as u32;
+            self.prev_success = 0;
             self.hi_unit = (self.hi_unit).offset(-(UNIT_SIZE as i32 as isize));
             let mc: *mut Context = self.hi_unit as *mut Context;
             let mut s: *mut State = self.lo_unit as *mut State;
-            self.lo_unit = (self.lo_unit)
-                .offset(((256 as i32 / 2 as i32) as u32 * UNIT_SIZE as i32 as u32) as isize);
+            self.lo_unit =
+                (self.lo_unit).offset(((256 as i32 / 2) as u32 * UNIT_SIZE as i32 as u32) as isize);
             self.min_context = mc;
             self.max_context = self.min_context;
             self.found_state = s;
-            (*mc).flags = 0 as i32 as u8;
-            (*mc).num_stats = (256 as i32 - 1 as i32) as u8;
-            (*mc).union2.summ_freq = (256 as i32 + 1 as i32) as u16;
+            (*mc).flags = 0 as u8;
+            (*mc).num_stats = (256 as i32 - 1) as u8;
+            (*mc).union2.summ_freq = (256 as i32 + 1) as u16;
             (*mc).union4.stats = (s as *mut u8).offset_from(self.base) as u32;
-            (*mc).suffix = 0 as i32 as u32;
-            i = 0 as i32 as u32;
-            while i < 256 as i32 as u32 {
+            (*mc).suffix = 0;
+            let mut i = 0u32;
+            while i < 256 {
                 (*s).symbol = i as u8;
-                (*s).freq = 1 as i32 as u8;
-                Self::set_successor(s, 0 as i32 as u32);
+                (*s).freq = 1 as u8;
+                Self::set_successor(s, 0);
                 i = i.wrapping_add(1);
                 i;
                 s = s.offset(1);
                 s;
             }
-            m = 0 as i32 as u32;
+            m = 0;
             i = m;
-            while m < 25 as i32 as u32 {
+            while m < 25 {
                 while self.ns2index[i as usize] as u32 == m {
                     i = i.wrapping_add(1);
                     i;
                 }
-                k = 0 as i32 as u32;
-                while k < 8 as i32 as u32 {
-                    let mut r = 0;
+                k = 0;
+                while k < 8 {
+                    let mut r = 0u32;
                     let dest: *mut u16 =
                         (self.bin_summ[m as usize]).as_mut_ptr().offset(k as isize);
-                    let val = (((1 as i32) << 7 as i32 + 7 as i32) as u32).wrapping_sub(
+                    let val = ((1 << 7 + 7) as u32).wrapping_sub(
                         (K_INIT_BIN_ESC[k as usize] as u32)
                             .wrapping_div(i.wrapping_add(1 as i32 as u32)),
                     ) as u16;
-                    r = 0 as i32 as u32;
-                    while r < 64 as i32 as u32 {
+                    r = 0;
+                    while r < 64 {
                         *dest.offset(r as isize) = val;
                         r = r.wrapping_add(8 as i32 as u32);
                     }
@@ -629,9 +626,9 @@ impl<RC> Ppmd8<RC> {
                 m = m.wrapping_add(1);
                 m;
             }
-            m = 0 as i32 as u32;
+            m = 0;
             i = m;
-            while m < 24 as i32 as u32 {
+            while m < 24 {
                 let mut summ = 0;
                 let mut s_0: *mut See = 0 as *mut See;
                 while self.ns2index[(i as usize).wrapping_add(3 as i32 as usize) as usize] as u32
@@ -644,12 +641,12 @@ impl<RC> Ppmd8<RC> {
                 summ = (2 as i32 as u32)
                     .wrapping_mul(i)
                     .wrapping_add(5 as i32 as u32)
-                    << 7 as i32 - 4 as i32;
-                k = 0 as i32 as u32;
-                while k < 32 as i32 as u32 {
+                    << 7 - 4;
+                k = 0;
+                while k < 32 {
                     (*s_0).summ = summ as u16;
-                    (*s_0).shift = (7 as i32 - 4 as i32) as u8;
-                    (*s_0).count = 7 as i32 as u8;
+                    (*s_0).shift = (7 as i32 - 4) as u8;
+                    (*s_0).count = 7 as u8;
                     k = k.wrapping_add(1);
                     k;
                     s_0 = s_0.offset(1);
@@ -658,9 +655,9 @@ impl<RC> Ppmd8<RC> {
                 m = m.wrapping_add(1);
                 m;
             }
-            self.dummy_see.summ = 0 as i32 as u16;
-            self.dummy_see.shift = 7 as i32 as u8;
-            self.dummy_see.count = 64 as i32 as u8;
+            self.dummy_see.summ = 0 as u16;
+            self.dummy_see.shift = 7 as u8;
+            self.dummy_see.count = 64 as u8;
         }
     }
 
@@ -673,11 +670,10 @@ impl<RC> Ppmd8<RC> {
             let mut s: *mut State = self.shrink_units(
                 (self.base).offset((*ctx).union4.stats as isize) as *mut State,
                 oldNU,
-                i.wrapping_add(2 as i32 as u32) >> 1 as i32,
+                i.wrapping_add(2 as i32 as u32) >> 1,
             ) as *mut State;
             (*ctx).union4.stats = (s as *mut u8).offset_from(self.base) as u32;
-            scale |=
-                ((*ctx).union2.summ_freq as u32 >= (1 as i32 as u32) << 15 as i32) as i32 as u32;
+            scale |= ((*ctx).union2.summ_freq as u32 >= (1 as i32 as u32) << 15) as i32 as u32;
             flags = ((*s).symbol as u32).wrapping_add(0xC0 as i32 as u32);
             let mut freq = (*s).freq as u32;
             escFreq = ((*ctx).union2.summ_freq as u32).wrapping_sub(freq);
@@ -700,10 +696,8 @@ impl<RC> Ppmd8<RC> {
             (*ctx).union2.summ_freq =
                 sumFreq.wrapping_add(escFreq.wrapping_add(scale) >> scale) as u16;
             (*ctx).flags = ((*ctx).flags as u32
-                & (((1 as i32) << 4 as i32) as u32)
-                    .wrapping_add((((1 as i32) << 2 as i32) as u32).wrapping_mul(scale)))
-            .wrapping_add(flags >> 8 as i32 - 3 as i32 & ((1 as i32) << 3 as i32) as u32)
-                as u8;
+                & ((1 << 4) as u32).wrapping_add(((1 << 2) as u32).wrapping_mul(scale)))
+            .wrapping_add(flags >> 8 - 3 & (1 << 3) as u32) as u8;
         }
     }
 
@@ -719,10 +713,9 @@ impl<RC> Ppmd8<RC> {
             let mut ns = (*ctx).num_stats as i32;
             let mut nu = 0;
             let mut stats: *mut State = 0 as *mut State;
-            if ns == 0 as i32 {
+            if ns == 0 {
                 let s: *mut State = &mut (*ctx).union2 as *mut Union2 as *mut State;
-                let mut successor =
-                    (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 as i32;
+                let mut successor = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
                 if (self.base).offset(successor as isize) >= self.units_start {
                     if order < self.max_order {
                         successor = self.cut_off(
@@ -730,22 +723,21 @@ impl<RC> Ppmd8<RC> {
                             order.wrapping_add(1 as i32 as u32),
                         );
                     } else {
-                        successor = 0 as i32 as u32;
+                        successor = 0;
                     }
                     Self::set_successor(s, successor);
-                    if successor != 0 || order <= 9 as i32 as u32 {
+                    if successor != 0 || order <= 9 {
                         return (ctx as *mut u8).offset_from(self.base) as u32;
                     }
                 }
                 self.special_free_unit(ctx as *mut u8);
                 return 0;
             }
-            nu = (ns as u32).wrapping_add(2 as i32 as u32) >> 1 as i32;
+            nu = (ns as u32).wrapping_add(2 as i32 as u32) >> 1;
             let index =
                 self.units2index[(nu as usize).wrapping_sub(1 as i32 as usize) as usize] as u32;
             stats = (self.base).offset((*ctx).union4.stats as isize) as *mut State;
-            if (stats as *mut u8).offset_from(self.units_start) as u32
-                <= ((1 as i32) << 14 as i32) as u32
+            if (stats as *mut u8).offset_from(self.units_start) as u32 <= (1 << 14) as u32
                 && (*ctx).union4.stats <= self.free_list[index as usize]
             {
                 let ptr: *mut u8 = self.remove_node(index);
@@ -776,8 +768,7 @@ impl<RC> Ppmd8<RC> {
             }
             let mut s_0: *mut State = stats.offset(ns as u32 as isize);
             loop {
-                let successor_0 =
-                    (*s_0).successor_0 as u32 | ((*s_0).successor_1 as u32) << 16 as i32;
+                let successor_0 = (*s_0).successor_0 as u32 | ((*s_0).successor_1 as u32) << 16;
                 if ((self.base).offset(successor_0 as isize)) < self.units_start {
                     let fresh1 = ns;
                     ns = ns - 1;
@@ -788,7 +779,7 @@ impl<RC> Ppmd8<RC> {
                         }
                     } else {
                         Self::swap_states(s_0, s2);
-                        Self::set_successor(s2, 0 as i32 as u32);
+                        Self::set_successor(s2, 0);
                     }
                 } else if order < self.max_order {
                     Self::set_successor(
@@ -799,7 +790,7 @@ impl<RC> Ppmd8<RC> {
                         ),
                     );
                 } else {
-                    Self::set_successor(s_0, 0 as i32 as u32);
+                    Self::set_successor(s_0, 0);
                 }
                 s_0 = s_0.offset(-1);
                 if !(s_0 >= stats) {
@@ -807,22 +798,20 @@ impl<RC> Ppmd8<RC> {
                 }
             }
             if ns != (*ctx).num_stats as i32 && order != 0 {
-                if ns < 0 as i32 {
+                if ns < 0 {
                     self.free_units(stats as *mut u8, nu);
                     self.special_free_unit(ctx as *mut u8);
                     return 0;
                 }
                 (*ctx).num_stats = ns as u8;
-                if ns == 0 as i32 {
+                if ns == 0 {
                     let sym = (*stats).symbol;
-                    (*ctx).flags = (((*ctx).flags as i32 & (1 as i32) << 4 as i32) as u32)
-                        .wrapping_add(
-                            (sym as u32).wrapping_add(0xC0 as i32 as u32) >> 8 as i32 - 3 as i32
-                                & ((1 as i32) << 3 as i32) as u32,
-                        ) as u8;
+                    (*ctx).flags = (((*ctx).flags as i32 & 1 << 4) as u32).wrapping_add(
+                        (sym as u32).wrapping_add(0xC0 as i32 as u32) >> 8 - 3 & (1 << 3) as u32,
+                    ) as u8;
                     (*ctx).union2.state2.symbol = sym;
                     (*ctx).union2.state2.freq =
-                        (((*stats).freq as u32).wrapping_add(11 as i32 as u32) >> 3 as i32) as u8;
+                        (((*stats).freq as u32).wrapping_add(11 as i32 as u32) >> 3) as u8;
                     (*ctx).union4.state4.successor_0 = (*stats).successor_0;
                     (*ctx).union4.state4.successor_1 = (*stats).successor_1;
                     self.free_units(stats as *mut u8, nu);
@@ -842,9 +831,9 @@ impl<RC> Ppmd8<RC> {
 
     unsafe fn get_used_memory(&self) -> u32 {
         unsafe {
-            let mut v = 0 as i32 as u32;
+            let mut v = 0;
             let mut i = 0;
-            i = 0 as i32 as u32;
+            i = 0;
             while i < PPMD_NUM_INDEXES {
                 v = (v as u32).wrapping_add(
                     (self.stamps[i as usize]).wrapping_mul(self.index2units[i as usize] as u32),
@@ -855,7 +844,7 @@ impl<RC> Ppmd8<RC> {
             self.size
                 .wrapping_sub((self.hi_unit).offset_from(self.lo_unit) as u32)
                 .wrapping_sub((self.units_start).offset_from(self.text) as u32)
-                .wrapping_sub(v * 12 as i32 as u32)
+                .wrapping_sub(v * 12)
         }
     }
 
@@ -869,48 +858,45 @@ impl<RC> Ppmd8<RC> {
             c = self.max_context;
             while c != ctxError {
                 (*c).num_stats = ((*c).num_stats).wrapping_sub(1);
-                if (*c).num_stats as i32 == 0 as i32 {
+                if (*c).num_stats as i32 == 0 {
                     s = (self.base).offset((*c).union4.stats as isize) as *mut State;
-                    (*c).flags = (((*c).flags as i32 & (1 as i32) << 4 as i32) as u32).wrapping_add(
-                        ((*s).symbol as u32).wrapping_add(0xC0 as i32 as u32)
-                            >> 8 as i32 - 3 as i32
-                            & ((1 as i32) << 3 as i32) as u32,
+                    (*c).flags = (((*c).flags as i32 & 1 << 4) as u32).wrapping_add(
+                        ((*s).symbol as u32).wrapping_add(0xC0 as i32 as u32) >> 8 - 3
+                            & (1 << 3) as u32,
                     ) as u8;
                     (*c).union2.state2.symbol = (*s).symbol;
                     (*c).union2.state2.freq =
-                        (((*s).freq as u32).wrapping_add(11 as i32 as u32) >> 3 as i32) as u8;
+                        (((*s).freq as u32).wrapping_add(11 as i32 as u32) >> 3) as u8;
                     (*c).union4.state4.successor_0 = (*s).successor_0;
                     (*c).union4.state4.successor_1 = (*s).successor_1;
                     self.special_free_unit(s as *mut u8);
                 } else {
                     self.refresh(
                         c,
-                        ((*c).num_stats as u32).wrapping_add(3 as i32 as u32) >> 1 as i32,
-                        0 as i32 as u32,
+                        ((*c).num_stats as u32).wrapping_add(3 as i32 as u32) >> 1,
+                        0,
                     );
                 }
                 c = (self.base).offset((*c).suffix as isize) as *mut Context;
             }
             while c != self.min_context {
-                if (*c).num_stats as i32 == 0 as i32 {
-                    (*c).union2.state2.freq = (((*c).union2.state2.freq as u32)
-                        .wrapping_add(1 as i32 as u32)
-                        >> 1 as i32) as u8;
+                if (*c).num_stats as i32 == 0 {
+                    (*c).union2.state2.freq =
+                        (((*c).union2.state2.freq as u32).wrapping_add(1 as i32 as u32) >> 1) as u8;
                 } else {
-                    (*c).union2.summ_freq = ((*c).union2.summ_freq as i32 + 4 as i32) as u16;
-                    if (*c).union2.summ_freq as i32 > 128 as i32 + 4 as i32 * (*c).num_stats as i32
-                    {
+                    (*c).union2.summ_freq = ((*c).union2.summ_freq as i32 + 4) as u16;
+                    if (*c).union2.summ_freq as i32 > 128 + 4 * (*c).num_stats as i32 {
                         self.refresh(
                             c,
-                            ((*c).num_stats as u32).wrapping_add(2 as i32 as u32) >> 1 as i32,
-                            1 as i32 as u32,
+                            ((*c).num_stats as u32).wrapping_add(2 as i32 as u32) >> 1,
+                            1,
                         );
                     }
                 }
                 c = (self.base).offset((*c).suffix as isize) as *mut Context;
             }
             if self.restore_method == RestoreMethod::Restart
-                || self.get_used_memory() < self.size >> 1 as i32
+                || self.get_used_memory() < self.size >> 1
             {
                 self.restart_model();
             } else {
@@ -919,13 +905,13 @@ impl<RC> Ppmd8<RC> {
                         (self.base).offset((*self.max_context).suffix as isize) as *mut Context;
                 }
                 loop {
-                    self.cut_off(self.max_context, 0 as i32 as u32);
+                    self.cut_off(self.max_context, 0);
                     self.expand_text_area();
-                    if !(self.get_used_memory() > 3 as i32 as u32 * (self.size >> 2 as i32)) {
+                    if !(self.get_used_memory() > 3 * (self.size >> 2)) {
                         break;
                     }
                 }
-                self.glue_count = 0 as i32 as u32;
+                self.glue_count = 0;
                 self.order_fall = self.max_order;
             }
             self.min_context = self.max_context;
@@ -941,11 +927,11 @@ impl<RC> Ppmd8<RC> {
     ) -> *mut Context {
         unsafe {
             let mut upBranch = (*self.found_state).successor_0 as u32
-                | ((*self.found_state).successor_1 as u32) << 16 as i32;
+                | ((*self.found_state).successor_1 as u32) << 16;
             let mut newSym = 0;
             let mut newFreq = 0;
             let mut flags = 0;
-            let mut numPs = 0 as i32 as u32;
+            let mut numPs = 0u32;
             let mut ps: [*mut State; 17] = [0 as *mut State; 17];
             if skip == 0 {
                 let fresh2 = numPs;
@@ -959,7 +945,7 @@ impl<RC> Ppmd8<RC> {
                 if !s1.is_null() {
                     s = s1;
                     s1 = 0 as *mut State;
-                } else if (*c).num_stats as i32 != 0 as i32 {
+                } else if (*c).num_stats as i32 != 0 {
                     let sym = (*self.found_state).symbol;
                     s = (self.base).offset((*c).union4.stats as isize) as *mut State;
                     while (*s).symbol as i32 != sym as i32 {
@@ -977,13 +963,13 @@ impl<RC> Ppmd8<RC> {
                     (*s).freq = ((*s).freq as i32
                         + (((*((self.base).offset((*c).suffix as isize) as *mut Context)).num_stats
                             == 0) as i32
-                            & (((*s).freq as i32) < 24 as i32) as i32))
+                            & (((*s).freq as i32) < 24) as i32))
                         as u8;
                 }
-                successor = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 as i32;
+                successor = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
                 if successor != upBranch {
                     c = (self.base).offset(successor as isize) as *mut Context;
-                    if numPs == 0 as i32 as u32 {
+                    if numPs == 0 {
                         return c;
                     }
                     break;
@@ -996,14 +982,12 @@ impl<RC> Ppmd8<RC> {
             newSym = *((self.base).offset(upBranch as isize) as *const u8);
             upBranch = upBranch.wrapping_add(1);
             upBranch;
-            flags = (((*self.found_state).symbol as u32).wrapping_add(0xC0 as i32 as u32)
-                >> 8 as i32 - 4 as i32
-                & ((1 as i32) << 4 as i32) as u32)
+            flags = (((*self.found_state).symbol as u32).wrapping_add(0xC0 as i32 as u32) >> 8 - 4
+                & (1 << 4) as u32)
                 .wrapping_add(
-                    (newSym as u32).wrapping_add(0xC0 as i32 as u32) >> 8 as i32 - 3 as i32
-                        & ((1 as i32) << 3 as i32) as u32,
+                    (newSym as u32).wrapping_add(0xC0 as i32 as u32) >> 8 - 3 & (1 << 3) as u32,
                 ) as u8;
-            if (*c).num_stats as i32 == 0 as i32 {
+            if (*c).num_stats as i32 == 0 {
                 newFreq = (*c).union2.state2.freq;
             } else {
                 let mut cf = 0;
@@ -1018,7 +1002,7 @@ impl<RC> Ppmd8<RC> {
                 s0 = ((*c).union2.summ_freq as u32)
                     .wrapping_sub((*c).num_stats as u32)
                     .wrapping_sub(cf);
-                newFreq = (1 as i32 as u32).wrapping_add(if 2 as i32 as u32 * cf <= s0 {
+                newFreq = (1 as i32 as u32).wrapping_add(if 2 * cf <= s0 {
                     (5 as i32 as u32 * cf > s0) as i32 as u32
                 } else {
                     cf.wrapping_add(2 as i32 as u32 * s0)
@@ -1031,7 +1015,7 @@ impl<RC> Ppmd8<RC> {
                 if self.hi_unit != self.lo_unit {
                     self.hi_unit = (self.hi_unit).offset(-(12 as i32 as isize));
                     c1 = self.hi_unit as *mut Context;
-                } else if self.free_list[0 as i32 as usize] != 0 as i32 as u32 {
+                } else if self.free_list[0 as i32 as usize] != 0 {
                     c1 = self.remove_node(0 as i32 as u32) as *mut Context;
                 } else {
                     c1 = self.alloc_units_rare(0 as i32 as u32) as *mut Context;
@@ -1040,7 +1024,7 @@ impl<RC> Ppmd8<RC> {
                     }
                 }
                 (*c1).flags = flags;
-                (*c1).num_stats = 0 as i32 as u8;
+                (*c1).num_stats = 0 as u8;
                 (*c1).union2.state2.symbol = newSym;
                 (*c1).union2.state2.freq = newFreq;
                 Self::set_successor(&mut (*c1).union2 as *mut Union2 as *mut State, upBranch);
@@ -1051,7 +1035,7 @@ impl<RC> Ppmd8<RC> {
                     (c1 as *mut u8).offset_from(self.base) as u32,
                 );
                 c = c1;
-                if !(numPs != 0 as i32 as u32) {
+                if !(numPs != 0) {
                     break;
                 }
             }
@@ -1090,42 +1074,40 @@ impl<RC> Ppmd8<RC> {
                             }
                         }
                         if ((*s).freq) < MAX_FREQ - 9 {
-                            (*s).freq = ((*s).freq as i32 + 2 as i32) as u8;
-                            (*c).union2.summ_freq =
-                                ((*c).union2.summ_freq as i32 + 2 as i32) as u16;
+                            (*s).freq = ((*s).freq as i32 + 2) as u8;
+                            (*c).union2.summ_freq = ((*c).union2.summ_freq as i32 + 2) as u16;
                         }
                     } else {
                         s = &mut (*c).union2 as *mut Union2 as *mut State;
-                        (*s).freq =
-                            ((*s).freq as i32 + (((*s).freq as i32) < 32 as i32) as i32) as u8;
+                        (*s).freq = ((*s).freq as i32 + (((*s).freq as i32) < 32) as i32) as u8;
                     }
                 }
-                if (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 as i32 != 0 {
+                if (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 != 0 {
                     break;
                 }
                 Self::set_successor(s, upBranch);
                 self.order_fall = (self.order_fall).wrapping_add(1);
                 self.order_fall;
             }
-            if (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 as i32 <= upBranch {
+            if (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 <= upBranch {
                 let mut successor: *mut Context = 0 as *mut Context;
                 let s2: *mut State = self.found_state;
                 self.found_state = s;
                 successor = self.create_successors(0 as i32, 0 as *mut State, c);
                 if successor.is_null() {
-                    Self::set_successor(s, 0 as i32 as u32);
+                    Self::set_successor(s, 0);
                 } else {
                     Self::set_successor(s, (successor as *mut u8).offset_from(self.base) as u32);
                 }
                 self.found_state = s2;
             }
-            let successor_0 = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 as i32;
-            if self.order_fall == 1 as i32 as u32 && c1 == self.max_context {
+            let successor_0 = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
+            if self.order_fall == 1 && c1 == self.max_context {
                 Self::set_successor(self.found_state, successor_0);
                 self.text = (self.text).offset(-1);
                 self.text;
             }
-            if successor_0 == 0 as i32 as u32 {
+            if successor_0 == 0 {
                 return 0 as *mut Context;
             }
 
@@ -1138,7 +1120,7 @@ impl<RC> Ppmd8<RC> {
         unsafe {
             let mut maxSuccessor = 0;
             let mut minSuccessor = (*self.found_state).successor_0 as u32
-                | ((*self.found_state).successor_1 as u32) << 16 as i32;
+                | ((*self.found_state).successor_1 as u32) << 16;
             let mut c: *mut Context = 0 as *mut Context;
             let mut s0 = 0;
             let mut ns = 0;
@@ -1146,13 +1128,11 @@ impl<RC> Ppmd8<RC> {
             let mut flag = 0;
             let fSymbol = (*self.found_state).symbol;
             let mut s: *mut State = 0 as *mut State;
-            if ((*self.found_state).freq) < MAX_FREQ / 4
-                && (*self.min_context).suffix != 0 as i32 as u32
-            {
+            if ((*self.found_state).freq) < MAX_FREQ / 4 && (*self.min_context).suffix != 0 {
                 c = (self.base).offset((*self.min_context).suffix as isize) as *mut Context;
-                if (*c).num_stats as i32 == 0 as i32 {
+                if (*c).num_stats as i32 == 0 {
                     s = &mut (*c).union2 as *mut Union2 as *mut State;
-                    if ((*s).freq as i32) < 32 as i32 {
+                    if ((*s).freq as i32) < 32 {
                         (*s).freq = ((*s).freq).wrapping_add(1);
                         (*s).freq;
                     }
@@ -1168,27 +1148,27 @@ impl<RC> Ppmd8<RC> {
                             }
                         }
                         if (*s.offset(0 as i32 as isize)).freq as i32
-                            >= (*s.offset(-(1 as i32) as isize)).freq as i32
+                            >= (*s.offset(-1 as isize)).freq as i32
                         {
                             Self::swap_states(
                                 &mut *s.offset(0 as i32 as isize),
-                                &mut *s.offset(-(1 as i32) as isize),
+                                &mut *s.offset(-1 as isize),
                             );
                             s = s.offset(-1);
                             s;
                         }
                     }
                     if ((*s).freq) < MAX_FREQ - 9 {
-                        (*s).freq = ((*s).freq as i32 + 2 as i32) as u8;
-                        (*c).union2.summ_freq = ((*c).union2.summ_freq as i32 + 2 as i32) as u16;
+                        (*s).freq = ((*s).freq as i32 + 2) as u8;
+                        (*c).union2.summ_freq = ((*c).union2.summ_freq as i32 + 2) as u16;
                     }
                 }
             }
             c = self.max_context;
-            if self.order_fall == 0 as i32 as u32 && minSuccessor != 0 {
+            if self.order_fall == 0 && minSuccessor != 0 {
                 let cs: *mut Context = self.create_successors(1 as i32, s, self.min_context);
                 if cs.is_null() {
-                    Self::set_successor(self.found_state, 0 as i32 as u32);
+                    Self::set_successor(self.found_state, 0);
                     self.restore_model(c);
                     return;
                 }
@@ -1226,13 +1206,13 @@ impl<RC> Ppmd8<RC> {
                 minSuccessor = (cs_1 as *mut u8).offset_from(self.base) as u32;
             }
             self.order_fall = (self.order_fall).wrapping_sub(1);
-            if self.order_fall == 0 as i32 as u32 {
+            if self.order_fall == 0 {
                 maxSuccessor = minSuccessor;
                 self.text =
                     (self.text).offset(-((self.max_context != self.min_context) as i32 as isize));
             }
-            flag = ((fSymbol as u32).wrapping_add(0xC0 as i32 as u32) >> 8 as i32 - 3 as i32
-                & ((1 as i32) << 3 as i32) as u32) as u8;
+            flag = ((fSymbol as u32).wrapping_add(0xC0 as i32 as u32) >> 8 - 3 & (1 << 3) as u32)
+                as u8;
             ns = (*self.min_context).num_stats as u32;
             s0 = ((*self.min_context).union2.summ_freq as u32)
                 .wrapping_sub(ns)
@@ -1241,18 +1221,18 @@ impl<RC> Ppmd8<RC> {
                 let mut ns1 = 0;
                 let mut sum = 0;
                 ns1 = (*c).num_stats as u32;
-                if ns1 != 0 as i32 as u32 {
-                    if ns1 & 1 as i32 as u32 != 0 as i32 as u32 {
-                        let oldNU = ns1.wrapping_add(1 as i32 as u32) >> 1 as i32;
+                if ns1 != 0 {
+                    if ns1 & 1 != 0 {
+                        let oldNU = ns1.wrapping_add(1 as i32 as u32) >> 1;
                         let i = self.units2index
                             [(oldNU as usize).wrapping_sub(1 as i32 as usize) as usize]
                             as u32;
                         if i != self.units2index[(oldNU as usize)
-                            .wrapping_add(1 as i32 as usize)
-                            .wrapping_sub(1 as i32 as usize)
+                            .wrapping_add(1 as usize)
+                            .wrapping_sub(1 as usize)
                             as usize] as u32
                         {
-                            let ptr: *mut u8 = self.alloc_units(i.wrapping_add(1 as i32 as u32));
+                            let ptr: *mut u8 = self.alloc_units(i.wrapping_add(1 as u32));
                             let mut oldPtr: *mut u8 = 0 as *mut u8;
                             if ptr.is_null() {
                                 self.restore_model(c);
@@ -1264,11 +1244,11 @@ impl<RC> Ppmd8<RC> {
                             let mut z: *const u32 = oldPtr as *const u32;
                             let mut n = oldNU;
                             loop {
-                                *d.offset(0 as i32 as isize) = *z.offset(0 as i32 as isize);
-                                *d.offset(1 as i32 as isize) = *z.offset(1 as i32 as isize);
-                                *d.offset(2 as i32 as isize) = *z.offset(2 as i32 as isize);
-                                z = z.offset(3 as i32 as isize);
-                                d = d.offset(3 as i32 as isize);
+                                *d.offset(0 as isize) = *z.offset(0 as isize);
+                                *d.offset(1 as isize) = *z.offset(1 as isize);
+                                *d.offset(2 as isize) = *z.offset(2 as isize);
+                                z = z.offset(3 as isize);
+                                d = d.offset(3 as isize);
                                 n = n.wrapping_sub(1);
                                 if !(n != 0) {
                                     break;
@@ -1280,13 +1260,10 @@ impl<RC> Ppmd8<RC> {
                     }
                     sum = (*c).union2.summ_freq as u32;
                     sum = sum.wrapping_add(
-                        ((3 as i32 as u32)
-                            .wrapping_mul(ns1)
-                            .wrapping_add(1 as i32 as u32)
-                            < ns) as i32 as u32,
+                        ((3 as u32).wrapping_mul(ns1).wrapping_add(1 as u32) < ns) as i32 as u32,
                     );
                 } else {
-                    let s_0: *mut State = self.alloc_units(0 as i32 as u32) as *mut State;
+                    let s_0: *mut State = self.alloc_units(0 as u32) as *mut State;
                     if s_0.is_null() {
                         self.restore_model(c);
                         return;
@@ -1296,36 +1273,36 @@ impl<RC> Ppmd8<RC> {
                     (*s_0).successor_0 = (*c).union4.state4.successor_0;
                     (*s_0).successor_1 = (*c).union4.state4.successor_1;
                     (*c).union4.stats = (s_0 as *mut u8).offset_from(self.base) as u32;
-                    if freq < (MAX_FREQ as i32 / 4 as i32 - 1 as i32) as u32 {
-                        freq <<= 1 as i32;
+                    if freq < (MAX_FREQ as i32 / 4 - 1) as u32 {
+                        freq <<= 1;
                     } else {
-                        freq = (MAX_FREQ as i32 - 4 as i32) as u32;
+                        freq = (MAX_FREQ as i32 - 4) as u32;
                     }
                     (*s_0).freq = freq as u8;
                     sum = freq
                         .wrapping_add(self.init_esc)
-                        .wrapping_add((ns > 2 as i32 as u32) as i32 as u32);
+                        .wrapping_add((ns > 2) as i32 as u32);
                 }
                 let s_1: *mut State = ((self.base).offset((*c).union4.stats as isize)
                     as *mut State)
                     .offset(ns1 as isize)
-                    .offset(1 as i32 as isize);
-                let mut cf = 2 as i32 as u32 * sum.wrapping_add(6 as i32 as u32) * fFreq;
+                    .offset(1 as isize);
+                let mut cf = 2 * sum.wrapping_add(6 as u32) * fFreq;
                 let sf = s0.wrapping_add(sum);
                 (*s_1).symbol = fSymbol;
-                (*c).num_stats = ns1.wrapping_add(1 as i32 as u32) as u8;
+                (*c).num_stats = ns1.wrapping_add(1 as u32) as u8;
                 Self::set_successor(s_1, maxSuccessor);
                 (*c).flags = ((*c).flags as i32 | flag as i32) as u8;
-                if cf < 6 as i32 as u32 * sf {
-                    cf = (1 as i32 as u32)
+                if cf < 6 * sf {
+                    cf = (1 as u32)
                         .wrapping_add((cf > sf) as i32 as u32)
-                        .wrapping_add((cf >= 4 as i32 as u32 * sf) as i32 as u32);
-                    sum = sum.wrapping_add(4 as i32 as u32);
+                        .wrapping_add((cf >= 4 * sf) as i32 as u32);
+                    sum = sum.wrapping_add(4 as u32);
                 } else {
-                    cf = (4 as i32 as u32)
-                        .wrapping_add((cf > 9 as i32 as u32 * sf) as i32 as u32)
-                        .wrapping_add((cf > 12 as i32 as u32 * sf) as i32 as u32)
-                        .wrapping_add((cf > 15 as i32 as u32 * sf) as i32 as u32);
+                    cf = (4 as u32)
+                        .wrapping_add((cf > 9 * sf) as i32 as u32)
+                        .wrapping_add((cf > 12 * sf) as i32 as u32)
+                        .wrapping_add((cf > 15 * sf) as i32 as u32);
                     sum = sum.wrapping_add(cf);
                 }
                 (*c).union2.summ_freq = sum as u16;
@@ -1350,7 +1327,7 @@ impl<RC> Ppmd8<RC> {
             if s != stats {
                 let tmp: State = *s;
                 loop {
-                    *s.offset(0 as i32 as isize) = *s.offset(-(1 as i32) as isize);
+                    *s.offset(0 as isize) = *s.offset(-1 as isize);
                     s = s.offset(-1);
                     if !(s != stats) {
                         break;
@@ -1360,24 +1337,24 @@ impl<RC> Ppmd8<RC> {
             }
             sumFreq = (*s).freq as u32;
             escFreq = ((*self.min_context).union2.summ_freq as u32).wrapping_sub(sumFreq);
-            adder = (self.order_fall != 0 as i32 as u32) as i32 as u32;
-            sumFreq = sumFreq.wrapping_add(4 as i32 as u32).wrapping_add(adder) >> 1 as i32;
+            adder = (self.order_fall != 0) as i32 as u32;
+            sumFreq = sumFreq.wrapping_add(4 as u32).wrapping_add(adder) >> 1;
             i = (*self.min_context).num_stats as u32;
             (*s).freq = sumFreq as u8;
             loop {
                 s = s.offset(1);
                 let mut freq = (*s).freq as u32;
                 escFreq = escFreq.wrapping_sub(freq);
-                freq = freq.wrapping_add(adder) >> 1 as i32;
+                freq = freq.wrapping_add(adder) >> 1;
                 sumFreq = sumFreq.wrapping_add(freq);
                 (*s).freq = freq as u8;
-                if freq > (*s.offset(-(1 as i32) as isize)).freq as u32 {
+                if freq > (*s.offset(-1 as isize)).freq as u32 {
                     let tmp_0: State = *s;
                     let mut s1: *mut State = s;
                     loop {
-                        *s1.offset(0 as i32 as isize) = *s1.offset(-(1 as i32) as isize);
+                        *s1.offset(0 as isize) = *s1.offset(-1 as isize);
                         s1 = s1.offset(-1);
-                        if !(s1 != stats && freq > (*s1.offset(-(1 as i32) as isize)).freq as u32) {
+                        if !(s1 != stats && freq > (*s1.offset(-1 as isize)).freq as u32) {
                             break;
                         }
                     }
@@ -1388,18 +1365,18 @@ impl<RC> Ppmd8<RC> {
                     break;
                 }
             }
-            if (*s).freq as i32 == 0 as i32 {
+            if (*s).freq as i32 == 0 {
                 let mut mc: *mut Context = 0 as *mut Context;
                 let mut numStats = 0;
                 let mut numStatsNew = 0;
                 let mut n0 = 0;
                 let mut n1 = 0;
-                i = 0 as i32 as u32;
+                i = 0;
                 loop {
                     i = i.wrapping_add(1);
                     i;
                     s = s.offset(-1);
-                    if !((*s).freq as i32 == 0 as i32) {
+                    if !((*s).freq as i32 == 0) {
                         break;
                     }
                 }
@@ -1408,22 +1385,19 @@ impl<RC> Ppmd8<RC> {
                 numStats = (*mc).num_stats as u32;
                 numStatsNew = numStats.wrapping_sub(i);
                 (*mc).num_stats = numStatsNew as u8;
-                n0 = numStats.wrapping_add(2 as i32 as u32) >> 1 as i32;
-                if numStatsNew == 0 as i32 as u32 {
-                    let mut freq_0 = (2 as i32 as u32)
+                n0 = numStats.wrapping_add(2 as u32) >> 1;
+                if numStatsNew == 0 {
+                    let mut freq_0 = (2 as u32)
                         .wrapping_mul((*stats).freq as u32)
                         .wrapping_add(escFreq)
-                        .wrapping_sub(1 as i32 as u32)
+                        .wrapping_sub(1 as u32)
                         .wrapping_div(escFreq);
-                    if freq_0 > (MAX_FREQ as i32 / 3 as i32) as u32 {
-                        freq_0 = (MAX_FREQ as i32 / 3 as i32) as u32;
+                    if freq_0 > (MAX_FREQ as i32 / 3) as u32 {
+                        freq_0 = (MAX_FREQ as i32 / 3) as u32;
                     }
-                    (*mc).flags = (((*mc).flags as i32 & (1 as i32) << 4 as i32) as u32)
-                        .wrapping_add(
-                            ((*stats).symbol as u32).wrapping_add(0xC0 as i32 as u32)
-                                >> 8 as i32 - 3 as i32
-                                & ((1 as i32) << 3 as i32) as u32,
-                        ) as u8;
+                    (*mc).flags = (((*mc).flags as i32 & 1 << 4) as u32).wrapping_add(
+                        ((*stats).symbol as u32).wrapping_add(0xC0) >> 8 - 3 & (1 << 3) as u32,
+                    ) as u8;
                     s = &mut (*mc).union2 as *mut Union2 as *mut State;
                     *s = *stats;
                     (*s).freq = freq_0 as u8;
@@ -1441,10 +1415,9 @@ impl<RC> Ppmd8<RC> {
                 }
             }
             let mc_0: *mut Context = self.min_context;
-            (*mc_0).union2.summ_freq = sumFreq
-                .wrapping_add(escFreq)
-                .wrapping_sub(escFreq >> 1 as i32) as u16;
-            (*mc_0).flags = ((*mc_0).flags as i32 | (1 as i32) << 2 as i32) as u8;
+            (*mc_0).union2.summ_freq =
+                sumFreq.wrapping_add(escFreq).wrapping_sub(escFreq >> 1) as u16;
+            (*mc_0).flags = ((*mc_0).flags as i32 | 1 << 2) as u8;
             self.found_state = (self.base).offset((*mc_0).union4.stats as isize) as *mut State;
         }
     }
