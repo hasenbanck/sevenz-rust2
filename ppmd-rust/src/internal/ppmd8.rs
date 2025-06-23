@@ -1504,10 +1504,13 @@ impl<RC> Ppmd8<RC> {
             let suffix_num_stats = suffix_context.as_ref().num_stats as u32;
             let summ_freq = (*mc).union2.summ_freq as u32;
 
-            let idx0 = (summ_freq > 11 * (num_stats + 1)) as usize;
-            let idx1 = 2 * ((2 * num_stats) < (suffix_num_stats + num_masked)) as usize;
-            let idx2 = (*mc).flags as usize;
-            let see_table_hash = idx0 + idx1 + idx2;
+            let freq_distribution_hash = (summ_freq > 11 * (num_stats + 1)) as usize;
+            let context_hierarchy_hash =
+                2 * ((2 * num_stats) < (suffix_num_stats + num_masked)) as usize;
+            let symbol_characteristics_hash = (*mc).flags as usize;
+
+            let see_table_hash =
+                freq_distribution_hash + context_hierarchy_hash + symbol_characteristics_hash;
 
             (base_context_idx, see_table_hash)
         }
