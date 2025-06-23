@@ -220,7 +220,6 @@ impl Ppmd8<Encoder> {
                 self.prev_success = 0 as i32 as u32;
             }
             loop {
-                let mut see: *mut See = 0 as *mut See;
                 let mut s_1: *mut State = 0 as *mut State;
                 let mut sum_0: u32 = 0;
                 let mut escFreq: u32 = 0;
@@ -254,7 +253,7 @@ impl Ppmd8<Encoder> {
                     }
                 }
                 self.min_context = mc;
-                see = self.make_esc_freq(numMasked, &mut escFreq);
+                let see_source = self.make_esc_freq(numMasked, &mut escFreq);
                 s_1 = (self.base).offset((*self.min_context).union4.stats as isize) as *mut u8
                     as *mut State;
                 sum_0 = 0 as i32 as u32;
@@ -265,6 +264,8 @@ impl Ppmd8<Encoder> {
                         let low: u32 = sum_0;
                         let freq_0: u32 = (*s_1).freq as u32;
                         let mut num2: u32 = 0;
+
+                        let see = self.get_see(see_source);
                         if ((*see).shift as i32) < 7 as i32 && {
                             (*see).count = ((*see).count).wrapping_sub(1);
                             (*see).count as i32 == 0 as i32
@@ -336,6 +337,7 @@ impl Ppmd8<Encoder> {
                     }
                 }
                 let mut total: u32 = sum_0.wrapping_add(escFreq);
+                let see = self.get_see(see_source);
                 (*see).summ = ((*see).summ as u32).wrapping_add(total) as u16;
                 if total > self.range {
                     total = self.range;

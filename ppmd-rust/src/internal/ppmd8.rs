@@ -46,6 +46,11 @@ struct See {
     count: u8,
 }
 
+enum SeeSource {
+    Dummy,
+    Table(usize, usize),
+}
+
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
 struct State {
@@ -261,6 +266,17 @@ impl<RC> Ppmd8<RC> {
         unsafe { ppmd.restart_model() };
 
         Ok(ppmd)
+    }
+
+    unsafe fn ptr_of_offset(&self, offset: isize) -> NonNull<u8> {
+        unsafe { self.memory_ptr.offset(offset) }
+    }
+
+    unsafe fn offset_for_ptr(&self, ptr: NonNull<u8>) -> u32 {
+        unsafe {
+            let offset = ptr.offset_from(self.memory_ptr);
+            u32::try_from(offset).expect("Failed to convert ptr to offset")
+        }
     }
 
     unsafe fn insert_node(&mut self, node: *mut u8, index: u32) {
@@ -529,6 +545,13 @@ impl<RC> Ppmd8<RC> {
         unsafe {
             (*s).successor_0 = v as u16;
             (*s).successor_1 = (v >> 16) as u16;
+        }
+    }
+
+    unsafe fn get_successor(&mut self, s: *mut State) -> NonNull<Context> {
+        unsafe {
+            self.ptr_of_offset(((*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16) as isize)
+                .cast()
         }
     }
 
@@ -1443,56 +1466,65 @@ impl<RC> Ppmd8<RC> {
         }
     }
 
-    unsafe fn make_esc_freq(&mut self, numMasked1: u32, escFreq: *mut u32) -> *mut See {
+    unsafe fn make_esc_freq(&mut self, num_masked: u32, esc_freq: &mut u32) -> SeeSource {
         unsafe {
-            let mut see: *mut See = 0 as *mut See;
-            let mc: *const Context = self.min_context;
-            let numStats: u32 = (*mc).num_stats as u32;
-            if numStats != 0xFF as i32 as u32 {
-                see = (self.see[(self.ns2index
-                    [(numStats as usize).wrapping_add(2 as i32 as usize) as usize]
-                    as u32 as usize)
-                    .wrapping_sub(3 as i32 as usize) as usize])
-                    .as_mut_ptr()
-                    .offset(
-                        ((*mc).union2.summ_freq as u32
-                            > (11 as i32 as u32)
-                                .wrapping_mul(numStats.wrapping_add(1 as i32 as u32)))
-                            as i32 as isize,
-                    )
-                    .offset(
-                        (2 as i32 as u32).wrapping_mul(
-                            ((2 as i32 as u32).wrapping_mul(numStats)
-                                < ((*((self.base).offset((*mc).suffix as isize) as *mut u8
-                                    as *mut Context))
-                                    .num_stats as u32)
-                                    .wrapping_add(numMasked1)) as i32
-                                as u32,
-                        ) as isize,
-                    )
-                    .offset((*mc).flags as i32 as isize);
-                let summ: u32 = (*see).summ as u32;
-                let r: u32 = summ >> (*see).shift as i32;
-                (*see).summ = summ.wrapping_sub(r) as u16;
-                *escFreq = r.wrapping_add((r == 0 as i32 as u32) as i32 as u32);
+            let num_stats = (*self.min_context).num_stats as u32;
+
+            if num_stats != 0xFF {
+                let (base_context_idx, see_table_hash) =
+                    self.calculate_see_table_hash(num_masked, num_stats);
+
+                let see = &mut self.see[base_context_idx][see_table_hash];
+
+                // If (see.summ) field is larger than 16-bit, we need only low 16 bits of summ.
+                let summ = see.summ as u32;
+                let r = summ >> see.shift as i32;
+                see.summ = (summ - r) as u16;
+                *esc_freq = r + (r == 0) as u32;
+
+                SeeSource::Table(base_context_idx, see_table_hash)
             } else {
-                see = &mut self.dummy_see;
-                *escFreq = 1 as i32 as u32;
+                *esc_freq = 1;
+                SeeSource::Dummy
             }
-            return see;
+        }
+    }
+
+    unsafe fn calculate_see_table_hash(
+        &mut self,
+        num_masked: u32,
+        num_stats: u32,
+    ) -> (usize, usize) {
+        unsafe {
+            // (3 <= num_stats + 2 <= 256)   (3 <= ns2index[3] and ns2index[256] === 26)
+            let mc = self.min_context;
+            let base_context_idx = self.ns2index[(num_stats + 2) as usize] as usize - 3;
+
+            let suffix_context = self.ptr_of_offset((*mc).suffix as isize).cast::<Context>();
+            let suffix_num_stats = suffix_context.as_ref().num_stats as u32;
+            let summ_freq = (*mc).union2.summ_freq as u32;
+
+            let idx0 = (summ_freq > 11 * (num_stats + 1)) as usize;
+            let idx1 = 2 * ((2 * num_stats) < (suffix_num_stats + num_masked)) as usize;
+            let idx2 = (*mc).flags as usize;
+            let see_table_hash = idx0 + idx1 + idx2;
+
+            (base_context_idx, see_table_hash)
+        }
+    }
+
+    fn get_see(&mut self, see_source: SeeSource) -> &mut See {
+        match see_source {
+            SeeSource::Dummy => &mut self.dummy_see,
+            SeeSource::Table(i, k) => &mut self.see[i][k],
         }
     }
 
     unsafe fn next_context(&mut self) {
         unsafe {
-            let c: *mut Context = (self.base).offset(
-                ((*self.found_state).successor_0 as u32
-                    | ((*self.found_state).successor_1 as u32) << 16 as i32)
-                    as isize,
-            ) as *mut u8 as *mut Context;
-            if self.order_fall == 0 as i32 as u32 && c as *const u8 >= self.units_start as *const u8
-            {
-                self.min_context = c;
+            let c = self.get_successor(self.found_state);
+            if self.order_fall == 0 && c.addr().get() >= self.units_start.addr() {
+                self.min_context = c.as_ptr();
                 self.max_context = self.min_context;
             } else {
                 self.update_model();

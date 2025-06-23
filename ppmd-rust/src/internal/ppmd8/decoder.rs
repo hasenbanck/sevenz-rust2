@@ -182,10 +182,7 @@ impl Ppmd8<Decoder> {
                         self.low <<= 8 as i32;
                     }
                     let freq: u32 = (*s_0).freq as u32;
-                    let c: *mut Context = (self.base).offset(
-                        ((*s_0).successor_0 as u32 | ((*s_0).successor_1 as u32) << 16 as i32)
-                            as isize,
-                    ) as *mut u8 as *mut Context;
+                    let c = self.get_successor(s_0);
                     sym_1 = (*s_0).symbol;
                     self.found_state = s_0;
                     self.prev_success = 1 as i32 as u32;
@@ -193,9 +190,9 @@ impl Ppmd8<Decoder> {
                     self.run_length;
                     (*s_0).freq = freq.wrapping_add((freq < 196 as i32 as u32) as i32 as u32) as u8;
                     if self.order_fall == 0 as i32 as u32
-                        && c as *const u8 >= self.units_start as *const u8
+                        && c.as_ptr() as *const u8 >= self.units_start as *const u8
                     {
-                        self.min_context = c;
+                        self.min_context = c.as_ptr();
                         self.max_context = self.min_context;
                     } else {
                         self.update_model();
@@ -244,7 +241,6 @@ impl Ppmd8<Decoder> {
                 let mut count_0: u32 = 0;
                 let mut hiCnt_0: u32 = 0;
                 let mut freqSum2: u32 = 0;
-                let mut see: *mut See = 0 as *mut See;
                 let mut mc: *mut Context = 0 as *mut Context;
                 let mut numMasked: u32 = 0;
                 while self.low ^ (self.low).wrapping_add(self.range) < K_TOP_VALUE
@@ -297,7 +293,7 @@ impl Ppmd8<Decoder> {
                         break;
                     }
                 }
-                see = self.make_esc_freq(numMasked, &mut freqSum);
+                let see_source = self.make_esc_freq(numMasked, &mut freqSum);
                 freqSum = freqSum.wrapping_add(hiCnt_0);
                 freqSum2 = freqSum;
                 if freqSum2 > self.range {
@@ -340,6 +336,8 @@ impl Ppmd8<Decoder> {
                         self.range <<= 8 as i32;
                         self.low <<= 8 as i32;
                     }
+
+                    let see = self.get_see(see_source);
                     if ((*see).shift as i32) < 7 as i32 && {
                         (*see).count = ((*see).count).wrapping_sub(1);
                         (*see).count as i32 == 0 as i32
@@ -358,6 +356,7 @@ impl Ppmd8<Decoder> {
                     return -(2 as i32);
                 }
                 self.rd_decode(hiCnt_0, freqSum2.wrapping_sub(hiCnt_0));
+                let see = self.get_see(see_source);
                 (*see).summ = ((*see).summ as u32).wrapping_add(freqSum) as u16;
                 s_1 = (self.base).offset((*self.min_context).union4.stats as isize) as *mut u8
                     as *mut State;

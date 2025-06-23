@@ -1009,14 +1009,8 @@ impl<RC> Ppmd7<RC> {
             let num_stats = self.min_context.as_ref().num_stats as u32;
 
             if num_stats != 256 {
-                let non_masked = num_stats - num_masked;
-
-                let (base_context_idx, see_table_hash) = self.calculate_see_table_hash(
-                    self.min_context.as_ref(),
-                    num_masked,
-                    num_stats,
-                    non_masked,
-                );
+                let (base_context_idx, see_table_hash) =
+                    self.calculate_see_table_hash(num_masked, num_stats);
 
                 let see = &mut self.see[base_context_idx][see_table_hash];
 
@@ -1041,14 +1035,10 @@ impl<RC> Ppmd7<RC> {
         }
     }
 
-    unsafe fn calculate_see_table_hash(
-        &self,
-        mc: &Context,
-        num_masked: u32,
-        num_stats: u32,
-        non_masked: u32,
-    ) -> (usize, usize) {
+    unsafe fn calculate_see_table_hash(&self, num_masked: u32, num_stats: u32) -> (usize, usize) {
         unsafe {
+            let mc = self.min_context.as_ref();
+            let non_masked = num_stats - num_masked;
             let base_context_idx = self.ns2index[(non_masked as usize) - 1] as usize;
 
             let suffix_context = self.ptr_of_offset(mc.suffix as isize).cast::<Context>();
