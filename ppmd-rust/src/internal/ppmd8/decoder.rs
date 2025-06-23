@@ -27,7 +27,7 @@ impl Ppmd8<Decoder> {
 
     pub unsafe fn decode_symbol(&mut self) -> i32 {
         unsafe {
-            let mut charMask: [usize; 32] = [0; 32];
+            let mut char_mask: [u8; 256];
             if (*self.min_context).num_stats as i32 != 0 as i32 {
                 let mut s: *mut State = (self.base)
                     .offset((*self.min_context).union4.stats as isize)
@@ -101,38 +101,19 @@ impl Ppmd8<Decoder> {
                 }
                 hiCnt = hiCnt.wrapping_sub(count);
                 self.rd_decode(hiCnt, summFreq.wrapping_sub(hiCnt));
-                let mut z: usize = 0;
-                z = 0 as i32 as usize;
-                while z
-                    < (256 as i32 as usize).wrapping_div(::core::mem::size_of::<usize>() as usize)
-                {
-                    charMask[z.wrapping_add(0 as i32 as usize) as usize] = !(0 as i32 as usize);
-                    charMask[z.wrapping_add(1 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(0 as i32 as usize) as usize];
-                    charMask[z.wrapping_add(2 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(1 as i32 as usize) as usize];
-                    charMask[z.wrapping_add(3 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(2 as i32 as usize) as usize];
-                    charMask[z.wrapping_add(4 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(3 as i32 as usize) as usize];
-                    charMask[z.wrapping_add(5 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(4 as i32 as usize) as usize];
-                    charMask[z.wrapping_add(6 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(5 as i32 as usize) as usize];
-                    charMask[z.wrapping_add(7 as i32 as usize) as usize] =
-                        charMask[z.wrapping_add(6 as i32 as usize) as usize];
-                    z = z.wrapping_add(8 as i32 as usize);
-                }
+
+                char_mask = [u8::MAX; 256];
+
                 let mut s2: *mut State = (self.base)
                     .offset((*self.min_context).union4.stats as isize)
                     as *mut u8 as *mut State;
-                *(charMask.as_mut_ptr() as *mut u8).offset((*s).symbol as isize) = 0 as i32 as u8;
+                *(char_mask.as_mut_ptr() as *mut u8).offset((*s).symbol as isize) = 0 as i32 as u8;
                 loop {
                     let sym0: u32 = (*s2.offset(0 as i32 as isize)).symbol as u32;
                     let sym1: u32 = (*s2.offset(1 as i32 as isize)).symbol as u32;
                     s2 = s2.offset(2 as i32 as isize);
-                    *(charMask.as_mut_ptr() as *mut u8).offset(sym0 as isize) = 0 as i32 as u8;
-                    *(charMask.as_mut_ptr() as *mut u8).offset(sym1 as isize) = 0 as i32 as u8;
+                    *(char_mask.as_mut_ptr() as *mut u8).offset(sym0 as isize) = 0 as i32 as u8;
+                    *(char_mask.as_mut_ptr() as *mut u8).offset(sym1 as isize) = 0 as i32 as u8;
                     if !(s2 < s) {
                         break;
                     }
@@ -206,33 +187,14 @@ impl Ppmd8<Decoder> {
                 self.range = (self.range
                     & !(((1 as i32) << 7 as i32 + 7 as i32) as u32).wrapping_sub(1 as i32 as u32))
                 .wrapping_sub(size0);
-                let mut z_0: usize = 0;
-                z_0 = 0 as i32 as usize;
-                while z_0
-                    < (256 as i32 as usize).wrapping_div(::core::mem::size_of::<usize>() as usize)
-                {
-                    charMask[z_0.wrapping_add(0 as i32 as usize) as usize] = !(0 as i32 as usize);
-                    charMask[z_0.wrapping_add(1 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(0 as i32 as usize) as usize];
-                    charMask[z_0.wrapping_add(2 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(1 as i32 as usize) as usize];
-                    charMask[z_0.wrapping_add(3 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(2 as i32 as usize) as usize];
-                    charMask[z_0.wrapping_add(4 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(3 as i32 as usize) as usize];
-                    charMask[z_0.wrapping_add(5 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(4 as i32 as usize) as usize];
-                    charMask[z_0.wrapping_add(6 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(5 as i32 as usize) as usize];
-                    charMask[z_0.wrapping_add(7 as i32 as usize) as usize] =
-                        charMask[z_0.wrapping_add(6 as i32 as usize) as usize];
-                    z_0 = z_0.wrapping_add(8 as i32 as usize);
-                }
-                *(charMask.as_mut_ptr() as *mut u8).offset(
+
+                char_mask = [u8::MAX; 256];
+
+                *char_mask.as_mut_ptr().offset(
                     (*(&mut (*self.min_context).union2 as *mut Union2 as *mut State)).symbol
                         as isize,
-                ) = 0 as i32 as u8;
-                self.prev_success = 0 as i32 as u32;
+                ) = 0;
+                self.prev_success = 0;
             }
             loop {
                 let mut s_1: *mut State = 0 as *mut State;
@@ -272,7 +234,7 @@ impl Ppmd8<Decoder> {
                 let mut num2: u32 = num.wrapping_div(2 as i32 as u32);
                 num &= 1 as i32 as u32;
                 hiCnt_0 = (*s_1).freq as u32
-                    & *(charMask.as_mut_ptr() as *mut u8).offset((*s_1).symbol as isize) as u32
+                    & *(char_mask.as_mut_ptr() as *mut u8).offset((*s_1).symbol as isize) as u32
                     & (0 as i32 as u32).wrapping_sub(num);
                 s_1 = s_1.offset(num as isize);
                 self.min_context = mc;
@@ -282,11 +244,11 @@ impl Ppmd8<Decoder> {
                     s_1 = s_1.offset(2 as i32 as isize);
                     hiCnt_0 = hiCnt_0.wrapping_add(
                         (*s_1.offset(-(2 as i32) as isize)).freq as u32
-                            & *(charMask.as_mut_ptr() as *mut u8).offset(sym0_0 as isize) as u32,
+                            & *(char_mask.as_mut_ptr() as *mut u8).offset(sym0_0 as isize) as u32,
                     );
                     hiCnt_0 = hiCnt_0.wrapping_add(
                         (*s_1.offset(-(1 as i32) as isize)).freq as u32
-                            & *(charMask.as_mut_ptr() as *mut u8).offset(sym1_0 as isize) as u32,
+                            & *(char_mask.as_mut_ptr() as *mut u8).offset(sym1_0 as isize) as u32,
                     );
                     num2 = num2.wrapping_sub(1);
                     if !(num2 != 0) {
@@ -309,7 +271,8 @@ impl Ppmd8<Decoder> {
                     loop {
                         count_0 = count_0.wrapping_sub(
                             (*s_1).freq as u32
-                                & *(charMask.as_mut_ptr() as *mut u8).offset((*s_1).symbol as isize)
+                                & *(char_mask.as_mut_ptr() as *mut u8)
+                                    .offset((*s_1).symbol as isize)
                                     as u32,
                         );
                         s_1 = s_1.offset(1);
@@ -364,7 +327,7 @@ impl Ppmd8<Decoder> {
                     .offset((*self.min_context).num_stats as i32 as isize)
                     .offset(1 as i32 as isize);
                 loop {
-                    *(charMask.as_mut_ptr() as *mut u8).offset((*s_1).symbol as isize) =
+                    *(char_mask.as_mut_ptr() as *mut u8).offset((*s_1).symbol as isize) =
                         0 as i32 as u8;
                     s_1 = s_1.offset(1);
                     s_1;

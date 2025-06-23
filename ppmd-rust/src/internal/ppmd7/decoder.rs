@@ -103,7 +103,7 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
 
                 num &= 1;
                 let mut hi_cnt = s.as_ref().freq as u32
-                    & *char_mask.as_mut_ptr().offset(s.as_ref().symbol as isize) as u32
+                    & char_mask[s.as_ref().symbol as usize] as u32
                     & (0u32.wrapping_sub(num));
                 s = s.offset(num as isize);
                 self.min_context = mc;
@@ -128,8 +128,7 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
                     hi_cnt = count;
                     loop {
                         count = count.wrapping_sub(
-                            s.as_ref().freq as u32
-                                & *char_mask.as_mut_ptr().offset(s.as_ref().symbol as isize) as u32,
+                            s.as_ref().freq as u32 & char_mask[s.as_ref().symbol as usize] as u32,
                         );
                         s = s.offset(1);
                         if (count as i32) < 0 {
