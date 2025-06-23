@@ -2,12 +2,12 @@ use std::io::Write;
 
 use crate::{
     Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER,
-    internal::ppmd7::{Pppmd7, RangeEncoder},
+    internal::ppmd7::{Ppmd7, RangeEncoder},
 };
 
 /// An encoder to encode data using PPMd7 (PPMdH) with the 7z range coder.
 pub struct Ppmd7Encoder<W: Write> {
-    ppmd: Pppmd7<RangeEncoder<W>>,
+    ppmd: Ppmd7<RangeEncoder<W>>,
 }
 
 impl<W: Write> Ppmd7Encoder<W> {
@@ -19,7 +19,7 @@ impl<W: Write> Ppmd7Encoder<W> {
             return Err(Error::InvalidParameter);
         }
 
-        let ppmd = Pppmd7::new_encoder(writer, order, mem_size)?;
+        let ppmd = Ppmd7::new_encoder(writer, order, mem_size)?;
 
         Ok(Self { ppmd })
     }

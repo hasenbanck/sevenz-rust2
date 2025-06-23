@@ -1,9 +1,9 @@
 use std::io::Write;
 
-use super::{Pppmd7, RangeEncoder};
+use super::{Ppmd7, RangeEncoder};
 use crate::internal::{PPMD_INT_BITS, ppmd_update_prob_1};
 
-impl<W: Write> Pppmd7<RangeEncoder<W>> {
+impl<W: Write> Ppmd7<RangeEncoder<W>> {
     unsafe fn encode_symbol(&mut self, symbol: u8) -> Result<(), std::io::Error> {
         unsafe {
             let mut char_mask: [u8; 256];

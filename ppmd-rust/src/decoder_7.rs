@@ -2,12 +2,12 @@ use std::io::Read;
 
 use crate::{
     Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, SYM_END,
-    internal::ppmd7::{Pppmd7, RangeDecoder},
+    internal::ppmd7::{Ppmd7, RangeDecoder},
 };
 
 /// A decoder to decode PPMd7 (PPMdH) with the 7z range coder.
 pub struct Ppmd7Decoder<R: Read> {
-    ppmd: Pppmd7<RangeDecoder<R>>,
+    ppmd: Ppmd7<RangeDecoder<R>>,
     finished: bool,
 }
 
@@ -20,8 +20,7 @@ impl<R: Read> Ppmd7Decoder<R> {
             return Err(Error::InvalidParameter);
         }
 
-        let ppmd = Pppmd7::new_decoder(reader, order, mem_size)
-            .map_err(|_| Error::InternalError("Can't initialize decoder"))?;
+        let ppmd = Ppmd7::new_decoder(reader, order, mem_size)?;
 
         Ok(Self {
             ppmd,

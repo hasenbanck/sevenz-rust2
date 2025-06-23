@@ -36,11 +36,13 @@ impl<R: Read> RangeDecoder<R> {
         Ok(encoder)
     }
 
+    #[inline(always)]
     pub(crate) fn get_threshold(&mut self, total: u32) -> u32 {
         self.range /= total;
         self.code / self.range
     }
 
+    #[inline(always)]
     pub(crate) fn read_byte(&mut self) -> Result<u32, std::io::Error> {
         let mut buffer = [0];
         self.reader.read_exact(&mut buffer)?;
@@ -185,7 +187,6 @@ impl<W: Write> RangeEncoder<W> {
         Ok(())
     }
 
-    #[inline(always)]
     pub(crate) fn flush(&mut self) -> Result<(), std::io::Error> {
         for _ in 0..5 {
             self.shift_low()?;

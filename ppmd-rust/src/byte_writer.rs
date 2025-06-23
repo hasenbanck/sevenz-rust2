@@ -19,7 +19,7 @@ impl<W: Write> ByteWriter<W> {
     pub(crate) fn new(writer: W) -> Self {
         let writer = ByteWriterInner {
             byte_out: IByteOut {
-                write: Some(Self::write_byte),
+                write: Self::write_byte,
             },
             writer,
             buffer: Vec::with_capacity(BUFFER_SIZE),
@@ -41,7 +41,7 @@ impl<W: Write> ByteWriter<W> {
         unsafe { &mut *(p as *mut ByteWriterInner<W>) }
     }
 
-    unsafe extern "C" fn write_byte(p: IByteOutPtr, byte: u8) {
+    fn write_byte(p: IByteOutPtr, byte: u8) {
         let writer = Self::get_inner_writer(p);
 
         writer.buffer.push(byte);

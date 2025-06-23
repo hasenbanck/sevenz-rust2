@@ -115,7 +115,7 @@ union NodeUnion {
     next_ref: u32,
 }
 
-pub(crate) struct Pppmd7<RC> {
+pub(crate) struct Ppmd7<RC> {
     min_context: NonNull<Context>,
     max_context: NonNull<Context>,
     found_state: NonNull<State>,
@@ -147,7 +147,7 @@ pub(crate) struct Pppmd7<RC> {
     rc: RC,
 }
 
-impl<RC> Drop for Pppmd7<RC> {
+impl<RC> Drop for Ppmd7<RC> {
     fn drop(&mut self) {
         unsafe {
             dealloc(self.memory_ptr.as_ptr(), self.memory_layout);
@@ -155,12 +155,12 @@ impl<RC> Drop for Pppmd7<RC> {
     }
 }
 
-impl<RC> Pppmd7<RC> {
-    fn new(rc: RC, order: u32, mem_size: u32) -> Result<Pppmd7<RC>, Error> {
+impl<RC> Ppmd7<RC> {
+    fn new(rc: RC, order: u32, mem_size: u32) -> Result<Self, Error> {
         let mut units2index = [0u8; 128];
         let mut index2units = [0u8; 40];
-        let mut k = 0;
 
+        let mut k = 0;
         for i in 0..PPMD_NUM_INDEXES {
             let step: u32 = if i >= 12 { 4 } else { (i >> 2) + 1 };
             for _ in 0..step {
@@ -200,7 +200,9 @@ impl<RC> Pppmd7<RC> {
 
         let memory_ptr = unsafe {
             let Some(memory_ptr) = NonNull::new(alloc(memory_layout)) else {
-                return Err(Error::InternalError("Failed to allocate memory for PPMD7"));
+                return Err(Error::InternalError(
+                    "Failed to allocate memory for the internal memory allocation",
+                ));
             };
 
             write_bytes(memory_ptr.as_ptr(), 0, total_size);
@@ -209,7 +211,7 @@ impl<RC> Pppmd7<RC> {
 
         // We set the NonNull pointer to the start of the allocated memory as a dummy value.
         // We se them in the 'restart_model()' function right after this.
-        let mut ppmd = Pppmd7 {
+        let mut ppmd = Self {
             min_context: memory_ptr.cast(),
             max_context: memory_ptr.cast(),
             found_state: memory_ptr.cast(),
@@ -232,11 +234,7 @@ impl<RC> Pppmd7<RC> {
             ns2bs_index,
             ns2index,
             exp_escape: K_EXP_ESCAPE,
-            dummy_see: See {
-                summ: 0,
-                shift: 0,
-                count: 0,
-            },
+            dummy_see: See::default(),
             see: [[See::default(); 16]; 25],
             free_list: [0; PPMD_NUM_INDEXES as usize],
             bin_summ: [[0; 64]; 128],
@@ -1219,12 +1217,12 @@ impl<RC> Pppmd7<RC> {
     }
 }
 
-impl<R: Read> Pppmd7<RangeDecoder<R>> {
+impl<R: Read> Ppmd7<RangeDecoder<R>> {
     pub fn new_decoder(
         reader: R,
         order: u32,
         mem_size: u32,
-    ) -> Result<Pppmd7<RangeDecoder<R>>, Error> {
+    ) -> Result<Ppmd7<RangeDecoder<R>>, Error> {
         let range_decoder = RangeDecoder::new(reader)?;
         Self::new(range_decoder, order, mem_size)
     }
@@ -1234,12 +1232,12 @@ impl<R: Read> Pppmd7<RangeDecoder<R>> {
     }
 }
 
-impl<W: Write> Pppmd7<RangeEncoder<W>> {
+impl<W: Write> Ppmd7<RangeEncoder<W>> {
     pub fn new_encoder(
         writer: W,
         order: u32,
         mem_size: u32,
-    ) -> Result<Pppmd7<RangeEncoder<W>>, Error> {
+    ) -> Result<Ppmd7<RangeEncoder<W>>, Error> {
         let range_encoder = RangeEncoder::new(writer);
         Self::new(range_encoder, order, mem_size)
     }

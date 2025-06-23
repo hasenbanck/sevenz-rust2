@@ -1,12 +1,12 @@
 use std::io::Read;
 
-use super::{Pppmd7, RangeDecoder};
+use super::{Ppmd7, RangeDecoder};
 use crate::{
     SYM_END, SYM_ERROR,
     internal::{PPMD_INT_BITS, ppmd_update_prob_1},
 };
 
-impl<R: Read> Pppmd7<RangeDecoder<R>> {
+impl<R: Read> Ppmd7<RangeDecoder<R>> {
     pub fn decode_symbol(&mut self) -> Result<i32, std::io::Error> {
         unsafe {
             let mut char_mask: [u8; 256];

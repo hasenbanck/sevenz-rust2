@@ -20,7 +20,7 @@ impl<R: Read> ByteReader<R> {
     pub(crate) fn new(reader: R) -> Self {
         let reader = ByteReaderInner {
             byte_in: IByteIn {
-                read: Some(Self::read_byte),
+                read: Self::read_byte,
             },
             buffer: vec![0; 4096],
             reader,
@@ -45,7 +45,7 @@ impl<R: Read> ByteReader<R> {
         unsafe { &mut *(p as *mut ByteReaderInner<R>) }
     }
 
-    unsafe extern "C" fn read_byte(p: IByteInPtr) -> u8 {
+    fn read_byte(p: IByteInPtr) -> u8 {
         let reader = Self::get_inner_reader(p);
 
         if reader.eof {

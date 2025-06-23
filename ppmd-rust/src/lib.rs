@@ -10,7 +10,6 @@ mod byte_writer;
 mod decoder_8;
 mod encoder_8;
 mod internal;
-mod memory;
 
 pub use decoder_7::Ppmd7Decoder;
 pub use decoder_8::Ppmd8Decoder;
@@ -39,7 +38,27 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum RestoreMethod {
     Restart = 0 as _,
     CutOff = 1 as _,
+    Unsupported = 2 as _,
 }
+
+macro_rules! impl_from_int_for_restore_method {
+    ($($int_type:ty),+ $(,)?) => {
+        $(
+            impl From<$int_type> for RestoreMethod {
+                fn from(value: $int_type) -> Self {
+                    match value {
+                        0 => RestoreMethod::Restart,
+                        1 => RestoreMethod::CutOff,
+                        _ => RestoreMethod::Unsupported,
+                    }
+                }
+            }
+        )+
+    };
+}
+
+impl_from_int_for_restore_method!(u8, u16, u32, u64, u128, usize);
+impl_from_int_for_restore_method!(i8, i16, i32, i64, i128, isize);
 
 /// Crate error type.
 pub enum Error {
