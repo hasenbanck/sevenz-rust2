@@ -10,6 +10,7 @@ impl Ppmd8<Decoder> {
             for _ in 0..4 {
                 self.code = self.code << 8 | ((*self.stream.input).read)(self.stream.input) as u32;
             }
+
             (self.code < 0xFFFFFFFF) as i32
         }
     }
@@ -38,7 +39,7 @@ impl Ppmd8<Decoder> {
                 count = count.wrapping_sub((*s).freq as u32);
                 if (count as i32) < 0 {
                     self.rd_decode(0, (*s).freq as u32);
-                    while self.low ^ (self.low + self.range) < K_TOP_VALUE
+                    while self.low ^ self.low.wrapping_add(self.range) < K_TOP_VALUE
                         || self.range < K_BOT_VALUE && {
                             self.range = 0u32.wrapping_sub(self.low) & (K_BOT_VALUE - 1);
                             1 != 0
@@ -64,11 +65,10 @@ impl Ppmd8<Decoder> {
                             hi_cnt.wrapping_sub(count).wrapping_sub((*s).freq as u32),
                             (*s).freq as u32,
                         );
-                        while self.low ^ (self.low).wrapping_add(self.range) < K_TOP_VALUE
+                        while self.low ^ self.low.wrapping_add(self.range) < K_TOP_VALUE
                             || self.range < K_BOT_VALUE && {
-                                self.range =
-                                    (0 as i32 as u32).wrapping_sub(self.low) & (K_BOT_VALUE - 1);
-                                1 as i32 != 0
+                                self.range = 0u32.wrapping_sub(self.low) & (K_BOT_VALUE - 1);
+                                1 != 0
                             }
                         {
                             self.code = self.code << 8 as i32
@@ -139,7 +139,7 @@ impl Ppmd8<Decoder> {
                 if self.code < size0 {
                     *prob = pr.wrapping_add(((1 as i32) << 7 as i32) as u32) as u16;
                     self.range = size0;
-                    while self.low ^ (self.low).wrapping_add(self.range) < K_TOP_VALUE
+                    while self.low ^ self.low.wrapping_add(self.range) < K_TOP_VALUE
                         || self.range < K_BOT_VALUE && {
                             self.range =
                                 (0 as i32 as u32).wrapping_sub(self.low) & (K_BOT_VALUE - 1);
@@ -191,7 +191,7 @@ impl Ppmd8<Decoder> {
                 let mut hi_cnt_0 = 0;
                 let mut freq_sum2 = 0;
                 let mut num_masked = 0;
-                while self.low ^ (self.low).wrapping_add(self.range) < K_TOP_VALUE
+                while self.low ^ self.low.wrapping_add(self.range) < K_TOP_VALUE
                     || self.range < K_BOT_VALUE && {
                         self.range = 0u32.wrapping_sub(self.low) & (K_BOT_VALUE - 1);
                         1 != 0
@@ -271,8 +271,7 @@ impl Ppmd8<Decoder> {
                             .wrapping_sub((*s).freq as u32),
                         (*s).freq as u32,
                     );
-                    while self.low ^ (self.low).wrapping_add(self.range)
-                        < (1 as i32 as u32) << 24 as i32
+                    while self.low ^ self.low.wrapping_add(self.range) < K_TOP_VALUE
                         || self.range < K_BOT_VALUE && {
                             self.range = (0 as i32 as u32).wrapping_sub(self.low) & K_BOT_VALUE - 1;
                             1 as i32 != 0
