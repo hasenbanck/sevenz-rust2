@@ -187,10 +187,6 @@ impl Ppmd8<Decoder> {
             }
             loop {
                 let mut freq_sum = 0;
-                let mut count_0 = 0;
-                let mut hi_cnt_0 = 0;
-                let mut freq_sum2 = 0;
-                let mut num_masked = 0;
                 while self.low ^ self.low.wrapping_add(self.range) < K_TOP_VALUE
                     || self.range < K_BOT_VALUE && {
                         self.range = 0u32.wrapping_sub(self.low) & (K_BOT_VALUE - 1);
@@ -203,23 +199,23 @@ impl Ppmd8<Decoder> {
                     self.low <<= 8;
                 }
                 let mut mc = self.min_context;
-                num_masked = (*mc).num_stats as u32;
+                let num_masked = (*mc).num_stats as u32;
                 loop {
                     self.order_fall = (self.order_fall).wrapping_add(1);
                     self.order_fall;
                     if (*mc).suffix == 0 {
                         return -(1 as i32);
                     }
-                    mc = (self.base).offset((*mc).suffix as isize) as *mut Context;
+                    mc = self.base.offset((*mc).suffix as isize) as *mut Context;
                     if !((*mc).num_stats as u32 == num_masked) {
                         break;
                     }
                 }
-                let mut s_1 = (self.base).offset((*mc).union4.stats as isize) as *mut State;
+                let s_1 = self.base.offset((*mc).union4.stats as isize) as *mut State;
                 let mut num = ((*mc).num_stats as u32).wrapping_add(1 as i32 as u32);
                 let mut num2 = num.wrapping_div(2 as i32 as u32);
                 num &= 1 as i32 as u32;
-                hi_cnt_0 = (*s_1).freq as u32
+                let mut hi_cnt_0 = (*s_1).freq as u32
                     & *char_mask.as_mut_ptr().offset((*s_1).symbol as isize) as u32
                     & (0 as i32 as u32).wrapping_sub(num);
                 let mut s = s_1.offset(num as isize);
@@ -243,12 +239,12 @@ impl Ppmd8<Decoder> {
                 }
                 let see_source = self.make_esc_freq(num_masked, &mut freq_sum);
                 freq_sum = freq_sum.wrapping_add(hi_cnt_0);
-                freq_sum2 = freq_sum;
+                let mut freq_sum2 = freq_sum;
                 if freq_sum2 > self.range {
                     freq_sum2 = self.range;
                 }
                 self.range /= freq_sum2;
-                count_0 = self.code / self.range;
+                let mut count_0 = self.code / self.range;
                 if count_0 < hi_cnt_0 {
                     s = (self.base).offset((*self.min_context).union4.stats as isize) as *mut u8
                         as *mut State;
@@ -312,7 +308,6 @@ impl Ppmd8<Decoder> {
                 loop {
                     *char_mask.as_mut_ptr().offset((*s).symbol as isize) = 0;
                     s = s.offset(1);
-                    s;
                     if !(s != s2) {
                         break;
                     }

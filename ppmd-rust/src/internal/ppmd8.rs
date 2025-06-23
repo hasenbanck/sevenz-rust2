@@ -301,13 +301,12 @@ impl<RC> Ppmd8<RC> {
 
     unsafe fn split_block(&mut self, mut ptr: *mut u8, old_index: u32, new_index: u32) {
         unsafe {
-            let mut i = 0;
             let nu = (self.index2units[old_index as usize] as u32)
                 .wrapping_sub(self.index2units[new_index as usize] as u32);
             ptr = ptr.offset(
                 (self.index2units[new_index as usize] as u32 * UNIT_SIZE as i32 as u32) as isize,
             );
-            i = self.units2index[(nu as usize).wrapping_sub(1)] as u32;
+            let mut i = self.units2index[(nu as usize).wrapping_sub(1)] as u32;
             if self.index2units[i as usize] as u32 != nu {
                 i = i.wrapping_sub(1);
                 let k = self.index2units[i as usize] as u32;
@@ -403,12 +402,12 @@ impl<RC> Ppmd8<RC> {
                     let us: *mut u8 = self.units_start;
                     self.glue_count = (self.glue_count).wrapping_sub(1);
                     self.glue_count;
-                    return (if us.offset_from(self.text) as u32 > numBytes {
+                    return if us.offset_from(self.text) as u32 > numBytes {
                         self.units_start = us.offset(-(numBytes as isize));
                         self.units_start
                     } else {
                         0 as *mut u8
-                    });
+                    };
                 }
                 if !(self.free_list[i as usize] == 0) {
                     break;

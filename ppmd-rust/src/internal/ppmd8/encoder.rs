@@ -28,8 +28,6 @@ impl Ppmd8<Encoder> {
             if (*self.min_context).num_stats != 0 {
                 let mut s =
                     self.base.offset((*self.min_context).union4.stats as isize) as *mut State;
-                let mut sum = 0;
-                let mut i = 0;
                 let mut summ_freq = (*self.min_context).union2.summ_freq as u32;
                 if summ_freq > self.range {
                     summ_freq = self.range;
@@ -51,8 +49,8 @@ impl Ppmd8<Encoder> {
                     return;
                 }
                 self.prev_success = 0;
-                sum = (*s).freq as u32;
-                i = (*self.min_context).num_stats as u32;
+                let mut sum = (*s).freq as u32;
+                let mut i = (*self.min_context).num_stats as u32;
                 loop {
                     s = s.offset(1);
                     if (*s).symbol as i32 == symbol {
@@ -175,12 +173,7 @@ impl Ppmd8<Encoder> {
                 self.prev_success = 0 as i32 as u32;
             }
             loop {
-                let mut s_1: *mut State = 0 as *mut State;
-                let mut sum_0: u32 = 0;
                 let mut esc_freq: u32 = 0;
-                let mut mc: *mut Context = 0 as *mut Context;
-                let mut i_0: u32 = 0;
-                let mut num_masked: u32 = 0;
                 while self.low ^ (self.low).wrapping_add(self.range) < K_TOP_VALUE
                     || self.range < K_BOT_VALUE && {
                         self.range = (0 as i32 as u32).wrapping_sub(self.low) & (K_BOT_VALUE - 1);
@@ -194,8 +187,8 @@ impl Ppmd8<Encoder> {
                     self.range <<= 8 as i32;
                     self.low <<= 8 as i32;
                 }
-                mc = self.min_context;
-                num_masked = (*mc).num_stats as u32;
+                let mut mc = self.min_context;
+                let num_masked = (*mc).num_stats as u32;
                 loop {
                     self.order_fall = (self.order_fall).wrapping_add(1);
                     self.order_fall;
@@ -209,16 +202,15 @@ impl Ppmd8<Encoder> {
                 }
                 self.min_context = mc;
                 let see_source = self.make_esc_freq(num_masked, &mut esc_freq);
-                s_1 = (self.base).offset((*self.min_context).union4.stats as isize) as *mut u8
-                    as *mut State;
-                sum_0 = 0 as i32 as u32;
-                i_0 = ((*self.min_context).num_stats as u32).wrapping_add(1 as i32 as u32);
+                let mut s_1 = (self.base).offset((*self.min_context).union4.stats as isize)
+                    as *mut u8 as *mut State;
+                let mut sum_0 = 0 as i32 as u32;
+                let mut i_0 = ((*self.min_context).num_stats as u32).wrapping_add(1 as i32 as u32);
                 loop {
                     let cur: u32 = (*s_1).symbol as u32;
                     if cur as i32 == symbol {
                         let low: u32 = sum_0;
                         let freq_0: u32 = (*s_1).freq as u32;
-                        let mut num2: u32 = 0;
 
                         let see = self.get_see(see_source);
                         if ((*see).shift as i32) < 7 as i32 && {
@@ -232,7 +224,7 @@ impl Ppmd8<Encoder> {
                         }
                         self.found_state = s_1;
                         sum_0 = sum_0.wrapping_add(esc_freq);
-                        num2 = i_0.wrapping_div(2 as i32 as u32);
+                        let mut num2 = i_0.wrapping_div(2 as i32 as u32);
                         i_0 &= 1 as i32 as u32;
                         sum_0 = sum_0.wrapping_add(freq_0 & (0 as i32 as u32).wrapping_sub(i_0));
                         if num2 != 0 as i32 as u32 {
@@ -285,7 +277,6 @@ impl Ppmd8<Encoder> {
                             & *(char_mask.as_mut_ptr() as *mut u8).offset(cur as isize) as u32,
                     ) as u32 as u32;
                     s_1 = s_1.offset(1);
-                    s_1;
                     i_0 = i_0.wrapping_sub(1);
                     if !(i_0 != 0) {
                         break;
@@ -302,7 +293,6 @@ impl Ppmd8<Encoder> {
                     .offset((*self.min_context).union4.stats as isize)
                     as *mut u8 as *mut State;
                 s_1 = s_1.offset(-1);
-                s_1;
                 *(char_mask.as_mut_ptr() as *mut u8).offset((*s_1).symbol as isize) =
                     0 as i32 as u8;
                 loop {
