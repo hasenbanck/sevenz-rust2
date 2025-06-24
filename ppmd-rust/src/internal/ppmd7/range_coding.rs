@@ -9,7 +9,7 @@ pub(crate) struct RangeDecoder<R: Read> {
     pub(crate) range: u32,
     pub(crate) code: u32,
     pub(crate) low: u32,
-    reader: R,
+    pub(crate) reader: R,
 }
 
 impl<R: Read> RangeDecoder<R> {
@@ -104,8 +104,8 @@ pub(crate) struct RangeEncoder<W: Write> {
     pub(crate) range: u32,
     pub(crate) cache: u8,
     pub(crate) low: u64,
-    cache_size: u64,
-    writer: W,
+    pub(crate) cache_size: u64,
+    pub(crate) writer: W,
 }
 
 impl<W: Write> RangeEncoder<W> {

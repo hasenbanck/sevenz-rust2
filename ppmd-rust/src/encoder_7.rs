@@ -5,13 +5,16 @@ use crate::{
     internal::ppmd7::{Ppmd7, RangeEncoder},
 };
 
-/// An encoder to encode data using PPMd7 (PPMdH) with the 7z range coder.
+/// An encoder to compress data using PPMd7 (PPMdH) with the 7z range coder.
 pub struct Ppmd7Encoder<W: Write> {
     ppmd: Ppmd7<RangeEncoder<W>>,
 }
 
 impl<W: Write> Ppmd7Encoder<W> {
-    /// Creates a new [`Ppmd7Encoder`].
+    /// Creates a new [`Ppmd7Encoder`] which provides a writer over the compressed data.
+    ///
+    /// The given `order` must be between [`PPMD7_MIN_ORDER`] and [`PPMD7_MAX_ORDER`] (inclusive).
+    /// The given `mem_size` must be between [`PPMD7_MIN_MEM_SIZE`] and [`PPMD7_MAX_MEM_SIZE`] (inclusive).
     pub fn new(writer: W, order: u32, mem_size: u32) -> crate::Result<Self> {
         if !(PPMD7_MIN_ORDER..=PPMD7_MAX_ORDER).contains(&order)
             || !(PPMD7_MIN_MEM_SIZE..=PPMD7_MAX_MEM_SIZE).contains(&mem_size)
@@ -22,6 +25,11 @@ impl<W: Write> Ppmd7Encoder<W> {
         let ppmd = Ppmd7::new_encoder(writer, order, mem_size)?;
 
         Ok(Self { ppmd })
+    }
+
+    /// Returns the inner writer.
+    pub fn into_inner(self) -> W {
+        self.ppmd.into_inner()
     }
 
     fn inner_flush(&mut self) -> Result<(), std::io::Error> {

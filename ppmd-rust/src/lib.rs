@@ -1,7 +1,9 @@
 //! PPMd compression / decompression. It's a port of the PPMd C-code from 7-Zip to Rust.
 //!
-//! The PPMd7 (PPMdH) with the 7z range coder (as used by the 7z archive format) and
-//! the PPMd8 (PPMdI) (as used by the zip archive format) are ported.
+//! The following variants are provided:
+//!
+//! - The PPMd7 (PPMdH) as used by the 7z archive format
+//! - The PPMd8 (PPMdI rev.1) as used by the zip archive format
 mod decoder_7;
 mod encoder_7;
 

@@ -5,6 +5,7 @@ mod range_coding;
 use std::{
     alloc::{Layout, alloc, dealloc},
     io::{Read, Write},
+    mem::ManuallyDrop,
     ptr::{NonNull, write_bytes},
 };
 
@@ -1208,7 +1209,7 @@ impl<RC> Ppmd7<RC> {
 }
 
 impl<R: Read> Ppmd7<RangeDecoder<R>> {
-    pub fn new_decoder(
+    pub(crate) fn new_decoder(
         reader: R,
         order: u32,
         mem_size: u32,
@@ -1217,13 +1218,23 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
         Self::new(range_decoder, order, mem_size)
     }
 
-    pub fn range_decoder_code(&self) -> u32 {
+    pub(crate) fn into_inner(self) -> R {
+        unsafe {
+            dealloc(self.memory_ptr.as_ptr(), self.memory_layout);
+        }
+        let manual_drop_self = ManuallyDrop::new(self);
+        let rc = unsafe { std::ptr::read(&manual_drop_self.rc) };
+        let RangeDecoder { reader, .. } = rc;
+        reader
+    }
+
+    pub(crate) fn range_decoder_code(&self) -> u32 {
         self.rc.code
     }
 }
 
 impl<W: Write> Ppmd7<RangeEncoder<W>> {
-    pub fn new_encoder(
+    pub(crate) fn new_encoder(
         writer: W,
         order: u32,
         mem_size: u32,
@@ -1232,7 +1243,17 @@ impl<W: Write> Ppmd7<RangeEncoder<W>> {
         Self::new(range_encoder, order, mem_size)
     }
 
-    pub fn flush_range_encoder(&mut self) -> Result<(), std::io::Error> {
+    pub(crate) fn into_inner(self) -> W {
+        unsafe {
+            dealloc(self.memory_ptr.as_ptr(), self.memory_layout);
+        }
+        let manual_drop_self = ManuallyDrop::new(self);
+        let rc = unsafe { std::ptr::read(&manual_drop_self.rc) };
+        let RangeEncoder { writer, .. } = rc;
+        writer
+    }
+
+    pub(crate) fn flush_range_encoder(&mut self) -> Result<(), std::io::Error> {
         self.rc.flush()
     }
 }
