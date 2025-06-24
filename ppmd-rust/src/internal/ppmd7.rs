@@ -249,8 +249,8 @@ impl<RC> Ppmd7<RC> {
         Ok(ppmd)
     }
 
-    unsafe fn ptr_of_offset(&self, offset: isize) -> NonNull<u8> {
-        unsafe { self.memory_ptr.offset(offset) }
+    unsafe fn ptr_of_offset(&self, offset: u32) -> NonNull<u8> {
+        unsafe { self.memory_ptr.offset(offset as isize) }
     }
 
     unsafe fn offset_for_ptr(&self, ptr: NonNull<u8>) -> u32 {
@@ -270,7 +270,7 @@ impl<RC> Ppmd7<RC> {
     unsafe fn remove_node(&mut self, index: u32) -> NonNull<u8> {
         unsafe {
             let node = self
-                .ptr_of_offset(self.free_list[index as usize] as isize)
+                .ptr_of_offset(self.free_list[index as usize])
                 .cast::<u32>();
             self.free_list[index as usize] = *node.as_ref();
             node.cast()
@@ -321,7 +321,7 @@ impl<RC> Ppmd7<RC> {
                 while next != 0 {
                     // Don't change the order of the following commands:
                     let un = self
-                        .ptr_of_offset(next as isize)
+                        .ptr_of_offset(next)
                         .cast::<Node>()
                         .cast::<NodeUnion>()
                         .as_mut();
@@ -348,7 +348,7 @@ impl<RC> Ppmd7<RC> {
         unsafe {
             let mut prev = head;
             while n != 0 {
-                let mut node = self.ptr_of_offset(n as isize).cast::<Node>();
+                let mut node = self.ptr_of_offset(n).cast::<Node>();
                 let mut nu = node.as_ref().nu as u32;
                 n = node.as_ref().next;
                 if nu == 0 {
@@ -374,7 +374,7 @@ impl<RC> Ppmd7<RC> {
         unsafe {
             let mut n = head;
             while n != 0 {
-                let mut node = self.ptr_of_offset(n as isize).cast::<Node>();
+                let mut node = self.ptr_of_offset(n).cast::<Node>();
                 let mut nu = node.as_ref().nu as u32;
 
                 n = node.as_ref().next;
@@ -458,7 +458,7 @@ impl<RC> Ppmd7<RC> {
     unsafe fn get_successor(&mut self, s: NonNull<State>) -> NonNull<Context> {
         unsafe {
             self.ptr_of_offset(
-                (s.as_ref().successor_0 as u32 | (s.as_ref().successor_1 as u32) << 16) as isize,
+                s.as_ref().successor_0 as u32 | (s.as_ref().successor_1 as u32) << 16,
             )
             .cast()
         }
@@ -469,7 +469,7 @@ impl<RC> Ppmd7<RC> {
         unsafe {
             self.free_list = [0; 38];
 
-            self.text = self.ptr_of_offset(self.align_offset as isize);
+            self.text = self.ptr_of_offset(self.align_offset);
             self.hi_unit = self.text.offset(self.size as isize);
             self.units_start = self
                 .hi_unit
@@ -566,7 +566,7 @@ impl<RC> Ppmd7<RC> {
 
             while c.as_ref().suffix != 0 {
                 let mut s;
-                c = self.ptr_of_offset(c.as_ref().suffix as isize).cast();
+                c = self.ptr_of_offset(c.as_ref().suffix).cast();
 
                 if c.as_ref().num_stats != 1 {
                     let sym = self.found_state.as_ref().symbol;
@@ -581,7 +581,7 @@ impl<RC> Ppmd7<RC> {
                     s.as_ref().successor_0 as u32 | (s.as_ref().successor_1 as u32) << 16;
                 if successor != up_branch {
                     // c is the real record Context here.
-                    c = self.ptr_of_offset(successor as isize).cast();
+                    c = self.ptr_of_offset(successor).cast();
                     if num_ps == 0 {
                         // c is the real record MAX Order Context here,
                         // so we don't need to create any new contexts.
@@ -599,7 +599,7 @@ impl<RC> Ppmd7<RC> {
             // All new RAW-successors will point to next position in RAW text
             // after `found_state.successor`
             let new_freq;
-            let new_sym = *self.ptr_of_offset(up_branch as isize).cast::<u8>().as_ref();
+            let new_sym = *self.ptr_of_offset(up_branch).cast::<u8>().as_ref();
             up_branch += 1;
 
             if c.as_ref().num_stats == 1 {
@@ -667,7 +667,7 @@ impl<RC> Ppmd7<RC> {
 
             if self.found_state.as_ref().freq < MAX_FREQ / 4 && mc.as_ref().suffix != 0 {
                 // Update freqs in suffix context
-                c = self.ptr_of_offset(mc.as_ref().suffix as isize).cast();
+                c = self.ptr_of_offset(mc.as_ref().suffix).cast();
 
                 if c.as_ref().num_stats == 1 {
                     let s = self.get_one_state(c).as_mut();
@@ -782,7 +782,7 @@ impl<RC> Ppmd7<RC> {
             let mc = self.min_context;
             c = self.max_context;
 
-            self.min_context = self.ptr_of_offset(min_successor as isize).cast();
+            self.min_context = self.ptr_of_offset(min_successor).cast();
             self.max_context = self.min_context;
 
             if c == mc {
@@ -867,7 +867,7 @@ impl<RC> Ppmd7<RC> {
                 c.as_mut().union2.summ_freq = sum as u16;
                 s.as_mut().freq = cf as u8;
 
-                c = self.ptr_of_offset(c.as_ref().suffix as isize).cast();
+                c = self.ptr_of_offset(c.as_ref().suffix).cast();
             }
         }
     }
@@ -1042,7 +1042,7 @@ impl<RC> Ppmd7<RC> {
             let non_masked = num_stats - num_masked;
             let base_context_idx = self.ns2index[(non_masked as usize) - 1] as usize;
 
-            let suffix_context = self.ptr_of_offset(mc.suffix as isize).cast::<Context>();
+            let suffix_context = self.ptr_of_offset(mc.suffix).cast::<Context>();
             let suffix_num_stats = suffix_context.as_ref().num_stats as u32;
             let summ_freq = mc.union2.summ_freq as u32;
 
@@ -1169,7 +1169,7 @@ impl<RC> Ppmd7<RC> {
             let freq_bin_idx = state.as_ref().freq as usize;
 
             let num_stats = self
-                .ptr_of_offset(self.min_context.as_ref().suffix as isize)
+                .ptr_of_offset(self.min_context.as_ref().suffix)
                 .cast::<Context>()
                 .as_ref()
                 .num_stats as usize;
@@ -1186,7 +1186,7 @@ impl<RC> Ppmd7<RC> {
 
     #[inline(always)]
     unsafe fn get_context(&mut self, suffix: u32) -> NonNull<Context> {
-        unsafe { self.ptr_of_offset(suffix as isize).cast() }
+        unsafe { self.ptr_of_offset(suffix).cast() }
     }
 
     #[inline(always)]
@@ -1201,10 +1201,7 @@ impl<RC> Ppmd7<RC> {
 
     #[inline(always)]
     unsafe fn get_stats(&mut self, mut context: NonNull<Context>) -> NonNull<State> {
-        unsafe {
-            self.ptr_of_offset(context.as_mut().union4.stats as isize)
-                .cast()
-        }
+        unsafe { self.ptr_of_offset(context.as_mut().union4.stats).cast() }
     }
 }
 
