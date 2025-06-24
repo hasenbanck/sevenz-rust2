@@ -1219,10 +1219,13 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
     }
 
     pub(crate) fn into_inner(self) -> R {
-        unsafe {
-            dealloc(self.memory_ptr.as_ptr(), self.memory_layout);
-        }
         let manual_drop_self = ManuallyDrop::new(self);
+        unsafe {
+            dealloc(
+                manual_drop_self.memory_ptr.as_ptr(),
+                manual_drop_self.memory_layout,
+            );
+        }
         let rc = unsafe { std::ptr::read(&manual_drop_self.rc) };
         let RangeDecoder { reader, .. } = rc;
         reader
@@ -1244,10 +1247,13 @@ impl<W: Write> Ppmd7<RangeEncoder<W>> {
     }
 
     pub(crate) fn into_inner(self) -> W {
-        unsafe {
-            dealloc(self.memory_ptr.as_ptr(), self.memory_layout);
-        }
         let manual_drop_self = ManuallyDrop::new(self);
+        unsafe {
+            dealloc(
+                manual_drop_self.memory_ptr.as_ptr(),
+                manual_drop_self.memory_layout,
+            );
+        }
         let rc = unsafe { std::ptr::read(&manual_drop_self.rc) };
         let RangeEncoder { writer, .. } = rc;
         writer
