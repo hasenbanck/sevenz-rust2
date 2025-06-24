@@ -1,8 +1,7 @@
 use std::io::Read;
 
 use crate::{
-    Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Encoder,
-    SYM_END,
+    Error, PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, SYM_END,
     internal::ppmd7::{Ppmd7, RangeDecoder},
 };
 
