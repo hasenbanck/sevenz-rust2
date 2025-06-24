@@ -7,7 +7,7 @@ use std::{
     ptr::{NonNull, write_bytes},
 };
 
-use super::PPMD_NUM_INDEXES;
+use super::{PPMD_BIN_SCALE, PPMD_NUM_INDEXES, PPMD_PERIOD_BITS};
 use crate::{Error, RestoreMethod};
 
 const MAX_FREQ: u8 = 124;
@@ -272,9 +272,9 @@ impl<RC> Ppmd8<RC> {
         unsafe { self.memory_ptr.offset(offset).as_ptr() }
     }
 
-    unsafe fn offset_for_ptr(&self, ptr: NonNull<u8>) -> u32 {
+    unsafe fn offset_for_ptr(&self, ptr: *mut u8) -> u32 {
         unsafe {
-            let offset = ptr.offset_from(self.memory_ptr);
+            let offset = ptr.offset_from(self.memory_ptr.as_ptr());
             u32::try_from(offset).expect("Failed to convert ptr to offset")
         }
     }
@@ -545,94 +545,83 @@ impl<RC> Ppmd8<RC> {
     unsafe fn restart_model(&mut self) {
         unsafe {
             self.free_list = [0; 38];
+
             self.stamps = [0; 38];
-            self.text = (self.base).offset(self.align_offset as isize).offset(0);
-            self.hi_unit = (self.text).offset(self.size as isize);
-            self.units_start = (self.hi_unit)
-                .offset(-((self.size / 8 / UNIT_SIZE as u32 * 7 * UNIT_SIZE as u32) as isize));
+            self.text = self.ptr_of_offset(self.align_offset as isize);
+            self.hi_unit = self.text.offset(self.size as isize);
+            self.units_start = self
+                .hi_unit
+                .offset(-(self.size as isize / 8 / UNIT_SIZE * 7 * UNIT_SIZE));
             self.lo_unit = self.units_start;
             self.glue_count = 0;
+
             self.order_fall = self.max_order;
-            self.init_rl = -((if self.max_order < 12 {
-                self.max_order
+            self.init_rl = -(if self.max_order < 12 {
+                self.max_order as i32
             } else {
                 12
-            }) as i32)
-                - 1;
+            }) - 1;
             self.run_length = self.init_rl;
             self.prev_success = 0;
-            self.hi_unit = (self.hi_unit).offset(-(UNIT_SIZE));
+
+            self.hi_unit = self.hi_unit.offset(-UNIT_SIZE);
             let mc: *mut Context = self.hi_unit as *mut Context;
-            let mut s: *mut State = self.lo_unit as *mut State;
-            self.lo_unit =
-                (self.lo_unit).offset(((256 as i32 / 2) as u32 * UNIT_SIZE as u32) as isize);
+            let s: *mut State = self.lo_unit as *mut State;
+
+            self.lo_unit = self.lo_unit.offset((256 / 2) * UNIT_SIZE);
             self.min_context = mc;
             self.max_context = self.min_context;
             self.found_state = s;
-            (*mc).flags = 0 as u8;
-            (*mc).num_stats = (256 as i32 - 1) as u8;
-            (*mc).union2.summ_freq = (256 as i32 + 1) as u16;
-            (*mc).union4.stats = (s as *mut u8).offset_from(self.base) as u32;
-            (*mc).suffix = 0;
-            let mut i = 0u32;
-            while i < 256 {
+
+            {
+                (*mc).flags = 0;
+                (*mc).num_stats = (256 - 1) as u8;
+                (*mc).union2.summ_freq = (256 + 1) as u16;
+                (*mc).union4.stats = self.offset_for_ptr(s.cast());
+                (*mc).suffix = 0;
+            }
+
+            (0..256).for_each(|i| {
+                let s = s.offset(i);
                 (*s).symbol = i as u8;
-                (*s).freq = 1 as u8;
+                (*s).freq = 1;
                 Self::set_successor(s, 0);
-                i = i.wrapping_add(1);
-                s = s.offset(1);
-            }
+            });
 
-            let mut m = 0;
-            i = m;
-            while m < 25 {
-                while self.ns2index[i as usize] as u32 == m {
-                    i = i.wrapping_add(1);
+            let mut i = 0;
+            (0..25).for_each(|m| {
+                while self.ns2index[i as usize] as usize == m {
+                    i += 1;
                 }
 
-                let mut k = 0u32;
-                while k < 8 {
-                    let mut r = 0u32;
-                    let dest: *mut u16 =
-                        (self.bin_summ[m as usize]).as_mut_ptr().offset(k as isize);
-                    let val = ((1 << 7 + 7) as u32).wrapping_sub(
-                        (K_INIT_BIN_ESC[k as usize] as u32).wrapping_div(i.wrapping_add(1)),
-                    ) as u16;
-                    r = 0;
-                    while r < 64 {
-                        *dest.offset(r as isize) = val;
-                        r = r.wrapping_add(8);
-                    }
-                    k = k.wrapping_add(1);
-                }
-                m = m.wrapping_add(1);
-            }
-            m = 0;
-            i = m;
-            while m < 24 {
-                let mut summ = 0;
-                let mut s_0: *mut See = std::ptr::null_mut();
-                while self.ns2index[(i as usize).wrapping_add(3 as i32 as usize) as usize] as u32
-                    == m.wrapping_add(3)
-                {
-                    i = i.wrapping_add(1);
-                }
-                s_0 = (self.see[m as usize]).as_mut_ptr();
-                summ = 2u32.wrapping_mul(i).wrapping_add(5) << 7 - 4;
+                (0..8).for_each(|k| {
+                    let val = PPMD_BIN_SCALE - (K_INIT_BIN_ESC[k] as u32) / (i + 1);
 
-                let mut k = 0u32;
-                while k < 32 {
-                    (*s_0).summ = summ as u16;
-                    (*s_0).shift = (7 as i32 - 4) as u8;
-                    (*s_0).count = 7 as u8;
-                    k = k.wrapping_add(1);
-                    s_0 = s_0.offset(1);
+                    (0..64).step_by(8).for_each(|r| {
+                        self.bin_summ[m][k + r] = val as u16;
+                    });
+                });
+            });
+
+            let mut i = 0;
+            (0..24).for_each(|m| {
+                while self.ns2index[(i + 3) as usize] as usize == m + 3 {
+                    i += 1;
                 }
-                m = m.wrapping_add(1);
-            }
-            self.dummy_see.summ = 0 as u16;
-            self.dummy_see.shift = 7 as u8;
-            self.dummy_see.count = 64 as u8;
+
+                let summ = (2 * i + 5) << (PPMD_PERIOD_BITS - 4);
+
+                (0..32).for_each(|k| {
+                    let see = &mut self.see[m][k];
+                    see.summ = summ as u16;
+                    see.shift = (PPMD_PERIOD_BITS - 4) as u8;
+                    see.count = 7;
+                });
+            });
+
+            self.dummy_see.summ = 0;
+            self.dummy_see.shift = PPMD_PERIOD_BITS as u8;
+            self.dummy_see.count = 64;
         }
     }
 
