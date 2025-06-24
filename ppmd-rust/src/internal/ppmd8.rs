@@ -268,8 +268,8 @@ impl<RC> Ppmd8<RC> {
         Ok(ppmd)
     }
 
-    unsafe fn ptr_of_offset(&self, offset: isize) -> NonNull<u8> {
-        unsafe { self.memory_ptr.offset(offset) }
+    unsafe fn ptr_of_offset(&self, offset: isize) -> *mut u8 {
+        unsafe { self.memory_ptr.offset(offset).as_ptr() }
     }
 
     unsafe fn offset_for_ptr(&self, ptr: NonNull<u8>) -> u32 {
@@ -293,8 +293,7 @@ impl<RC> Ppmd8<RC> {
         unsafe {
             let node: *mut Node = self
                 .ptr_of_offset(self.free_list[index as usize] as isize)
-                .cast()
-                .as_mut();
+                .cast();
             self.free_list[index as usize] = (*node).next;
             self.stamps[index as usize] -= 1;
             node as *mut u8
@@ -535,7 +534,7 @@ impl<RC> Ppmd8<RC> {
         }
     }
 
-    unsafe fn get_successor(&mut self, s: *mut State) -> NonNull<Context> {
+    unsafe fn get_successor(&mut self, s: *mut State) -> *mut Context {
         unsafe {
             self.ptr_of_offset(((*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16) as isize)
                 .cast()
@@ -821,12 +820,12 @@ impl<RC> Ppmd8<RC> {
         unsafe {
             let mut c: *mut Context = std::ptr::null_mut();
             let mut s: *mut State = std::ptr::null_mut();
-            self.text = (self.base).offset(self.align_offset as isize).offset(0);
+            self.text = self.ptr_of_offset(self.align_offset as isize).offset(0);
             c = self.max_context;
             while c != ctx_error {
                 (*c).num_stats = ((*c).num_stats).wrapping_sub(1);
                 if (*c).num_stats as i32 == 0 {
-                    s = (self.base).offset((*c).union4.stats as isize) as *mut State;
+                    s = self.ptr_of_offset((*c).union4.stats as isize) as *mut State;
                     (*c).flags = (((*c).flags as i32 & 1 << 4) as u32).wrapping_add(
                         ((*s).symbol as u32).wrapping_add(0xC0) >> 8 - 3 & (1 << 3) as u32,
                     ) as u8;
@@ -838,7 +837,7 @@ impl<RC> Ppmd8<RC> {
                 } else {
                     self.refresh(c, ((*c).num_stats as u32).wrapping_add(3) >> 1, 0);
                 }
-                c = (self.base).offset((*c).suffix as isize) as *mut Context;
+                c = self.ptr_of_offset((*c).suffix as isize) as *mut Context;
             }
             while c != self.min_context {
                 if (*c).num_stats as i32 == 0 {
@@ -850,7 +849,7 @@ impl<RC> Ppmd8<RC> {
                         self.refresh(c, ((*c).num_stats as u32).wrapping_add(2) >> 1, 1);
                     }
                 }
-                c = (self.base).offset((*c).suffix as isize) as *mut Context;
+                c = self.ptr_of_offset((*c).suffix as isize) as *mut Context;
             }
             if self.restore_method == RestoreMethod::Restart
                 || self.get_used_memory() < self.size >> 1
@@ -859,7 +858,7 @@ impl<RC> Ppmd8<RC> {
             } else {
                 while (*self.max_context).suffix != 0 {
                     self.max_context =
-                        (self.base).offset((*self.max_context).suffix as isize) as *mut Context;
+                        self.ptr_of_offset((*self.max_context).suffix as isize) as *mut Context;
                 }
                 loop {
                     self.cut_off(self.max_context, 0);
@@ -898,13 +897,13 @@ impl<RC> Ppmd8<RC> {
             while (*c).suffix != 0 {
                 let mut successor = 0;
                 let mut s: *mut State = std::ptr::null_mut();
-                c = (self.base).offset((*c).suffix as isize) as *mut Context;
+                c = self.ptr_of_offset((*c).suffix as isize) as *mut Context;
                 if !s1.is_null() {
                     s = s1;
                     s1 = std::ptr::null_mut();
                 } else if (*c).num_stats as i32 != 0 {
                     let sym = (*self.found_state).symbol;
-                    s = (self.base).offset((*c).union4.stats as isize) as *mut State;
+                    s = self.ptr_of_offset((*c).union4.stats as isize) as *mut State;
                     while (*s).symbol as i32 != sym as i32 {
                         s = s.offset(1);
                     }
@@ -917,14 +916,14 @@ impl<RC> Ppmd8<RC> {
                 } else {
                     s = &mut (*c).union2 as *mut Union2 as *mut State;
                     (*s).freq = ((*s).freq as i32
-                        + (((*((self.base).offset((*c).suffix as isize) as *mut Context)).num_stats
+                        + (((*(self.ptr_of_offset((*c).suffix as isize) as *mut Context)).num_stats
                             == 0) as i32
                             & (((*s).freq as i32) < 24) as i32))
                         as u8;
                 }
                 successor = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
                 if successor != up_branch {
-                    c = (self.base).offset(successor as isize) as *mut Context;
+                    c = self.ptr_of_offset(successor as isize) as *mut Context;
                     if num_ps == 0 {
                         return c;
                     }
@@ -935,7 +934,7 @@ impl<RC> Ppmd8<RC> {
                     ps[fresh3 as usize] = s;
                 }
             }
-            new_sym = *((self.base).offset(up_branch as isize) as *const u8);
+            new_sym = *(self.ptr_of_offset(up_branch as isize) as *const u8);
             up_branch = up_branch.wrapping_add(1);
             flags = (((*self.found_state).symbol as u32).wrapping_add(0xC0) >> 8 - 4
                 & (1 << 4) as u32)
@@ -947,7 +946,7 @@ impl<RC> Ppmd8<RC> {
                 let mut cf = 0;
                 let mut s0 = 0;
                 let mut s_0: *mut State = std::ptr::null_mut();
-                s_0 = (self.base).offset((*c).union4.stats as isize) as *mut State;
+                s_0 = self.ptr_of_offset((*c).union4.stats as isize) as *mut State;
                 while (*s_0).symbol as i32 != new_sym as i32 {
                     s_0 = s_0.offset(1);
                 }
@@ -1005,16 +1004,16 @@ impl<RC> Ppmd8<RC> {
             self.order_fall;
             loop {
                 if !s1.is_null() {
-                    c = (self.base).offset((*c).suffix as isize) as *mut Context;
+                    c = self.ptr_of_offset((*c).suffix as isize) as *mut Context;
                     s = s1;
                     s1 = std::ptr::null_mut();
                 } else {
                     if (*c).suffix == 0 {
                         return c;
                     }
-                    c = (self.base).offset((*c).suffix as isize) as *mut Context;
+                    c = self.ptr_of_offset((*c).suffix as isize) as *mut Context;
                     if (*c).num_stats != 0 {
-                        s = (self.base).offset((*c).union4.stats as isize) as *mut State;
+                        s = self.ptr_of_offset((*c).union4.stats as isize) as *mut State;
                         if (*s).symbol as i32 != (*self.found_state).symbol as i32 {
                             loop {
                                 s = s.offset(1);
@@ -1061,7 +1060,7 @@ impl<RC> Ppmd8<RC> {
                 return std::ptr::null_mut();
             }
 
-            self.ptr_of_offset(successor_0 as isize).cast().as_mut()
+            self.ptr_of_offset(successor_0 as isize).cast()
         }
     }
 
@@ -1079,7 +1078,7 @@ impl<RC> Ppmd8<RC> {
             let f_symbol = (*self.found_state).symbol;
             let mut s: *mut State = std::ptr::null_mut();
             if ((*self.found_state).freq) < MAX_FREQ / 4 && (*self.min_context).suffix != 0 {
-                c = (self.base).offset((*self.min_context).suffix as isize) as *mut Context;
+                c = self.ptr_of_offset((*self.min_context).suffix as isize) as *mut Context;
                 if (*c).num_stats as i32 == 0 {
                     s = &mut (*c).union2 as *mut Union2 as *mut State;
                     if ((*s).freq as i32) < 32 {
@@ -1088,7 +1087,7 @@ impl<RC> Ppmd8<RC> {
                     }
                 } else {
                     let sym = (*self.found_state).symbol;
-                    s = (self.base).offset((*c).union4.stats as isize) as *mut State;
+                    s = self.ptr_of_offset((*c).union4.stats as isize) as *mut State;
                     if (*s).symbol as i32 != sym as i32 {
                         loop {
                             s = s.offset(1);
@@ -1140,7 +1139,7 @@ impl<RC> Ppmd8<RC> {
                     return;
                 }
                 min_successor = (cs_0 as *mut u8).offset_from(self.base) as u32;
-            } else if ((self.base).offset(min_successor as isize)) < self.units_start {
+            } else if (self.ptr_of_offset(min_successor as isize)) < self.units_start {
                 let cs_1: *mut Context = self.create_successors(0 as i32, s, self.min_context);
                 if cs_1.is_null() {
                     self.restore_model(c);
@@ -1179,7 +1178,7 @@ impl<RC> Ppmd8<RC> {
                                 self.restore_model(c);
                                 return;
                             }
-                            old_ptr = (self.base).offset((*c).union4.stats as isize) as *mut State
+                            old_ptr = self.ptr_of_offset((*c).union4.stats as isize) as *mut State
                                 as *mut u8;
                             let mut d: *mut u32 = ptr as *mut u32;
                             let mut z: *const u32 = old_ptr as *const u32;
@@ -1222,7 +1221,7 @@ impl<RC> Ppmd8<RC> {
                         .wrapping_add(self.init_esc)
                         .wrapping_add((ns > 2) as u32);
                 }
-                let s_1: *mut State = ((self.base).offset((*c).union4.stats as isize)
+                let s_1: *mut State = (self.ptr_of_offset((*c).union4.stats as isize)
                     as *mut State)
                     .offset(ns1 as isize)
                     .offset(1);
@@ -1246,9 +1245,9 @@ impl<RC> Ppmd8<RC> {
                 }
                 (*c).union2.summ_freq = sum as u16;
                 (*s_1).freq = cf as u8;
-                c = (self.base).offset((*c).suffix as isize) as *mut Context;
+                c = self.ptr_of_offset((*c).suffix as isize) as *mut Context;
             }
-            self.min_context = (self.base).offset(min_successor as isize) as *mut Context;
+            self.min_context = self.ptr_of_offset(min_successor as isize) as *mut Context;
             self.max_context = self.min_context;
         }
     }
@@ -1261,7 +1260,7 @@ impl<RC> Ppmd8<RC> {
             let mut sum_freq = 0;
             let mut esc_freq = 0;
             let stats: *mut State =
-                (self.base).offset((*self.min_context).union4.stats as isize) as *mut State;
+                self.ptr_of_offset((*self.min_context).union4.stats as isize) as *mut State;
             let mut s: *mut State = self.found_state;
             if s != stats {
                 let tmp: State = *s;
@@ -1356,7 +1355,7 @@ impl<RC> Ppmd8<RC> {
             (*mc_0).union2.summ_freq =
                 sum_freq.wrapping_add(esc_freq).wrapping_sub(esc_freq >> 1) as u16;
             (*mc_0).flags = ((*mc_0).flags as i32 | 1 << 2) as u8;
-            self.found_state = (self.base).offset((*mc_0).union4.stats as isize) as *mut State;
+            self.found_state = self.ptr_of_offset((*mc_0).union4.stats as isize) as *mut State;
         }
     }
 
@@ -1394,7 +1393,7 @@ impl<RC> Ppmd8<RC> {
             let base_context_idx = self.ns2index[(num_stats + 2) as usize] as usize - 3;
 
             let suffix_context = self.ptr_of_offset((*mc).suffix as isize).cast::<Context>();
-            let suffix_num_stats = suffix_context.as_ref().num_stats as u32;
+            let suffix_num_stats = (*suffix_context).num_stats as u32;
             let summ_freq = (*mc).union2.summ_freq as u32;
 
             let freq_distribution_hash = (summ_freq > 11 * (num_stats + 1)) as usize;
@@ -1419,8 +1418,8 @@ impl<RC> Ppmd8<RC> {
     unsafe fn next_context(&mut self) {
         unsafe {
             let c = self.get_successor(self.found_state);
-            if self.order_fall == 0 && c.addr().get() >= self.units_start.addr() {
-                self.min_context = c.as_ptr();
+            if self.order_fall == 0 && c.addr() >= self.units_start.addr() {
+                self.min_context = c;
                 self.max_context = self.min_context;
             } else {
                 self.update_model();

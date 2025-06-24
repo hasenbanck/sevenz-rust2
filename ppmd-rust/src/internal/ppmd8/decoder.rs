@@ -159,10 +159,8 @@ impl Ppmd8<Decoder> {
                     self.run_length += 1;
                     self.run_length;
                     (*s_0).freq = freq.wrapping_add((freq < 196 as i32 as u32) as i32 as u32) as u8;
-                    if self.order_fall == 0 as i32 as u32
-                        && c.as_ptr() as *const u8 >= self.units_start as *const u8
-                    {
-                        self.min_context = c.as_ptr();
+                    if self.order_fall == 0 as i32 as u32 && c.addr() >= self.units_start.addr() {
+                        self.min_context = c;
                         self.max_context = self.min_context;
                     } else {
                         self.update_model();
