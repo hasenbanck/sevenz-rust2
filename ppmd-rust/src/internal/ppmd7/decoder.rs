@@ -12,8 +12,8 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
             let mut char_mask: [u8; 256];
 
             if self.min_context.as_ref().num_stats != 1 {
-                let mut s = self.get_stats(self.min_context);
-                let summ_freq = self.min_context.as_ref().union2.summ_freq as u32;
+                let mut s = self.get_multi_state_stats(self.min_context);
+                let summ_freq = self.min_context.as_ref().data.multi_state.summ_freq as u32;
 
                 let mut count = self.rc.get_threshold(summ_freq);
                 let hi_cnt = count;
@@ -54,10 +54,10 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
                 self.hi_bits_flag = Self::hi_bits_flag3(self.found_state.as_ref().symbol as u32);
                 char_mask = [u8::MAX; 256];
 
-                let s2 = self.get_stats(self.min_context);
+                let s2 = self.get_multi_state_stats(self.min_context);
                 Self::mask_symbols(&mut char_mask, s, s2);
             } else {
-                let s = self.get_one_state(self.min_context);
+                let s = self.get_single_state(self.min_context);
                 let prob: *mut u16 = self.get_bin_summ();
                 let mut pr: u32 = *prob as u32;
                 let size0: u32 = (self.rc.range >> 14) * pr;
@@ -79,7 +79,7 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
                 self.rc.decode_bit_1(size0);
 
                 char_mask = [u8::MAX; 256];
-                let symbol = self.get_one_state(self.min_context).as_ref().symbol as usize;
+                let symbol = self.get_single_state(self.min_context).as_ref().symbol as usize;
                 char_mask[symbol] = 0;
                 self.prev_success = 0;
             }
@@ -96,7 +96,7 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
                     mc = self.get_context(mc.as_ref().suffix);
                 }
 
-                let mut s = self.get_stats(mc);
+                let mut s = self.get_multi_state_stats(mc);
 
                 let mut num = mc.as_ref().num_stats as u32;
                 let mut num2 = num / 2;
@@ -124,7 +124,7 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
                 let mut count = self.rc.get_threshold(freq_sum);
 
                 if count < hi_cnt {
-                    s = self.get_stats(self.min_context);
+                    s = self.get_multi_state_stats(self.min_context);
                     hi_cnt = count;
                     loop {
                         count = count.wrapping_sub(
@@ -164,7 +164,7 @@ impl<R: Read> Ppmd7<RangeDecoder<R>> {
                 let see = self.get_see(see_source);
                 see.summ = see.summ.wrapping_add(freq_sum as u16);
 
-                s = self.get_stats(self.min_context);
+                s = self.get_multi_state_stats(self.min_context);
                 let s2 = s.offset(self.min_context.as_ref().num_stats as i32 as isize);
                 while s.addr() < s2.addr() {
                     char_mask[s.as_ref().symbol as usize] = 0;

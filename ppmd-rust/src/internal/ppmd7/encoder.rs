@@ -9,9 +9,9 @@ impl<W: Write> Ppmd7<RangeEncoder<W>> {
             let mut char_mask: [u8; 256];
 
             if self.min_context.as_ref().num_stats != 1 {
-                let mut s = self.get_stats(self.min_context);
+                let mut s = self.get_multi_state_stats(self.min_context);
 
-                self.rc.range /= self.min_context.as_ref().union2.summ_freq as u32;
+                self.rc.range /= self.min_context.as_ref().data.multi_state.summ_freq as u32;
 
                 if s.as_ref().symbol == symbol {
                     self.rc.encode_final(0, s.as_ref().freq as u32)?;
@@ -36,16 +36,16 @@ impl<W: Write> Ppmd7<RangeEncoder<W>> {
 
                 self.rc.encode(
                     sum,
-                    (self.min_context.as_ref().union2.summ_freq as u32) - sum,
+                    (self.min_context.as_ref().data.multi_state.summ_freq as u32) - sum,
                 );
 
                 self.hi_bits_flag = Self::hi_bits_flag3(self.found_state.as_ref().symbol as u32);
                 char_mask = [u8::MAX; 256];
 
-                let s2 = self.get_stats(self.min_context);
+                let s2 = self.get_multi_state_stats(self.min_context);
                 Self::mask_symbols(&mut char_mask, s, s2);
             } else {
-                let s = self.get_one_state(self.min_context);
+                let s = self.get_single_state(self.min_context);
                 let range = self.rc.range;
                 let prob = self.get_bin_summ();
 
@@ -93,7 +93,7 @@ impl<W: Write> Ppmd7<RangeEncoder<W>> {
                 self.min_context = mc;
 
                 let mut esc_freq = 0;
-                let mut s = self.get_stats(mc);
+                let mut s = self.get_multi_state_stats(mc);
                 let see_source = self.make_esc_freq(num_masked, &mut esc_freq);
                 let mut sum = 0;
 
@@ -144,7 +144,7 @@ impl<W: Write> Ppmd7<RangeEncoder<W>> {
                     self.rc.encode(sum, esc_freq);
                 }
 
-                let s2 = self.get_stats(self.min_context);
+                let s2 = self.get_multi_state_stats(self.min_context);
                 s = s.offset(-1);
                 Self::mask_symbols(&mut char_mask, s, s2);
             }

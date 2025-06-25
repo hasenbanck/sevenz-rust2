@@ -63,38 +63,23 @@ struct State {
 
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
-struct State2 {
-    symbol: u8,
-    freq: u8,
-}
-
-#[derive(Copy, Clone)]
-#[repr(C, packed)]
-struct State4 {
-    successor_0: u16,
-    successor_1: u16,
-}
-
-#[derive(Copy, Clone)]
-#[repr(C, packed)]
-union Union2 {
+struct MultiState {
     summ_freq: u16,
-    state2: State2,
+    stats: u32,
 }
 
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
-union Union4 {
-    stats: u32,
-    state4: State4,
+union ContextData {
+    single_state: State,
+    multi_state: MultiState,
 }
 
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
 struct Context {
     num_stats: u16,
-    union2: Union2,
-    union4: Union4,
+    data: ContextData,
     suffix: u32,
 }
 
@@ -498,8 +483,8 @@ impl<RC> Ppmd7<RC> {
             {
                 let mc = mc.as_mut();
                 mc.num_stats = 256;
-                mc.union2.summ_freq = (256 + 1) as u16;
-                mc.union4.stats = self.offset_for_ptr(s.cast());
+                mc.data.multi_state.summ_freq = (256 + 1) as u16;
+                mc.data.multi_state.stats = self.offset_for_ptr(s.cast());
                 mc.suffix = 0;
             }
 
@@ -570,12 +555,12 @@ impl<RC> Ppmd7<RC> {
 
                 if c.as_ref().num_stats != 1 {
                     let sym = self.found_state.as_ref().symbol;
-                    s = self.get_stats(c);
+                    s = self.get_multi_state_stats(c);
                     while s.as_ref().symbol != sym {
                         s = s.offset(1);
                     }
                 } else {
-                    s = self.get_one_state(c);
+                    s = self.get_single_state(c);
                 }
                 let successor =
                     s.as_ref().successor_0 as u32 | (s.as_ref().successor_1 as u32) << 16;
@@ -603,14 +588,16 @@ impl<RC> Ppmd7<RC> {
             up_branch += 1;
 
             if c.as_ref().num_stats == 1 {
-                new_freq = self.get_one_state(c).as_ref().freq;
+                new_freq = self.get_single_state(c).as_ref().freq;
             } else {
-                let mut s = self.get_stats(c);
+                let mut s = self.get_multi_state_stats(c);
                 while s.as_ref().symbol != new_sym {
                     s = s.offset(1);
                 }
                 let cf = (s.as_ref().freq as u32) - 1;
-                let s0 = (c.as_ref().union2.summ_freq as u32) - c.as_ref().num_stats as u32 - cf;
+                let s0 = (c.as_ref().data.multi_state.summ_freq as u32)
+                    - c.as_ref().num_stats as u32
+                    - cf;
 
                 // cf - is frequency of symbol that will be successor in new context records.
                 // s0 - is commutative frequency sum of another symbols from parent context.
@@ -639,7 +626,7 @@ impl<RC> Ppmd7<RC> {
 
                 c1.as_mut().num_stats = 1;
                 {
-                    let c1_state = self.get_one_state(c1).as_mut();
+                    let c1_state = self.get_single_state(c1).as_mut();
                     c1_state.symbol = new_sym;
                     c1_state.freq = new_freq;
                     Self::set_successor(c1_state, up_branch);
@@ -670,12 +657,12 @@ impl<RC> Ppmd7<RC> {
                 c = self.ptr_of_offset(mc.as_ref().suffix).cast();
 
                 if c.as_ref().num_stats == 1 {
-                    let s = self.get_one_state(c).as_mut();
+                    let s = self.get_single_state(c).as_mut();
                     if s.freq < 32 {
                         s.freq += 1;
                     }
                 } else {
-                    let mut s = self.get_stats(c);
+                    let mut s = self.get_multi_state_stats(c);
                     let sym = self.found_state.as_ref().symbol;
                     if s.as_ref().symbol != sym {
                         while s.as_ref().symbol != sym {
@@ -688,7 +675,7 @@ impl<RC> Ppmd7<RC> {
                     }
                     if s.as_ref().freq < MAX_FREQ - 9 {
                         s.as_mut().freq += 2;
-                        c.as_mut().union2.summ_freq += 2;
+                        c.as_mut().data.multi_state.summ_freq += 2;
                     }
                 }
             }
@@ -791,7 +778,7 @@ impl<RC> Ppmd7<RC> {
 
             // s0 : is pure escape freq
             let ns = mc.as_ref().num_stats as u32;
-            let s0 = (mc.as_ref().union2.summ_freq as u32)
+            let s0 = (mc.as_ref().data.multi_state.summ_freq as u32)
                 - ns
                 - ((self.found_state.as_ref().freq as u32) - 1);
 
@@ -809,16 +796,16 @@ impl<RC> Ppmd7<RC> {
                                 return;
                             };
 
-                            let old_ptr = self.get_stats(c).cast();
+                            let old_ptr = self.get_multi_state_stats(c).cast();
                             Self::mem_12_copy(ptr, old_ptr, old_nu);
 
                             self.insert_node(old_ptr, i);
-                            c.as_mut().union4.stats = self.offset_for_ptr(ptr);
+                            c.as_mut().data.multi_state.stats = self.offset_for_ptr(ptr);
                         }
                     }
-                    sum = c.as_mut().union2.summ_freq as u32;
+                    sum = c.as_mut().data.multi_state.summ_freq as u32;
                     // Max increase of escape_freq is 3 here.
-                    // Total increase of union2.summ_freq for all symbols is less than 256 here.
+                    // Total increase of data.multi_state.summ_freq for all symbols is less than 256 here.
                     sum += ((2 * (ns1) < ns) as u32)
                         + 2 * ((4 * (ns1) <= ns) as u32 & (sum <= (8 * (ns1))) as u32);
                 } else {
@@ -829,11 +816,11 @@ impl<RC> Ppmd7<RC> {
                     };
                     let mut s = s.cast::<State>();
 
-                    let mut freq = c.as_ref().union2.state2.freq as u32;
-                    s.as_mut().symbol = c.as_ref().union2.state2.symbol;
-                    s.as_mut().successor_0 = c.as_ref().union4.state4.successor_0;
-                    s.as_mut().successor_1 = c.as_ref().union4.state4.successor_1;
-                    c.as_mut().union4.stats = self.offset_for_ptr(s.cast());
+                    let mut freq = c.as_ref().data.single_state.freq as u32;
+                    s.as_mut().symbol = c.as_ref().data.single_state.symbol;
+                    s.as_mut().successor_0 = c.as_ref().data.single_state.successor_0;
+                    s.as_mut().successor_1 = c.as_ref().data.single_state.successor_1;
+                    c.as_mut().data.multi_state.stats = self.offset_for_ptr(s.cast());
                     if freq < (MAX_FREQ / 4 - 1) as u32 {
                         freq <<= 1;
                     } else {
@@ -845,7 +832,7 @@ impl<RC> Ppmd7<RC> {
                     sum = freq + self.init_esc + ((ns > 3) as u32);
                 }
 
-                let mut s = self.get_stats(c).offset(ns1 as isize);
+                let mut s = self.get_multi_state_stats(c).offset(ns1 as isize);
                 let mut cf = 2 * (sum + 6) * self.found_state.as_ref().freq as u32;
                 let sf = s0 + sum;
                 s.as_mut().symbol = self.found_state.as_ref().symbol;
@@ -864,7 +851,7 @@ impl<RC> Ppmd7<RC> {
                     sum += cf;
                 }
 
-                c.as_mut().union2.summ_freq = sum as u16;
+                c.as_mut().data.multi_state.summ_freq = sum as u16;
                 s.as_mut().freq = cf as u8;
 
                 c = self.ptr_of_offset(c.as_ref().suffix).cast();
@@ -897,7 +884,7 @@ impl<RC> Ppmd7<RC> {
     #[inline(never)]
     unsafe fn rescale(&mut self) {
         unsafe {
-            let stats = self.get_stats(self.min_context);
+            let stats = self.get_multi_state_stats(self.min_context);
             let mut s = self.found_state;
 
             // Sort the list by freq
@@ -911,7 +898,8 @@ impl<RC> Ppmd7<RC> {
             }
 
             let mut sum_freq = s.as_ref().freq as u32;
-            let mut esc_freq = (self.min_context.as_ref().union2.summ_freq as u32) - sum_freq;
+            let mut esc_freq =
+                (self.min_context.as_ref().data.multi_state.summ_freq as u32) - sum_freq;
 
             // if (p.order_fall == 0), adder = 0 : it's     allowed to remove symbol from     MAX order context
             // if (p.order_fall != 0), adder = 1 : it's NOT allowed to remove symbol from NON-MAX order context
@@ -973,7 +961,7 @@ impl<RC> Ppmd7<RC> {
                         }
                     }
 
-                    s = self.get_one_state(mc);
+                    s = self.get_single_state(mc);
                     *s.as_mut() = *stats.as_ref();
                     s.as_mut().freq = freq as u8; // (freq <= 260 / 4)
                     self.found_state = s;
@@ -988,7 +976,8 @@ impl<RC> Ppmd7<RC> {
                     if i0 != i1 {
                         if self.free_list[i1 as usize] != 0 {
                             let ptr = self.remove_node(i1);
-                            self.min_context.as_mut().union4.stats = self.offset_for_ptr(ptr);
+                            self.min_context.as_mut().data.multi_state.stats =
+                                self.offset_for_ptr(ptr);
                             Self::mem_12_copy(ptr, stats.cast(), n1);
                             self.insert_node(stats.cast(), i0);
                         } else {
@@ -999,9 +988,9 @@ impl<RC> Ppmd7<RC> {
             }
 
             // escape_freq halving here.
-            self.min_context.as_mut().union2.summ_freq =
+            self.min_context.as_mut().data.multi_state.summ_freq =
                 (sum_freq + esc_freq - (esc_freq >> 1)) as u16;
-            self.found_state = self.get_stats(self.min_context);
+            self.found_state = self.get_multi_state_stats(self.min_context);
         }
     }
 
@@ -1044,7 +1033,7 @@ impl<RC> Ppmd7<RC> {
 
             let suffix_context = self.ptr_of_offset(mc.suffix).cast::<Context>();
             let suffix_num_stats = suffix_context.as_ref().num_stats as u32;
-            let summ_freq = mc.union2.summ_freq as u32;
+            let summ_freq = mc.data.multi_state.summ_freq as u32;
 
             let context_hierarchy_hash = (non_masked < (suffix_num_stats - num_stats)) as usize;
             let freq_distribution_hash = 2 * (summ_freq < (11 * num_stats)) as usize;
@@ -1076,7 +1065,7 @@ impl<RC> Ppmd7<RC> {
         unsafe {
             let mut s = self.found_state;
             let freq = s.as_ref().freq as u32 + 4;
-            self.min_context.as_mut().union2.summ_freq += 4;
+            self.min_context.as_mut().data.multi_state.summ_freq += 4;
             s.as_mut().freq = freq as u8;
             if freq > s.offset(-1).as_mut().freq as u32 {
                 Self::swap_states(s);
@@ -1095,10 +1084,10 @@ impl<RC> Ppmd7<RC> {
             let s = self.found_state.as_mut();
             let mc = self.min_context.as_mut();
             let mut freq = s.freq as u32;
-            let summ_freq = mc.union2.summ_freq as u32;
+            let summ_freq = mc.data.multi_state.summ_freq as u32;
             self.prev_success = ((2 * freq) > summ_freq) as u32;
             self.run_length += self.prev_success as i32;
-            mc.union2.summ_freq = (summ_freq + 4) as u16;
+            mc.data.multi_state.summ_freq = (summ_freq + 4) as u16;
             freq += 4;
             s.freq = freq as u8;
             if freq > MAX_FREQ as u32 {
@@ -1125,7 +1114,7 @@ impl<RC> Ppmd7<RC> {
             let s = self.found_state.as_mut();
             let freq = s.freq as u32 + 4;
             self.run_length = self.init_rl;
-            self.min_context.as_mut().union2.summ_freq += 4;
+            self.min_context.as_mut().data.multi_state.summ_freq += 4;
             s.freq = freq as u8;
             if freq > MAX_FREQ as u32 {
                 self.rescale();
@@ -1158,7 +1147,7 @@ impl<RC> Ppmd7<RC> {
 
     unsafe fn get_bin_summ(&mut self) -> &mut u16 {
         unsafe {
-            let state = self.get_one_state(self.min_context);
+            let state = self.get_single_state(self.min_context);
 
             let hi_bits_flag3 = Self::hi_bits_flag3(self.found_state.as_ref().symbol as u32);
             let symbol = state.as_ref().symbol as u32;
@@ -1190,17 +1179,21 @@ impl<RC> Ppmd7<RC> {
     }
 
     #[inline(always)]
-    fn get_one_state(&mut self, context: NonNull<Context>) -> NonNull<State> {
+    fn get_single_state(&mut self, context: NonNull<Context>) -> NonNull<State> {
         let context_ptr = context.as_ptr();
-        // Safety: We store the state in part in union2 and part in union4. Their layout
-        // matters here.
-        let union2_ptr = unsafe { std::ptr::addr_of_mut!((*context_ptr).union2) };
-        NonNull::new(union2_ptr.cast::<State>()).expect("Pointer was null")
+        unsafe {
+            // Safety: We know that context is not null, so a field address from it can't be null.
+            let single_state = std::ptr::addr_of_mut!((*context_ptr).data.single_state);
+            NonNull::new_unchecked(single_state)
+        }
     }
 
     #[inline(always)]
-    unsafe fn get_stats(&mut self, mut context: NonNull<Context>) -> NonNull<State> {
-        unsafe { self.ptr_of_offset(context.as_mut().union4.stats).cast() }
+    unsafe fn get_multi_state_stats(&mut self, mut context: NonNull<Context>) -> NonNull<State> {
+        unsafe {
+            self.ptr_of_offset(context.as_mut().data.multi_state.stats)
+                .cast()
+        }
     }
 }
 
