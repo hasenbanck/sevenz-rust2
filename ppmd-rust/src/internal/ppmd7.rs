@@ -1192,11 +1192,10 @@ impl<RC> Ppmd7<RC> {
     #[inline(always)]
     fn get_one_state(&mut self, context: NonNull<Context>) -> NonNull<State> {
         let context_ptr = context.as_ptr();
-        // # Safety: Save because we got the pointer from a NonNull<State>.
-        unsafe {
-            let union2_ptr = std::ptr::addr_of_mut!((*context_ptr).union2);
-            NonNull::new_unchecked(union2_ptr.cast::<State>())
-        }
+        // Safety: We store the state in part in union2 and part in union4. Their layout
+        // matters here.
+        let union2_ptr = unsafe { std::ptr::addr_of_mut!((*context_ptr).union2) };
+        NonNull::new(union2_ptr.cast::<State>()).expect("Pointer was null")
     }
 
     #[inline(always)]
