@@ -589,9 +589,9 @@ impl<RC> Ppmd7<RC> {
                     }
                     break;
                 } else {
-                    let fresh2 = num_ps;
+                    let fresh = num_ps;
                     num_ps += 1;
-                    ps[fresh2 as usize] = Some(s);
+                    ps[fresh as usize] = Some(s);
                 }
             }
 
@@ -1195,7 +1195,7 @@ impl<RC> Ppmd7<RC> {
         // # Safety: Save because we got the pointer from a NonNull<State>.
         unsafe {
             let union2_ptr = std::ptr::addr_of_mut!((*context_ptr).union2);
-            NonNull::new_unchecked(union2_ptr as *mut State).cast()
+            NonNull::new_unchecked(union2_ptr.cast::<State>())
         }
     }
 
