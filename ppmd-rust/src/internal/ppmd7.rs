@@ -3,16 +3,20 @@ mod encoder;
 mod range_coding;
 
 use std::{
-    alloc::{Layout, alloc, dealloc},
+    alloc::{Layout, alloc_zeroed, dealloc},
     io::{Read, Write},
     mem::ManuallyDrop,
-    ptr::{NonNull, write_bytes},
+    ptr::NonNull,
 };
 
 pub(crate) use range_coding::{RangeDecoder, RangeEncoder};
 
 use super::{PPMD_BIN_SCALE, PPMD_NUM_INDEXES, PPMD_PERIOD_BITS};
 use crate::Error;
+
+// Some compile time tests to make sure assumptions of the algorithm are met.
+const _: () = assert!(size_of::<Node>() == UNIT_SIZE as usize);
+const _: () = assert!(size_of::<Context>() == UNIT_SIZE as usize);
 
 const MAX_FREQ: u8 = 124;
 const UNIT_SIZE: isize = 12;
@@ -57,8 +61,7 @@ enum SeeSource {
 struct State {
     symbol: u8,
     freq: u8,
-    successor_0: u16,
-    successor_1: u16,
+    successor: u32,
 }
 
 #[derive(Copy, Clone)]
@@ -184,15 +187,15 @@ impl<RC> Ppmd7<RC> {
         let memory_layout = Layout::from_size_align(total_size, align_of::<usize>())
             .expect("Failed to create memory layout");
 
-        let memory_ptr = unsafe {
-            let Some(memory_ptr) = NonNull::new(alloc(memory_layout)) else {
-                return Err(Error::InternalError(
-                    "Failed to allocate memory for the internal memory allocation",
-                ));
-            };
+        let allocation = unsafe {
+            assert_ne!(total_size, 0);
+            NonNull::new(alloc_zeroed(memory_layout))
+        };
 
-            write_bytes(memory_ptr.as_ptr(), 0, total_size);
-            memory_ptr
+        let Some(memory_ptr) = allocation else {
+            return Err(Error::InternalError(
+                "Failed to allocate memory for the internal memory allocation",
+            ));
         };
 
         // We set the NonNull pointer to the start of the allocated memory as a dummy value.
@@ -281,12 +284,12 @@ impl<RC> Ppmd7<RC> {
 
     unsafe fn glue_free_blocks(&mut self) {
         unsafe {
-            // We use first u16 field of 12-bytes unsigned integer as record type stamp.
+            // We use the first u16 field of the 12-bytes as record type stamp.
             // State   { symbol: u8, freq: u8, .. : freq != 0
             // Context { num_stats: u16, ..       : num_stats != 0
             // Node    { stamp: u16               : stamp == 0 for free record
-            //                                    : Stamp == 1 for head record and guard
-            // Last 12-bytes unsigned int in array is always containing 12-bytes order-0 Context
+            //                                    : stamp == 1 for head record and guard
+            // Last 12-bytes record in array is always containing the 12-bytes order-0 Context
             // record.
 
             let mut n = 0;
@@ -435,20 +438,6 @@ impl<RC> Ppmd7<RC> {
         }
     }
 
-    unsafe fn set_successor(p: &mut State, v: u32) {
-        p.successor_0 = v as u16;
-        p.successor_1 = (v >> 16) as u16;
-    }
-
-    unsafe fn get_successor(&mut self, s: NonNull<State>) -> NonNull<Context> {
-        unsafe {
-            self.ptr_of_offset(
-                s.as_ref().successor_0 as u32 | (s.as_ref().successor_1 as u32) << 16,
-            )
-            .cast()
-        }
-    }
-
     #[inline(never)]
     unsafe fn restart_model(&mut self) {
         unsafe {
@@ -492,8 +481,7 @@ impl<RC> Ppmd7<RC> {
                 let s = s.offset(i).as_mut();
                 s.symbol = i as u8;
                 s.freq = 1;
-                s.successor_0 = 0;
-                s.successor_1 = 0;
+                s.successor = 0;
             });
 
             (0..128).for_each(|i| {
@@ -538,8 +526,7 @@ impl<RC> Ppmd7<RC> {
     unsafe fn create_successors(&mut self) -> Option<NonNull<Context>> {
         unsafe {
             let mut c = self.min_context;
-            let mut up_branch = self.found_state.as_ref().successor_0 as u32
-                | (self.found_state.as_ref().successor_1 as u32) << 16;
+            let mut up_branch = self.found_state.as_ref().successor;
             let mut num_ps = 0;
             let mut ps: [Option<NonNull<State>>; 64] = [None; 64];
 
@@ -562,8 +549,7 @@ impl<RC> Ppmd7<RC> {
                 } else {
                     s = self.get_single_state(c);
                 }
-                let successor =
-                    s.as_ref().successor_0 as u32 | (s.as_ref().successor_1 as u32) << 16;
+                let successor = s.as_ref().successor;
                 if successor != up_branch {
                     // c is the real record Context here.
                     c = self.ptr_of_offset(successor).cast();
@@ -629,12 +615,12 @@ impl<RC> Ppmd7<RC> {
                     let c1_state = self.get_single_state(c1).as_mut();
                     c1_state.symbol = new_sym;
                     c1_state.freq = new_freq;
-                    Self::set_successor(c1_state, up_branch);
+                    c1_state.successor = up_branch;
                 }
                 c1.as_mut().suffix = self.offset_for_ptr(c.cast());
                 num_ps -= 1;
                 let mut successor = ps[num_ps as usize].expect("successor not set");
-                Self::set_successor(successor.as_mut(), self.offset_for_ptr(c1.cast()));
+                successor.as_mut().successor = self.offset_for_ptr(c1.cast());
                 c = c1;
                 if num_ps == 0 {
                     break;
@@ -694,10 +680,7 @@ impl<RC> Ppmd7<RC> {
                     }
                 }
 
-                Self::set_successor(
-                    self.found_state.as_mut(),
-                    self.offset_for_ptr(self.min_context.cast()),
-                );
+                self.found_state.as_mut().successor = self.offset_for_ptr(self.min_context.cast());
                 return;
             }
 
@@ -713,8 +696,7 @@ impl<RC> Ppmd7<RC> {
             }
             let mut max_successor = self.offset_for_ptr(text);
 
-            let mut min_successor = self.found_state.as_ref().successor_0 as u32
-                | (self.found_state.as_ref().successor_1 as u32) << 16;
+            let mut min_successor = self.found_state.as_ref().successor;
 
             match min_successor {
                 0 => {
@@ -722,7 +704,7 @@ impl<RC> Ppmd7<RC> {
                     // And only root 0-order context can contain NULL-successors.
                     // We change successor in found_state to RAW-successor,
                     // And next context will be same 0-order root Context.
-                    Self::set_successor(self.found_state.as_mut(), max_successor);
+                    self.found_state.as_mut().successor = max_successor;
                     min_successor = self.offset_for_ptr(self.min_context.cast());
                 }
                 _ => {
@@ -818,8 +800,7 @@ impl<RC> Ppmd7<RC> {
 
                     let mut freq = c.as_ref().data.single_state.freq as u32;
                     s.as_mut().symbol = c.as_ref().data.single_state.symbol;
-                    s.as_mut().successor_0 = c.as_ref().data.single_state.successor_0;
-                    s.as_mut().successor_1 = c.as_ref().data.single_state.successor_1;
+                    s.as_mut().successor = c.as_ref().data.single_state.successor;
                     c.as_mut().data.multi_state.stats = self.offset_for_ptr(s.cast());
                     if freq < (MAX_FREQ / 4 - 1) as u32 {
                         freq <<= 1;
@@ -838,7 +819,7 @@ impl<RC> Ppmd7<RC> {
                 s.as_mut().symbol = self.found_state.as_ref().symbol;
                 c.as_mut().num_stats = (ns1 + 1) as u16;
 
-                Self::set_successor(s.as_mut(), max_successor);
+                s.as_mut().successor = max_successor;
                 if cf < 6 * sf {
                     cf = 1 + ((cf > sf) as u32) + ((cf >= 4 * sf) as u32);
                     sum += 3;
@@ -1051,7 +1032,9 @@ impl<RC> Ppmd7<RC> {
 
     unsafe fn next_context(&mut self) {
         unsafe {
-            let c = self.get_successor(self.found_state);
+            let c = self
+                .ptr_of_offset(self.found_state.as_ref().successor)
+                .cast::<Context>();
             if self.order_fall == 0 && c.addr() > self.text.addr() {
                 self.min_context = c;
                 self.max_context = self.min_context;

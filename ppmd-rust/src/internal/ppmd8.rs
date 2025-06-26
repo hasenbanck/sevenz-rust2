@@ -3,12 +3,16 @@ mod encoder;
 mod range_coding;
 
 use std::{
-    alloc::{Layout, alloc, dealloc},
-    ptr::{NonNull, write_bytes},
+    alloc::{Layout, alloc_zeroed, dealloc},
+    ptr::NonNull,
 };
 
 use super::{PPMD_BIN_SCALE, PPMD_NUM_INDEXES, PPMD_PERIOD_BITS};
 use crate::{Error, RestoreMethod};
+
+// Some compile time tests to make sure assumptions of the algorithm are met.
+const _: () = assert!(size_of::<Node>() == UNIT_SIZE as usize);
+const _: () = assert!(size_of::<Context>() == UNIT_SIZE as usize);
 
 const MAX_FREQ: u8 = 124;
 const UNIT_SIZE: isize = 12;
@@ -56,8 +60,7 @@ enum SeeSource {
 struct State {
     symbol: u8,
     freq: u8,
-    successor_0: u16,
-    successor_1: u16,
+    successor: u32,
 }
 
 #[derive(Copy, Clone)]
@@ -116,7 +119,6 @@ pub(crate) struct Ppmd8<RC> {
     size: u32,
     glue_count: u32,
     align_offset: u32,
-    base: *mut u8,
     lo_unit: *mut u8,
     hi_unit: *mut u8,
     text: *mut u8,
@@ -198,15 +200,15 @@ impl<RC> Ppmd8<RC> {
         let memory_layout = Layout::from_size_align(total_size, align_of::<usize>())
             .expect("Failed to create memory layout");
 
-        let memory_ptr = unsafe {
-            let Some(memory_ptr) = NonNull::new(alloc(memory_layout)) else {
-                return Err(Error::InternalError(
-                    "Failed to allocate memory for the internal memory allocation",
-                ));
-            };
+        let allocation = unsafe {
+            assert_ne!(total_size, 0);
+            NonNull::new(alloc_zeroed(memory_layout))
+        };
 
-            write_bytes(memory_ptr.as_ptr(), 0, total_size);
-            memory_ptr
+        let Some(memory_ptr) = allocation else {
+            return Err(Error::InternalError(
+                "Failed to allocate memory for the internal memory allocation",
+            ));
         };
 
         let mut ppmd = Self {
@@ -223,8 +225,6 @@ impl<RC> Ppmd8<RC> {
             size: mem_size,
             glue_count: 0,
             align_offset,
-            // TODO remove base
-            base: memory_ptr.as_ptr(),
             lo_unit: std::ptr::null_mut(),
             hi_unit: std::ptr::null_mut(),
             text: std::ptr::null_mut(),
@@ -514,20 +514,6 @@ impl<RC> Ppmd8<RC> {
         }
     }
 
-    unsafe fn set_successor(s: *mut State, v: u32) {
-        unsafe {
-            (*s).successor_0 = v as u16;
-            (*s).successor_1 = (v >> 16) as u16;
-        }
-    }
-
-    unsafe fn get_successor(&mut self, s: *mut State) -> *mut Context {
-        unsafe {
-            self.ptr_of_offset((*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16)
-                .cast()
-        }
-    }
-
     #[inline(never)]
     unsafe fn restart_model(&mut self) {
         unsafe {
@@ -572,7 +558,7 @@ impl<RC> Ppmd8<RC> {
                 let s = s.offset(i);
                 (*s).symbol = i as u8;
                 (*s).freq = 1;
-                Self::set_successor(s, 0);
+                (*s).successor = 0;
             });
 
             let mut i = 0;
@@ -666,7 +652,7 @@ impl<RC> Ppmd8<RC> {
 
             if ns == 0 {
                 let s = &mut (*ctx).data.single_state as *mut State;
-                let mut successor = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
+                let mut successor = (*s).successor;
                 if self.ptr_of_offset(successor) >= self.units_start {
                     if order < self.max_order {
                         successor = self
@@ -674,7 +660,7 @@ impl<RC> Ppmd8<RC> {
                     } else {
                         successor = 0;
                     }
-                    Self::set_successor(s, successor);
+                    (*s).successor = successor;
                     if successor != 0 || order <= 9 {
                         return self.offset_for_ptr(ctx.cast());
                     }
@@ -717,8 +703,8 @@ impl<RC> Ppmd8<RC> {
             }
             let mut s = stats.offset(ns as isize);
             loop {
-                let successor_0 = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
-                if self.ptr_of_offset(successor_0).addr() < self.units_start.addr() {
+                let successor = (*s).successor;
+                if self.ptr_of_offset(successor).addr() < self.units_start.addr() {
                     let fresh = ns;
                     ns -= 1;
                     let s2 = stats.offset(fresh as u32 as isize);
@@ -728,15 +714,13 @@ impl<RC> Ppmd8<RC> {
                         }
                     } else {
                         Self::swap_states(s, s2);
-                        Self::set_successor(s2, 0);
+                        (*s2).successor = 0;
                     }
                 } else if order < self.max_order {
-                    Self::set_successor(
-                        s,
-                        self.cut_off(self.ptr_of_offset(successor_0).cast::<Context>(), order + 1),
-                    );
+                    (*s).successor =
+                        self.cut_off(self.ptr_of_offset(successor).cast::<Context>(), order + 1);
                 } else {
-                    Self::set_successor(s, 0);
+                    (*s).successor = 0;
                 }
                 s = s.offset(-1);
                 if !(s >= stats) {
@@ -757,8 +741,7 @@ impl<RC> Ppmd8<RC> {
                         as u8;
                     (*ctx).data.single_state.symbol = sym;
                     (*ctx).data.single_state.freq = ((((*stats).freq as u32) + 11) >> 3) as u8;
-                    (*ctx).data.single_state.successor_0 = (*stats).successor_0;
-                    (*ctx).data.single_state.successor_1 = (*stats).successor_1;
+                    (*s).successor = (*stats).successor;
                     self.free_units(stats.cast(), nu);
                 } else {
                     self.refresh(
@@ -804,8 +787,7 @@ impl<RC> Ppmd8<RC> {
                         as u8;
                     (*c).data.single_state.symbol = (*s).symbol;
                     (*c).data.single_state.freq = ((((*s).freq as u32) + 11) >> 3) as u8;
-                    (*c).data.single_state.successor_0 = (*s).successor_0;
-                    (*c).data.single_state.successor_1 = (*s).successor_1;
+                    (*c).data.single_state.successor = (*s).successor;
                     self.special_free_unit(s.cast());
                 } else {
                     self.refresh(c, (((*c).num_stats as u32) + 3) >> 1, 0);
@@ -857,8 +839,7 @@ impl<RC> Ppmd8<RC> {
         mut c: *mut Context,
     ) -> *mut Context {
         unsafe {
-            let mut up_branch = (*self.found_state).successor_0 as u32
-                | ((*self.found_state).successor_1 as u32) << 16;
+            let mut up_branch = (*self.found_state).successor;
             let mut num_ps = 0u32;
             let mut ps: [*mut State; 17] = [std::ptr::null_mut(); 17];
             if skip == 0 {
@@ -895,7 +876,7 @@ impl<RC> Ppmd8<RC> {
                             & (((*s).freq as i32) < 24) as i32))
                         as u8;
                 }
-                let successor = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
+                let successor = (*s).successor;
                 if successor != up_branch {
                     c = self.ptr_of_offset(successor).cast::<Context>();
                     if num_ps == 0 {
@@ -952,10 +933,16 @@ impl<RC> Ppmd8<RC> {
                 (*c1).num_stats = 0;
                 (*c1).data.single_state.symbol = new_sym;
                 (*c1).data.single_state.freq = new_freq;
-                Self::set_successor(&mut (*c1).data.single_state as *mut State, up_branch);
+
+                let state = &mut (*c1).data.single_state as *mut State;
+                (*state).successor = up_branch;
+
                 (*c1).suffix = self.offset_for_ptr(c.cast());
                 num_ps = num_ps.wrapping_sub(1);
-                Self::set_successor(ps[num_ps as usize], self.offset_for_ptr(c1.cast()));
+
+                let state = ps[num_ps as usize];
+                (*state).successor = self.offset_for_ptr(c1.cast());
+
                 c = c1;
                 if !(num_ps != 0) {
                     break;
@@ -971,7 +958,7 @@ impl<RC> Ppmd8<RC> {
             let mut s;
             let c1 = c;
             let up_branch = self.offset_for_ptr(self.text.cast());
-            Self::set_successor(self.found_state, up_branch);
+            (*self.found_state).successor = up_branch;
             self.order_fall = (self.order_fall).wrapping_add(1);
             loop {
                 if !s1.is_null() {
@@ -1005,35 +992,35 @@ impl<RC> Ppmd8<RC> {
                         (*s).freq = ((*s).freq as i32 + (((*s).freq as i32) < 32) as i32) as u8;
                     }
                 }
-                if (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 != 0 {
+                if (*s).successor != 0 {
                     break;
                 }
-                Self::set_successor(s, up_branch);
+                (*s).successor = up_branch;
                 self.order_fall = (self.order_fall).wrapping_add(1);
                 self.order_fall;
             }
-            if (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16 <= up_branch {
+            if (*s).successor <= up_branch {
                 let s2 = self.found_state;
                 self.found_state = s;
                 let successor = self.create_successors(0 as i32, std::ptr::null_mut(), c);
                 if successor.is_null() {
-                    Self::set_successor(s, 0);
+                    (*s).successor = 0;
                 } else {
-                    Self::set_successor(s, self.offset_for_ptr(successor.cast()));
+                    (*s).successor = self.offset_for_ptr(successor.cast());
                 }
                 self.found_state = s2;
             }
-            let successor_0 = (*s).successor_0 as u32 | ((*s).successor_1 as u32) << 16;
+            let successor = (*s).successor;
             if self.order_fall == 1 && c1 == self.max_context {
-                Self::set_successor(self.found_state, successor_0);
+                (*self.found_state).successor = successor;
                 self.text = (self.text).offset(-1);
                 self.text;
             }
-            if successor_0 == 0 {
+            if successor == 0 {
                 return std::ptr::null_mut();
             }
 
-            self.ptr_of_offset(successor_0).cast()
+            self.ptr_of_offset(successor).cast()
         }
     }
 
@@ -1041,8 +1028,7 @@ impl<RC> Ppmd8<RC> {
     unsafe fn update_model(&mut self) {
         unsafe {
             let mut max_successor;
-            let mut min_successor = (*self.found_state).successor_0 as u32
-                | ((*self.found_state).successor_1 as u32) << 16;
+            let mut min_successor = (*self.found_state).successor;
             let mut c: *mut Context;
             let f_freq = (*self.found_state).freq as u32;
             let f_symbol = (*self.found_state).symbol;
@@ -1082,11 +1068,11 @@ impl<RC> Ppmd8<RC> {
             if self.order_fall == 0 && min_successor != 0 {
                 let cs = self.create_successors(1 as i32, s, self.min_context);
                 if cs.is_null() {
-                    Self::set_successor(self.found_state, 0);
+                    (*self.found_state).successor = 0;
                     self.restore_model(c);
                     return;
                 }
-                Self::set_successor(self.found_state, self.offset_for_ptr(cs.cast()));
+                (*self.found_state).successor = self.offset_for_ptr(cs.cast());
                 self.max_context = cs;
                 self.min_context = self.max_context;
                 return;
@@ -1172,8 +1158,7 @@ impl<RC> Ppmd8<RC> {
                     }
                     let mut freq = (*c).data.single_state.freq as u32;
                     (*s).symbol = (*c).data.single_state.symbol;
-                    (*s).successor_0 = (*c).data.single_state.successor_0;
-                    (*s).successor_1 = (*c).data.single_state.successor_1;
+                    (*s).successor = (*c).data.single_state.successor;
                     (*c).data.multi_state.stats = self.offset_for_ptr(s.cast());
                     if freq < (MAX_FREQ as i32 / 4 - 1) as u32 {
                         freq <<= 1;
@@ -1194,7 +1179,7 @@ impl<RC> Ppmd8<RC> {
                 let sf = s0.wrapping_add(sum);
                 (*s).symbol = f_symbol;
                 (*c).num_stats = ns1.wrapping_add(1) as u8;
-                Self::set_successor(s, max_successor);
+                (*s).successor = max_successor;
                 (*c).flags = ((*c).flags as i32 | flag as i32) as u8;
                 if cf < 6 * sf {
                     cf = 1u32
@@ -1361,7 +1346,9 @@ impl<RC> Ppmd8<RC> {
 
     unsafe fn next_context(&mut self) {
         unsafe {
-            let c = self.get_successor(self.found_state);
+            let c = self
+                .ptr_of_offset((*self.found_state).successor)
+                .cast::<Context>();
             if self.order_fall == 0 && c.addr() >= self.units_start.addr() {
                 self.min_context = c;
                 self.max_context = self.min_context;

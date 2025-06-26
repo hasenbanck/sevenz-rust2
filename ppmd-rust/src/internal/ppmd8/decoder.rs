@@ -28,8 +28,7 @@ impl Ppmd8<Decoder> {
             let mut char_mask: [u8; 256];
             if (*self.min_context).num_stats != 0 {
                 let mut s = self
-                    .base
-                    .offset((*self.min_context).data.multi_state.stats as isize)
+                    .ptr_of_offset((*self.min_context).data.multi_state.stats)
                     .cast::<State>();
                 let mut summ_freq = (*self.min_context).data.multi_state.summ_freq as u32;
                 if summ_freq > self.range {
@@ -97,8 +96,7 @@ impl Ppmd8<Decoder> {
                 char_mask = [u8::MAX; 256];
 
                 let mut s2 = self
-                    .base
-                    .offset((*self.min_context).data.multi_state.stats as isize)
+                    .ptr_of_offset((*self.min_context).data.multi_state.stats)
                     .cast::<State>();
                 *char_mask.as_mut_ptr().offset((*s).symbol as isize) = 0;
                 loop {
@@ -128,8 +126,7 @@ impl Ppmd8<Decoder> {
                             .wrapping_add(
                                 *self.ns2bs_index.as_mut_ptr().offset(
                                     (*(self
-                                        .base
-                                        .offset((*self.min_context).suffix as isize)
+                                        .ptr_of_offset((*self.min_context).suffix)
                                         .cast::<Context>()))
                                     .num_stats as isize,
                                 ) as u32,
@@ -156,7 +153,7 @@ impl Ppmd8<Decoder> {
                         self.low <<= 8;
                     }
                     let freq = (*s).freq as u32;
-                    let c = self.get_successor(s);
+                    let c = self.ptr_of_offset(s.successor).cast::<Context>();
                     let sym = (*s).symbol;
                     self.found_state = s;
                     self.prev_success = 1;
@@ -204,7 +201,7 @@ impl Ppmd8<Decoder> {
                     if (*mc).suffix == 0 {
                         return -1;
                     }
-                    mc = self.base.offset((*mc).suffix as isize).cast();
+                    mc = self.ptr_of_offset((*mc).suffix).cast();
                     if !((*mc).num_stats as u32 == num_masked) {
                         break;
                     }
