@@ -198,12 +198,10 @@ impl<RC> Ppmd7<RC> {
             ));
         };
 
-        // We set the NonNull pointer to the start of the allocated memory as a dummy value.
-        // We se them in the 'restart_model()' function right after this.
         let mut ppmd = Self {
-            min_context: memory_ptr.cast(),
-            max_context: memory_ptr.cast(),
-            found_state: memory_ptr.cast(),
+            min_context: NonNull::dangling(),
+            max_context: NonNull::dangling(),
+            found_state: NonNull::dangling(),
             order_fall: 0,
             init_esc: 0,
             prev_success: 0,
@@ -214,10 +212,10 @@ impl<RC> Ppmd7<RC> {
             size: mem_size,
             glue_count: 0,
             align_offset,
-            lo_unit: memory_ptr,
-            hi_unit: memory_ptr,
-            text: memory_ptr,
-            units_start: memory_ptr,
+            lo_unit: NonNull::dangling(),
+            hi_unit: NonNull::dangling(),
+            text: NonNull::dangling(),
+            units_start: NonNull::dangling(),
             units2index,
             index2units,
             ns2bs_index,
