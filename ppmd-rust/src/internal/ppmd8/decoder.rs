@@ -27,16 +27,16 @@ impl Ppmd8<Decoder> {
         unsafe {
             let mut char_mask: [u8; 256];
             if self.min_context.as_ref().num_stats != 0 {
-                let mut s = self
-                    .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                    .cast::<State>();
+                let mut s = self.get_multi_state_stats(self.min_context);
                 let mut summ_freq = self.min_context.as_ref().data.multi_state.summ_freq as u32;
+
                 if summ_freq > self.range {
                     summ_freq = self.range;
                 }
                 self.range /= summ_freq;
                 let mut count = self.code / self.range;
                 let mut hi_cnt = count;
+
                 count = count.wrapping_sub(s.as_ref().freq as u32);
                 if (count as i32) < 0 {
                     self.rd_decode(0, s.as_ref().freq as u32);
@@ -97,20 +97,8 @@ impl Ppmd8<Decoder> {
 
                 char_mask = [u8::MAX; 256];
 
-                let mut s2 = self
-                    .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                    .cast::<State>();
-                *char_mask.as_mut_ptr().offset(s.as_ref().symbol as isize) = 0;
-                loop {
-                    let sym0 = s2.offset(0).as_ref().symbol as u32;
-                    let sym1 = s2.offset(1).as_ref().symbol as u32;
-                    s2 = s2.offset(2);
-                    char_mask[sym0 as usize] = 0;
-                    char_mask[sym1 as usize] = 0;
-                    if !(s2 < s) {
-                        break;
-                    }
-                }
+                let s2 = self.get_multi_state_stats(self.min_context);
+                Self::mask_symbols(&mut char_mask, s, s2);
             } else {
                 let mut s = NonNull::new_unchecked(addr_of_mut!(
                     self.min_context.as_mut().data.single_state
@@ -212,9 +200,7 @@ impl Ppmd8<Decoder> {
                         break;
                     }
                 }
-                let s = self
-                    .ptr_of_offset(mc.as_ref().data.multi_state.stats)
-                    .cast::<State>();
+                let s = self.get_multi_state_stats(mc);
                 let mut num = (mc.as_ref().num_stats as u32).wrapping_add(1);
                 let mut num2 = num.wrapping_div(2);
                 num &= 1;
@@ -249,9 +235,7 @@ impl Ppmd8<Decoder> {
                 self.range /= freq_sum2;
                 let mut count = self.code / self.range;
                 if count < hi_cnt {
-                    s = self
-                        .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                        .cast();
+                    s = self.get_multi_state_stats(self.min_context);
                     hi_cnt = count;
                     loop {
                         count = count.wrapping_sub(
@@ -304,18 +288,14 @@ impl Ppmd8<Decoder> {
                 self.rd_decode(hi_cnt, freq_sum2.wrapping_sub(hi_cnt));
                 let see = self.get_see(see_source);
                 see.summ = (see.summ as u32).wrapping_add(freq_sum) as u16;
-                s = self
-                    .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                    .cast();
+
+                s = self.get_multi_state_stats(self.min_context);
                 let s2 = s
-                    .offset(self.min_context.as_ref().num_stats as isize)
+                    .offset(self.min_context.as_ref().num_stats as i32 as isize)
                     .offset(1);
-                loop {
-                    *char_mask.as_mut_ptr().offset(s.as_ref().symbol as isize) = 0;
+                while s.addr() < s2.addr() {
+                    char_mask[s.as_ref().symbol as usize] = 0;
                     s = s.offset(1);
-                    if !(s != s2) {
-                        break;
-                    }
                 }
             }
         }

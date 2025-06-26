@@ -28,9 +28,7 @@ impl Ppmd8<Encoder> {
         unsafe {
             let mut char_mask: [u8; 256];
             if self.min_context.as_ref().num_stats != 0 {
-                let mut s = self
-                    .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                    .cast::<State>();
+                let mut s = self.get_multi_state_stats(self.min_context);
                 let mut summ_freq = self.min_context.as_ref().data.multi_state.summ_freq as u32;
                 if summ_freq > self.range {
                     summ_freq = self.range;
@@ -85,21 +83,8 @@ impl Ppmd8<Encoder> {
 
                 char_mask = [u8::MAX; 256];
 
-                let mut s2 = self
-                    .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                    .cast::<State>();
-
-                char_mask[s.as_ref().symbol as usize] = 0;
-                loop {
-                    let sym0 = s2.offset(0).as_ref().symbol as u32;
-                    let sym1 = s2.offset(1).as_ref().symbol as u32;
-                    s2 = s2.offset(2);
-                    char_mask[sym0 as usize] = 0;
-                    char_mask[sym1 as usize] = 0;
-                    if !(s2 < s) {
-                        break;
-                    }
-                }
+                let s2 = self.get_multi_state_stats(self.min_context);
+                Self::mask_symbols(&mut char_mask, s, s2);
             } else {
                 let prob =
                     &mut *(*self
@@ -194,9 +179,7 @@ impl Ppmd8<Encoder> {
                 }
                 self.min_context = mc;
                 let see_source = self.make_esc_freq(num_masked, &mut esc_freq);
-                let mut s = self
-                    .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
-                    .cast::<State>();
+                let mut s = self.get_multi_state_stats(self.min_context);
                 let mut sum = 0u32;
                 let mut i = (self.min_context.as_ref().num_stats as u32) + 1;
                 loop {
@@ -270,22 +253,12 @@ impl Ppmd8<Encoder> {
                     total = self.range;
                 }
                 self.range_enc_encode(sum, total.wrapping_sub(sum), total);
-                let mut s2 = self
+
+                let s2 = self
                     .ptr_of_offset(self.min_context.as_ref().data.multi_state.stats)
                     .cast::<State>();
                 s = s.offset(-1);
-
-                char_mask[s.as_ref().symbol as usize] = 0;
-                loop {
-                    let sym0 = s2.offset(0).as_ref().symbol as u32;
-                    let sym1 = s2.offset(1).as_ref().symbol as u32;
-                    s2 = s2.offset(2);
-                    char_mask[sym0 as usize] = 0;
-                    char_mask[sym1 as usize] = 0;
-                    if !(s2.addr() < s.addr()) {
-                        break;
-                    }
-                }
+                Self::mask_symbols(&mut char_mask, s, s2);
             }
         }
     }

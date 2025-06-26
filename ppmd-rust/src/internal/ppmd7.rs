@@ -2,14 +2,14 @@ mod decoder;
 mod encoder;
 mod range_coding;
 
+pub(crate) use range_coding::{RangeDecoder, RangeEncoder};
+use std::ptr::addr_of_mut;
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
     io::{Read, Write},
     mem::ManuallyDrop,
     ptr::NonNull,
 };
-
-pub(crate) use range_coding::{RangeDecoder, RangeEncoder};
 
 use super::{PPMD_BIN_SCALE, PPMD_NUM_INDEXES, PPMD_PERIOD_BITS};
 use crate::Error;
@@ -567,12 +567,11 @@ impl<RC> Ppmd7<RC> {
             // All created contexts will have single-symbol with new RAW-successor
             // All new RAW-successors will point to next position in RAW text
             // after `found_state.successor`
-            let new_freq;
             let new_sym = *self.ptr_of_offset(up_branch).cast::<u8>().as_ref();
             up_branch += 1;
 
-            if c.as_ref().num_stats == 1 {
-                new_freq = self.get_single_state(c).as_ref().freq;
+            let new_freq = if c.as_ref().num_stats == 1 {
+                self.get_single_state(c).as_ref().freq
             } else {
                 let mut s = self.get_multi_state_stats(c);
                 while s.as_ref().symbol != new_sym {
@@ -588,37 +587,39 @@ impl<RC> Ppmd7<RC> {
                 // max(new_freq) = (s.freq + 1), when (s0 == 1)
                 // We have a requirement (Context::get_one_state().freq <= 128) in bin_summ
                 // so (s.freq < 128) - is a requirement for multi-symbol contexts.
-                new_freq = 1
-                    + (if 2 * cf <= s0 {
-                        (5 * cf > s0) as u32
-                    } else {
-                        ((2 * cf + s0 - 1) / (2 * s0)) + 1
-                    }) as u8;
-            }
+                1 + (if 2 * cf <= s0 {
+                    (5 * cf > s0) as u32
+                } else {
+                    ((2 * cf + s0 - 1) / (2 * s0)) + 1
+                }) as u8
+            };
 
             // Create a new single-symbol contexts from low order to high order in loop.
             loop {
-                let mut c1 = if self.hi_unit != self.lo_unit {
+                let mut c1: NonNull<Context> = if self.hi_unit != self.lo_unit {
                     self.hi_unit = self.hi_unit.offset(-UNIT_SIZE);
                     self.hi_unit.cast()
                 } else if self.free_list[0] != 0 {
                     self.remove_node(0).cast()
                 } else {
-                    let c1 = self.alloc_units_rare(0)?;
-                    c1.cast::<Context>()
+                    self.alloc_units_rare(0)?.cast()
                 };
 
                 c1.as_mut().num_stats = 1;
+
                 {
-                    let c1_state = self.get_single_state(c1).as_mut();
-                    c1_state.symbol = new_sym;
-                    c1_state.freq = new_freq;
-                    c1_state.successor = up_branch;
+                    let state = self.get_single_state(c1).as_mut();
+                    state.symbol = new_sym;
+                    state.freq = new_freq;
+                    state.successor = up_branch;
                 }
+
                 c1.as_mut().suffix = self.offset_for_ptr(c.cast());
                 num_ps -= 1;
+
                 let mut successor = ps[num_ps as usize].expect("successor not set");
                 successor.as_mut().successor = self.offset_for_ptr(c1.cast());
+
                 c = c1;
                 if num_ps == 0 {
                     break;
@@ -1164,7 +1165,7 @@ impl<RC> Ppmd7<RC> {
         let context_ptr = context.as_ptr();
         unsafe {
             // Safety: We know that context is not null, so a field address from it can't be null.
-            let single_state = std::ptr::addr_of_mut!((*context_ptr).data.single_state);
+            let single_state = addr_of_mut!((*context_ptr).data.single_state);
             NonNull::new_unchecked(single_state)
         }
     }

@@ -896,10 +896,12 @@ impl<RC> Ppmd8<RC> {
 
             let new_sym = *self.ptr_of_offset(up_branch).as_ref();
             up_branch = up_branch.wrapping_add(1);
+
             let flags = ((self.found_state.as_ref().symbol as u32).wrapping_add(0xC0) >> (8 - 4)
                 & (1 << 4) as u32)
                 .wrapping_add((new_sym as u32).wrapping_add(0xC0) >> (8 - 3) & (1 << 3) as u32)
                 as u8;
+
             let new_freq = if c.as_ref().num_stats as i32 == 0 {
                 c.as_ref().data.single_state.freq
             } else {
@@ -913,42 +915,41 @@ impl<RC> Ppmd8<RC> {
                 let s0 = (c.as_ref().data.multi_state.summ_freq as u32)
                     .wrapping_sub(c.as_ref().num_stats as u32)
                     .wrapping_sub(cf);
-                1u32.wrapping_add(if 2 * cf <= s0 {
+                1 + (if 2 * cf <= s0 {
                     (5 * cf > s0) as u32
                 } else {
-                    cf.wrapping_add(2 * s0).wrapping_sub(3) / s0
+                    (cf + (2 * s0) - 3) / s0
                 }) as u8
             };
+
             loop {
-                let mut c1 = if self.hi_unit != self.lo_unit {
-                    self.hi_unit = (self.hi_unit).offset(-(12));
-                    self.hi_unit.cast::<Context>()
+                let mut c1: NonNull<Context> = if self.hi_unit != self.lo_unit {
+                    self.hi_unit = self.hi_unit.offset(-12);
+                    self.hi_unit.cast()
                 } else if self.free_list[0] != 0 {
                     self.remove_node(0).cast()
                 } else {
-                    let Some(c1) = self.alloc_units_rare(0) else {
-                        return None;
-                    };
-                    c1.cast::<Context>()
+                    self.alloc_units_rare(0)?.cast()
                 };
+
                 c1.as_mut().flags = flags;
                 c1.as_mut().num_stats = 0;
                 c1.as_mut().data.single_state.symbol = new_sym;
                 c1.as_mut().data.single_state.freq = new_freq;
 
-                let state = &mut c1.as_mut().data.single_state as *mut State;
-                (*state).successor = up_branch;
+                {
+                    let state = &mut c1.as_mut().data.single_state as *mut State;
+                    (*state).successor = up_branch;
+                }
 
                 c1.as_mut().suffix = self.offset_for_ptr(c.cast());
                 num_ps = num_ps.wrapping_sub(1);
 
-                let Some(mut state) = ps[num_ps as usize] else {
-                    panic!("ps[num_ps as usize] was not initialized");
-                };
+                let mut state = ps[num_ps as usize].expect("successor not set");
                 state.as_mut().successor = self.offset_for_ptr(c1.cast());
 
                 c = c1;
-                if !(num_ps != 0) {
+                if num_ps == 0 {
                     break;
                 }
             }
@@ -983,13 +984,10 @@ impl<RC> Ppmd8<RC> {
                             .ptr_of_offset(c.as_ref().data.multi_state.stats)
                             .cast::<State>();
                         if s.as_ref().symbol as i32 != self.found_state.as_ref().symbol as i32 {
-                            loop {
+                            while s.as_ref().symbol as i32
+                                != self.found_state.as_ref().symbol as i32
+                            {
                                 s = s.offset(1);
-                                if !(s.as_ref().symbol as i32
-                                    != self.found_state.as_ref().symbol as i32)
-                                {
-                                    break;
-                                }
                             }
                         }
                         if (s.as_ref().freq) < MAX_FREQ - 9 {
@@ -1427,6 +1425,38 @@ impl<RC> Ppmd8<RC> {
                 self.rescale();
             }
             self.update_model();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn mask_symbols(char_mask: &mut [u8; 256], s: NonNull<State>, mut s2: NonNull<State>) {
+        unsafe {
+            char_mask[s.as_ref().symbol as usize] = 0;
+            while s2.addr() < s.addr() {
+                let sym0 = s2.offset(0).as_ref().symbol as u32;
+                let sym1 = s2.offset(1).as_ref().symbol as u32;
+                s2 = s2.offset(2);
+                char_mask[sym0 as usize] = 0;
+                char_mask[sym1 as usize] = 0;
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn get_single_state(&mut self, context: NonNull<Context>) -> NonNull<State> {
+        let context_ptr = context.as_ptr();
+        unsafe {
+            // Safety: We know that context is not null, so a field address from it can't be null.
+            let single_state = addr_of_mut!((*context_ptr).data.single_state);
+            NonNull::new_unchecked(single_state)
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn get_multi_state_stats(&mut self, mut context: NonNull<Context>) -> NonNull<State> {
+        unsafe {
+            self.ptr_of_offset(context.as_mut().data.multi_state.stats)
+                .cast()
         }
     }
 }
