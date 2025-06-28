@@ -29,7 +29,7 @@ pub enum Encoder<W: Write> {
     LZMA(Option<LZMAWriter<CountingWriter<W>>>),
     LZMA2(Option<LZMA2Writer<CountingWriter<W>>>),
     #[cfg(feature = "ppmd")]
-    PPMD(Box<ppmd_rust::Ppmd7Encoder<CountingWriter<W>>>),
+    PPMD(Option<Box<ppmd_rust::Ppmd7Encoder<CountingWriter<W>>>>),
     #[cfg(feature = "brotli")]
     BROTLI(BrotliEncoder<CountingWriter<W>>),
     #[cfg(feature = "bzip2")]
@@ -74,7 +74,15 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             #[cfg(feature = "ppmd")]
-            Encoder::PPMD(w) => w.write(buf),
+            Encoder::PPMD(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish(false)?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             // TODO: Also add a proper "finish" method here.
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.write(buf),
@@ -132,7 +140,7 @@ impl<W: Write> Write for Encoder<W> {
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.flush(),
             #[cfg(feature = "ppmd")]
-            Encoder::PPMD(w) => w.flush(),
+            Encoder::PPMD(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "bzip2")]
             Encoder::BZIP2(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "deflate")]
@@ -186,7 +194,7 @@ pub(crate) fn add_encoder<W: Write>(
                 ppmd_rust::Ppmd7Encoder::new(input, options.order, options.memory_size)
                     .map_err(|err| Error::other(err.to_string()))?;
 
-            Ok(Encoder::PPMD(Box::new(ppmd_encoder)))
+            Ok(Encoder::PPMD(Some(Box::new(ppmd_encoder))))
         }
         #[cfg(feature = "brotli")]
         SevenZMethod::ID_BROTLI => {
