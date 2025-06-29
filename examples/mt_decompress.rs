@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use sevenz_rust2::Password;
+
 use sevenz_rust2::{Archive, BlockDecoder};
 
 fn main() {

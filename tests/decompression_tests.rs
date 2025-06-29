@@ -1,12 +1,19 @@
+#[cfg(feature = "util")]
 use std::{
-    fs::{File, read, read_to_string},
+    fs::{read, read_to_string},
     path::PathBuf,
 };
 
-use sevenz_rust2::Password;
-use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, decompress_file};
+use std::fs::File;
+
+#[cfg(feature = "util")]
+use sevenz_rust2::decompress_file;
+use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password};
+
+#[cfg(feature = "util")]
 use tempfile::tempdir;
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_single_empty_file_unencoded_header() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -21,6 +28,7 @@ fn decompress_single_empty_file_unencoded_header() {
     assert_eq!(read_to_string(file1_path).unwrap(), "");
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_two_empty_files_unencoded_header() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -38,6 +46,7 @@ fn decompress_two_empty_files_unencoded_header() {
     assert_eq!(read_to_string(file2_path).unwrap(), "");
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_lzma_single_file_unencoded_header() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -52,6 +61,7 @@ fn decompress_lzma_single_file_unencoded_header() {
     assert_eq!(read_to_string(file1_path).unwrap(), "this is a file\n");
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_lzma2_bcj_x86_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -73,6 +83,7 @@ fn decompress_lzma2_bcj_x86_file() {
     );
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_bcj_arm64_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -94,6 +105,7 @@ fn decompress_bcj_arm64_file() {
     );
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_lzma_multiple_files_encoded_header() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -111,6 +123,7 @@ fn decompress_lzma_multiple_files_encoded_header() {
     assert_eq!(read_to_string(file2_path).unwrap(), "file two content\n");
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_delta_lzma_single_file_unencoded_header() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -125,6 +138,7 @@ fn decompress_delta_lzma_single_file_unencoded_header() {
     assert_eq!(read_to_string(file1_path).unwrap(), "aaaabbbbcccc");
 }
 
+#[cfg(feature = "util")]
 #[test]
 fn decompress_copy_lzma2_single_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -139,7 +153,7 @@ fn decompress_copy_lzma2_single_file() {
     assert_eq!(read_to_string(file1_path).unwrap(), "simple copy encoding");
 }
 
-#[cfg(feature = "ppmd")]
+#[cfg(all(feature = "util", feature = "ppmd"))]
 #[test]
 fn decompress_ppmd_single_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -158,7 +172,7 @@ fn decompress_ppmd_single_file() {
     assert_eq!(decompressed_content, expected);
 }
 
-#[cfg(feature = "bzip2")]
+#[cfg(all(feature = "util", feature = "bzip2"))]
 #[test]
 fn decompress_bzip2_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -180,7 +194,7 @@ fn decompress_bzip2_file() {
 
 /// zstdmt (which 7zip ZS uses), does encapsulate brotli data in a special frames,
 /// for which we need to have custom logic to decode and encode to.
-#[cfg(feature = "brotli")]
+#[cfg(all(feature = "util", feature = "brotli"))]
 #[test]
 fn decompress_zstdmt_brotli_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -201,7 +215,7 @@ fn decompress_zstdmt_brotli_file() {
     );
 }
 
-#[cfg(feature = "lz4")]
+#[cfg(all(feature = "util", feature = "lz4"))]
 #[test]
 fn decompress_zstdmt_lz4_file() {
     let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

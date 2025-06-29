@@ -106,13 +106,13 @@ impl<W: Write> Write for DeltaWriter<W> {
     }
 }
 
+#[cfg(feature = "compress")]
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
     use super::*;
 
-    #[cfg(feature = "compress")]
     #[test]
     fn test_delta_roundtrip() {
         let test_cases = [

@@ -1,5 +1,17 @@
 use byteorder::{LittleEndian, WriteBytesExt};
 
+/// A password used for password protected, encrypted files.
+///
+/// Use `[Password::empty()]` to create an empty password when no
+/// password is used.
+///
+/// You can convert strings easily into password using the Into/From traits:
+///
+/// ```rust
+/// use sevenz_rust2::Password;
+///
+/// let password: Password = "a password string".into();
+/// ```
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Password(Vec<u8>);
 
@@ -16,14 +28,17 @@ impl Password {
         Self(bytes.to_vec())
     }
 
+    /// Creates an empty password.
     pub fn empty() -> Self {
         Self(Default::default())
     }
 
+    /// Returns the byte representation of the password.
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 
+    /// Returns `true` if the password is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

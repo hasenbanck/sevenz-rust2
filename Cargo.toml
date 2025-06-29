@@ -54,16 +54,28 @@ rand = { version = "0.9" }
 tempfile = "3"
 
 [[example]]
+name = "advance"
+required-features = ["default"]
+
+[[example]]
 name = "compress"
-required-features = ["aes256", "compress", "util"]
+required-features = ["default"]
 
 [[example]]
 name = "decompress"
-required-features = ["aes256", "compress", "util"]
+required-features = ["default"]
 
 [[example]]
-name = "advance"
-required-features = ["aes256", "compress", "util"]
+name = "decompress_progress"
+required-features = ["default"]
+
+[[example]]
+name = "folder_decompress"
+required-features = ["default"]
+
+[[example]]
+name = "mt_decompress"
+required-features = ["default"]
 
 [package.metadata.docs.rs]
 features = ["aes256", "brotli", "bzip2", "compress", "deflate", "lz4", "util", "ppmd", "zstd"]
