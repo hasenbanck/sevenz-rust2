@@ -34,44 +34,40 @@
 
 #[cfg(target_arch = "wasm32")]
 extern crate wasm_bindgen;
-#[cfg(feature = "aes256")]
-mod aes256sha256;
-mod bcj;
-mod bcj2;
-#[cfg(feature = "brotli")]
-mod brotli;
-#[cfg(all(feature = "util", not(target_arch = "wasm32")))]
-mod de_function;
-mod delta;
-#[cfg(all(feature = "compress", feature = "util"))]
-mod en_function;
+
 #[cfg(feature = "compress")]
 mod encoder;
 /// Encoding options when compressing.
 pub mod encoder_options;
+#[cfg(feature = "aes256")]
+mod encryption;
 mod error;
-#[cfg(feature = "lz4")]
-mod lz4;
-mod password;
 mod reader;
-#[cfg(target_arch = "wasm32")]
-mod wasm;
+
 #[cfg(feature = "compress")]
 mod writer;
 
-#[cfg(feature = "aes256")]
-pub use aes256sha256::*;
+pub(crate) mod archive;
+mod codec;
+pub(crate) mod decoders;
+mod filter;
+pub(crate) mod folder;
+
+#[cfg(feature = "util")]
+mod util;
+
 pub use archive::*;
-#[cfg(all(feature = "util", not(target_arch = "wasm32")))]
-pub use de_function::*;
-#[cfg(all(feature = "compress", feature = "util"))]
-pub use en_function::*;
+pub use encryption::Password;
+#[cfg(feature = "aes256")]
+pub use encryption::*;
 pub use error::Error;
 pub use nt_time;
-pub use password::Password;
 pub use reader::{ArchiveReader, BlockDecoder};
+#[cfg(all(feature = "compress", feature = "util"))]
+pub use util::compress::*;
+#[cfg(all(feature = "util", not(target_arch = "wasm32")))]
+pub use util::decompress::*;
+#[cfg(all(feature = "util", target_arch = "wasm32"))]
+pub use util::wasm::*;
 #[cfg(feature = "compress")]
 pub use writer::*;
-pub(crate) mod archive;
-pub(crate) mod decoders;
-pub(crate) mod folder;

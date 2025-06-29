@@ -9,7 +9,8 @@ use std::{
 use bit_set::BitSet;
 use crc32fast::Hasher;
 
-use crate::{archive::*, decoders::add_decoder, error::Error, folder::*, password::Password};
+use crate::encryption::Password;
+use crate::{archive::*, decoders::add_decoder, error::Error, folder::*};
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 
@@ -155,7 +156,7 @@ impl Archive {
         password: &Password,
     ) -> Result<Archive, Error> {
         let mut file = File::open(path)?;
-        Self::read(&mut file, password.as_ref())
+        Self::read(&mut file, password)
     }
 
     /// Read 7z file archive info use the specified `reader`.
@@ -177,13 +178,13 @@ impl Archive {
     /// let mut reader = File::open("example.7z").unwrap();
     ///
     /// let password = Password::from("the password");
-    /// let archive = Archive::read(&mut reader, password.as_ref()).unwrap();
+    /// let archive = Archive::read(&mut reader, &password).unwrap();
     ///
     /// for entry in &archive.files {
     ///     println!("{}", entry.name());
     /// }
     /// ```
-    pub fn read<R: Read + Seek>(reader: &mut R, password: &[u8]) -> Result<Archive, Error> {
+    pub fn read<R: Read + Seek>(reader: &mut R, password: &Password) -> Result<Archive, Error> {
         let reader_len = reader.seek(SeekFrom::End(0))?;
         reader.seek(SeekFrom::Start(0))?;
 
@@ -286,7 +287,7 @@ impl Archive {
     fn try_to_locale_end_header<R: Read + Seek>(
         reader: &mut R,
         reader_len: u64,
-        password: &[u8],
+        password: &Password,
     ) -> Result<Self, Error> {
         let search_limit = 1024 * 1024;
         let prev_data_size = reader.stream_position().map_err(Error::io)? + 20;
@@ -323,7 +324,7 @@ impl Archive {
     fn init_archive<R: Read + Seek>(
         reader: &mut R,
         start_header: StartHeader,
-        password: &[u8],
+        password: &Password,
         verify_crc: bool,
     ) -> Result<Self, Error> {
         if start_header.next_header_size > usize::MAX as u64 {
@@ -384,7 +385,7 @@ impl Archive {
         header: &mut R,
         reader: &'r mut RI,
         archive: &mut Archive,
-        password: &[u8],
+        password: &Password,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
         Self::read_streams_info(header, archive)?;
         let folder = archive
@@ -1108,7 +1109,7 @@ struct IndexEntry {
 pub struct ArchiveReader<R: Read + Seek> {
     source: R,
     archive: Archive,
-    password: Vec<u8>,
+    password: Password,
     index: HashMap<String, IndexEntry>,
 }
 
@@ -1127,7 +1128,6 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// Creates a [`ArchiveReader`] to read a 7z archive file from the given `source` reader.
     #[inline]
     pub fn new(mut source: R, password: Password) -> Result<Self, Error> {
-        let password = password.to_vec();
         let archive = Archive::read(&mut source, &password)?;
 
         let mut reader = Self {
@@ -1147,7 +1147,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         let mut reader = Self {
             source,
             archive,
-            password: password.to_vec(),
+            password,
             index: HashMap::default(),
         };
 
@@ -1179,7 +1179,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         source: &'r mut R,
         archive: &Archive,
         folder_index: usize,
-        password: &[u8],
+        password: &Password,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
         let folder = &archive.folders[folder_index];
         if folder.total_input_streams > folder.total_output_streams {
@@ -1228,7 +1228,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         source: &'r mut R,
         archive: &Archive,
         folder_index: usize,
-        password: &[u8],
+        password: &Password,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
         const MAX_CODER_COUNT: usize = 32;
         let folder = &archive.folders[folder_index];
@@ -1296,7 +1296,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 i,
             )?);
         }
-        let mut decoder: Box<dyn Read> = Box::new(crate::bcj2::BCJ2Reader::new(
+        let mut decoder: Box<dyn Read> = Box::new(crate::filter::bcj2::BCJ2Reader::new(
             inputs,
             folder.get_unpack_size(),
         ));
@@ -1317,7 +1317,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         folder: &Folder,
         sources: &[SeekableBoundedReader<ReaderPointer<'r, R>>],
         coder_to_stream_map: &[usize],
-        password: &[u8],
+        password: &Password,
 
         in_stream_index: usize,
     ) -> Result<Box<dyn Read + 'r>, Error>
@@ -1348,7 +1348,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         folder: &Folder,
         sources: &[SeekableBoundedReader<ReaderPointer<'r, R>>],
         coder_to_stream_map: &[usize],
-        password: &[u8],
+        password: &Password,
         in_stream_index: usize,
     ) -> Result<Box<dyn Read + 'r>, Error>
     where
@@ -1519,7 +1519,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 pub struct BlockDecoder<'a, R: Read + Seek> {
     folder_index: usize,
     archive: &'a Archive,
-    password: &'a [u8],
+    password: &'a Password,
     source: &'a mut R,
 }
 
@@ -1527,7 +1527,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     pub fn new(
         folder_index: usize,
         archive: &'a Archive,
-        password: &'a [u8],
+        password: &'a Password,
         source: &'a mut R,
     ) -> Self {
         Self {

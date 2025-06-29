@@ -11,15 +11,16 @@ use ppmd_rust::{
     PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
 };
 
-#[cfg(feature = "aes256")]
-use crate::aes256sha256::Aes256Sha256Decoder;
 #[cfg(feature = "brotli")]
-use crate::brotli::BrotliDecoder;
+use crate::codec::brotli::BrotliDecoder;
 #[cfg(feature = "lz4")]
-use crate::lz4::Lz4Decoder;
-use crate::{
-    archive::EncoderMethod, bcj::SimpleReader, delta::DeltaReader, error::Error, folder::Coder,
-};
+use crate::codec::lz4::Lz4Decoder;
+#[cfg(feature = "aes256")]
+use crate::encryption::Aes256Sha256Decoder;
+use crate::filter::bcj::SimpleReader;
+use crate::filter::delta::DeltaReader;
+use crate::{Password, archive::EncoderMethod, error::Error, folder::Coder};
+
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),
@@ -73,7 +74,7 @@ pub fn add_decoder<I: Read>(
     input: I,
     uncompressed_len: usize,
     coder: &Coder,
-    #[allow(unused)] password: &[u8],
+    #[allow(unused)] password: &Password,
     max_mem_limit_kb: usize,
 ) -> Result<Decoder<I>, Error> {
     let method = EncoderMethod::by_id(coder.decompression_method_id());

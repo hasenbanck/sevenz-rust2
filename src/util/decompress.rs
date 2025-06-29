@@ -3,7 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{Error, password::Password, *};
+use crate::encryption::Password;
+use crate::{Error, *};
 
 /// Decompresses a 7z file.
 ///

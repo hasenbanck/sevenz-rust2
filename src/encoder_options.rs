@@ -7,7 +7,7 @@ use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_M
 
 use crate::EncoderConfiguration;
 #[cfg(feature = "aes256")]
-use crate::aes256sha256::AesEncoderOptions;
+use crate::encryption::AesEncoderOptions;
 
 #[cfg(feature = "bzip2")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]

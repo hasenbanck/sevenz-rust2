@@ -1,11 +1,10 @@
 use std::io::{Read, Seek, Write};
 
-use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, generic_array::GenericArray};
-use sha2::Digest;
-
 #[cfg(feature = "compress")]
 pub use self::enc::*;
-use crate::Password;
+use aes::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit, generic_array::GenericArray};
+use byteorder::{LittleEndian, WriteBytesExt};
+use sha2::Digest;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
@@ -20,8 +19,12 @@ pub(crate) struct Aes256Sha256Decoder<R> {
 }
 
 impl<R: Read> Aes256Sha256Decoder<R> {
-    pub(crate) fn new(input: R, properties: &[u8], password: &[u8]) -> Result<Self, crate::Error> {
-        let cipher = Cipher::from_properties(properties, password)?;
+    pub(crate) fn new(
+        input: R,
+        properties: &[u8],
+        password: &Password,
+    ) -> Result<Self, crate::Error> {
+        let cipher = Cipher::from_properties(properties, password.as_slice())?;
         Ok(Self {
             input,
             cipher,
@@ -212,6 +215,7 @@ impl Cipher {
         }
     }
 }
+
 #[cfg(feature = "compress")]
 mod enc {
     type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
@@ -349,6 +353,52 @@ mod enc {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Password(Vec<u8>);
+
+impl Password {
+    /// Creates a new [`Password`] from the given password string.
+    ///
+    /// Internally a password string is encoded as UTF-16.
+    pub fn new(password: &str) -> Self {
+        Self::from(password)
+    }
+
+    /// Creates a new [`Password`] from the given raw bytes.
+    pub fn from_raw(bytes: &[u8]) -> Self {
+        Self(bytes.to_vec())
+    }
+
+    pub fn empty() -> Self {
+        Self(Default::default())
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl AsRef<[u8]> for Password {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<&str> for Password {
+    fn from(s: &str) -> Self {
+        let mut result = Vec::with_capacity(s.len() * 2);
+        let utf16 = s.encode_utf16();
+        for u in utf16 {
+            let _ = result.write_u16::<LittleEndian>(u);
+        }
+        Self(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -361,17 +411,16 @@ mod tests {
     fn test_aes_codec() {
         let mut encoded = vec![];
         let writer = Cursor::new(&mut encoded);
-        let pwd: Password = "1234".into();
-        let options = AesEncoderOptions::new(pwd.clone());
+        let password: Password = "1234".into();
+        let options = AesEncoderOptions::new(password.clone());
         let mut enc = Aes256Sha256Encoder::new(writer, &options).unwrap();
-        let original = include_bytes!("./aes256sha256.rs");
+        let original = include_bytes!("encryption.rs");
         enc.write_all(original).expect("encode data");
         enc.write(&[]).unwrap();
 
         let mut encoded_data = &encoded[..];
         let mut dec =
-            Aes256Sha256Decoder::new(&mut encoded_data, &options.properties(), pwd.as_slice())
-                .unwrap();
+            Aes256Sha256Decoder::new(&mut encoded_data, &options.properties(), &password).unwrap();
 
         let mut decoded = vec![];
         std::io::copy(&mut dec, &mut decoded).unwrap();

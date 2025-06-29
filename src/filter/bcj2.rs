@@ -1,7 +1,9 @@
-mod bcj2_decode;
+mod decode;
+
 use std::io::Read;
 
-use bcj2_decode::*;
+use decode::*;
+
 const BUF_SIZE: usize = 1 << 18;
 
 pub struct Bcj2Coder {

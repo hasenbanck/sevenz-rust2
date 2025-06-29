@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `SevenZMethod` -> `EncoderMethod`
     - `SevenZMethodConfiguration` -> `EncoderConfiguration`
     - `MethodOptions` -> `EncoderOptions`
+- Every API that takes a password not uses the `Password` struct instead. Added helper
+  functions to create password from strings and raw bytes.
 
 ## 0.15.3 - 2025-06-28
 

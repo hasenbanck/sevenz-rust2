@@ -1,12 +1,13 @@
 use std::{path::PathBuf, sync::Arc};
 
-use sevenz_rust2::{Archive, BlockDecoder, Password};
+use sevenz_rust2::Password;
+use sevenz_rust2::{Archive, BlockDecoder};
 
 fn main() {
     let time = std::time::Instant::now();
     let mut file = std::fs::File::open("examples/data/sample.7z").unwrap();
     let password = Password::empty();
-    let archive = Archive::read(&mut file, password.as_slice()).unwrap();
+    let archive = Archive::read(&mut file, &password).unwrap();
     let folder_count = archive.folders.len();
     if folder_count <= 1 {
         println!("folder count less than 1, use single thread");
@@ -22,8 +23,7 @@ fn main() {
         //TODO: use thread pool
         let handle = std::thread::spawn(move || {
             let mut source = std::fs::File::open("examples/data/sample.7z").unwrap();
-            let forder_dec =
-                BlockDecoder::new(folder_index, &archive, password.as_slice(), &mut source);
+            let forder_dec = BlockDecoder::new(folder_index, &archive, &password, &mut source);
             let dest = PathBuf::from("examples/data/sample_mt/");
             forder_dec
                 .for_each_entries(&mut |entry, reader| {

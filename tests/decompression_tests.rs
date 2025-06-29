@@ -3,7 +3,8 @@ use std::{
     path::PathBuf,
 };
 
-use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password, decompress_file};
+use sevenz_rust2::Password;
+use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, decompress_file};
 use tempfile::tempdir;
 
 #[test]
@@ -224,9 +225,10 @@ fn decompress_zstdmt_lz4_file() {
 #[test]
 fn test_bcj2() {
     let mut file = File::open("tests/resources/7za433_7zip_lzma2_bcj2.7z").unwrap();
-    let archive = Archive::read(&mut file, &[]).unwrap();
+    let archive = Archive::read(&mut file, &Password::empty()).unwrap();
     for i in 0..archive.folders.len() {
-        let fd = BlockDecoder::new(i, &archive, &[], &mut file);
+        let password = Password::empty();
+        let fd = BlockDecoder::new(i, &archive, &password, &mut file);
         println!("entry_count:{}", fd.entry_count());
         fd.for_each_entries(&mut |entry, reader| {
             println!("{}=>{:?}", entry.has_stream, entry.name());
@@ -245,7 +247,7 @@ fn test_entry_compressed_size() {
         if path.to_string_lossy().ends_with("7z") {
             println!("{path:?}");
             let mut file = File::open(path).unwrap();
-            let archive = Archive::read(&mut file, &[]).unwrap();
+            let archive = Archive::read(&mut file, &Password::empty()).unwrap();
             for i in 0..archive.folders.len() {
                 let fi = archive.stream_map.folder_first_file_index[i];
                 let file = &archive.files[fi];
