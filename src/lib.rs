@@ -38,8 +38,9 @@ extern crate wasm_bindgen;
 #[cfg(feature = "compress")]
 mod encoder;
 /// Encoding options when compressing.
+#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+#[cfg(feature = "compress")]
 pub mod encoder_options;
-#[cfg(feature = "aes256")]
 mod encryption;
 mod error;
 mod reader;
@@ -58,12 +59,10 @@ mod util;
 
 pub use archive::*;
 pub use encryption::Password;
-#[cfg(feature = "aes256")]
-pub use encryption::*;
 pub use error::Error;
 pub use nt_time;
 pub use reader::{ArchiveReader, BlockDecoder};
-#[cfg(all(feature = "compress", feature = "util"))]
+#[cfg(all(feature = "compress", feature = "util", not(target_arch = "wasm32")))]
 pub use util::compress::*;
 #[cfg(all(feature = "util", not(target_arch = "wasm32")))]
 pub use util::decompress::*;

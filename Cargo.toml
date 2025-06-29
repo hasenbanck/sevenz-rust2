@@ -14,7 +14,8 @@ version = "0.15.3"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["bzip2", "compress", "ppmd", "util"]
+default = ["aes256", "bzip2", "compress", "ppmd", "util"]
+default_wasm = ["aes256_wasm", "bzip2", "compress", "ppmd", "util"]
 aes256 = ["dep:aes", "dep:cbc", "dep:getrandom", "dep:sha2"]
 aes256_wasm = ["aes256", "getrandom/wasm_js"]
 brotli = ["dep:brotli"]

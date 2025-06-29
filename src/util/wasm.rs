@@ -3,7 +3,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use js_sys::*;
 use wasm_bindgen::prelude::*;
 
-use super::{password::Password, *};
+use crate::*;
 
 #[wasm_bindgen]
 pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String> {
@@ -41,13 +41,11 @@ pub fn compress(entries: Vec<JsString>, datas: Vec<Uint8Array>) -> Result<Uint8A
     let writer = Uint8ArrayStream::new(output);
 
     let mut sz = ArchiveWriter::new(writer).map_err(|e| e.to_string())?;
-    let reader = SeqReader::new(
-        datas
-            .into_iter()
-            .map(|d| Uint8ArrayStream::new(d))
-            .map(SourceReader::new)
-            .collect(),
-    );
+    let reader: Vec<SourceReader<_>> = datas
+        .into_iter()
+        .map(|d| Uint8ArrayStream::new(d))
+        .map(SourceReader::new)
+        .collect();
     let entries = entries
         .into_iter()
         .map(|name| ArchiveEntry {

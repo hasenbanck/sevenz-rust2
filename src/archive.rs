@@ -2,7 +2,10 @@
 use bit_set::BitSet;
 use nt_time::FileTime;
 
-use crate::{encoder_options::EncoderOptions, folder::*};
+#[cfg(feature = "compress")]
+use crate::encoder_options::EncoderOptions;
+
+use crate::folder::*;
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -178,18 +181,22 @@ impl ArchiveEntry {
     }
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+#[cfg(feature = "compress")]
 #[derive(Debug, Default)]
 pub struct EncoderConfiguration {
     pub method: EncoderMethod,
     pub options: Option<EncoderOptions>,
 }
 
+#[cfg(feature = "compress")]
 impl From<EncoderMethod> for EncoderConfiguration {
     fn from(value: EncoderMethod) -> Self {
         Self::new(value)
     }
 }
 
+#[cfg(feature = "compress")]
 impl Clone for EncoderConfiguration {
     fn clone(&self) -> Self {
         Self {
@@ -199,6 +206,7 @@ impl Clone for EncoderConfiguration {
     }
 }
 
+#[cfg(feature = "compress")]
 impl EncoderConfiguration {
     pub fn new(method: EncoderMethod) -> Self {
         Self {

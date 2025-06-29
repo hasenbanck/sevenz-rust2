@@ -6,19 +6,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::*;
+#[cfg(feature = "aes256")]
+use crate::encoder_options::AesEncoderOptions;
+use crate::writer::LazyFileReader;
+use crate::{ArchiveEntry, ArchiveWriter, EncoderMethod, Error, Password};
 
 /// Helper function to compress `src` path to `dest` writer.
 #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Error> {
-    let mut z = ArchiveWriter::new(dest)?;
+    let mut archive_writer = ArchiveWriter::new(dest)?;
     let parent = if src.as_ref().is_dir() {
         src.as_ref()
     } else {
         src.as_ref().parent().unwrap_or(src.as_ref())
     };
-    compress_path(src.as_ref(), parent, &mut z)?;
-    z.finish().map_err(Error::io)
+    compress_path(src.as_ref(), parent, &mut archive_writer)?;
+    archive_writer.finish().map_err(Error::io)
 }
 
 #[cfg(feature = "aes256")]
@@ -31,9 +34,9 @@ pub fn compress_encrypted<W: Write + Seek>(
     dest: W,
     password: Password,
 ) -> Result<W, Error> {
-    let mut z = ArchiveWriter::new(dest)?;
+    let mut archive_writer = ArchiveWriter::new(dest)?;
     if !password.is_empty() {
-        z.set_content_methods(vec![
+        archive_writer.set_content_methods(vec![
             AesEncoderOptions::new(password).into(),
             EncoderMethod::LZMA2.into(),
         ]);
@@ -43,16 +46,16 @@ pub fn compress_encrypted<W: Write + Seek>(
     } else {
         src.as_ref().parent().unwrap_or(src.as_ref())
     };
-    compress_path(src.as_ref(), parent, &mut z)?;
-    z.finish().map_err(Error::io)
+    compress_path(src.as_ref(), parent, &mut archive_writer)?;
+    archive_writer.finish().map_err(Error::io)
 }
 
 /// Helper function to compress `src` path to `dest` path.
 #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
-    if let Some(p) = dest.as_ref().parent() {
-        if !p.exists() {
-            std::fs::create_dir_all(p)
+    if let Some(path) = dest.as_ref().parent() {
+        if !path.exists() {
+            std::fs::create_dir_all(path)
                 .map_err(|e| Error::io_msg(e, format!("Create dir failed:{:?}", dest.as_ref())))?;
         }
     }
@@ -74,9 +77,9 @@ pub fn compress_to_path_encrypted(
     dest: impl AsRef<Path>,
     password: Password,
 ) -> Result<(), Error> {
-    if let Some(p) = dest.as_ref().parent() {
-        if !p.exists() {
-            std::fs::create_dir_all(p)
+    if let Some(path) = dest.as_ref().parent() {
+        if !path.exists() {
+            std::fs::create_dir_all(path)
                 .map_err(|e| Error::io_msg(e, format!("Create dir failed:{:?}", dest.as_ref())))?;
         }
     }
@@ -92,7 +95,7 @@ pub fn compress_to_path_encrypted(
 fn compress_path<W: Write + Seek, P: AsRef<Path>>(
     src: P,
     root: &Path,
-    z: &mut ArchiveWriter<W>,
+    archive_writer: &mut ArchiveWriter<W>,
 ) -> Result<(), Error> {
     let entry_name = src
         .as_ref()
@@ -103,7 +106,7 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
     let entry = ArchiveEntry::from_path(src.as_ref(), entry_name);
     let path = src.as_ref();
     if path.is_dir() {
-        z.push_archive_entry::<&[u8]>(entry, None)?;
+        archive_writer.push_archive_entry::<&[u8]>(entry, None)?;
         for dir in path
             .read_dir()
             .map_err(|e| Error::io_msg(e, "error read dir"))?
@@ -111,11 +114,11 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
             let dir = dir.map_err(Error::io)?;
             let ftype = dir.file_type().map_err(Error::io)?;
             if ftype.is_dir() || ftype.is_file() {
-                compress_path(dir.path(), root, z)?;
+                compress_path(dir.path(), root, archive_writer)?;
             }
         }
     } else {
-        z.push_archive_entry(
+        archive_writer.push_archive_entry(
             entry,
             Some(
                 File::open(path)

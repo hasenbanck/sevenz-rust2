@@ -59,6 +59,7 @@ impl Error {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[inline]
     pub(crate) fn file_open(e: std::io::Error, filename: impl Into<Cow<'static, str>>) -> Self {
         Self::Io(e, filename.into())

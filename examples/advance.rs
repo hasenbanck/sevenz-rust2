@@ -2,6 +2,7 @@ use std::{collections::HashMap, env::temp_dir, time::Instant};
 
 use lzma_rust2::LZMA2Options;
 use rand::Rng;
+use sevenz_rust2::encoder_options::AesEncoderOptions;
 use sevenz_rust2::*;
 
 fn main() {
@@ -34,7 +35,7 @@ fn main() {
     #[cfg(feature = "aes256")]
     {
         sz.set_content_methods(vec![
-            AesEncoderOptions::new("sevenz-rust".into()).into(),
+            AesEncoderOptions::new(Password::new("sevenz-rust")).into(),
             LZMA2Options::with_preset(9).into(),
         ]);
         // sz.set_encrypt_header(true);

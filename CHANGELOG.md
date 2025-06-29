@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `MethodOptions` -> `EncoderOptions`
 - Every API that takes a password not uses the `Password` struct instead. Added helper
   functions to create password from strings and raw bytes.
+- The needed features for WASM changed. Please use the "default_wasm" feature.
 
 ## 0.15.3 - 2025-06-28
 

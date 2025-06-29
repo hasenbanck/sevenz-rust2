@@ -9,7 +9,7 @@ use std::{
 use bit_set::BitSet;
 use crc32fast::Hasher;
 
-use crate::encryption::Password;
+use crate::Password;
 use crate::{archive::*, decoder::add_decoder, error::Error, folder::*};
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
@@ -149,7 +149,7 @@ impl Archive {
         Self::open_with_password(path, &Password::empty())
     }
 
-    /// Open an encrypted 7z file under specified `path` with  `password`.
+    /// Open an encrypted 7z file under specified `path` with `password`.
     #[inline]
     pub fn open_with_password(
         path: impl AsRef<std::path::Path>,

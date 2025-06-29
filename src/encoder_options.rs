@@ -5,9 +5,11 @@ pub use lzma_rust2::LZMA2Options;
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
 
+#[cfg(feature = "compress")]
 use crate::EncoderConfiguration;
+
 #[cfg(feature = "aes256")]
-use crate::encryption::AesEncoderOptions;
+use crate::Password;
 
 #[cfg(feature = "bzip2")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]
@@ -227,6 +229,49 @@ impl Default for ZStandardOptions {
     }
 }
 
+#[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
+#[cfg(feature = "aes256")]
+#[derive(Debug, Clone)]
+pub struct AesEncoderOptions {
+    pub password: Password,
+    pub iv: [u8; 16],
+    pub salt: [u8; 16],
+    pub num_cycles_power: u8,
+}
+
+#[cfg(feature = "aes256")]
+impl AesEncoderOptions {
+    pub fn new(password: Password) -> Self {
+        let mut iv = [0; 16];
+        getrandom::fill(&mut iv).expect("Can't generate IV");
+
+        let mut salt = [0; 16];
+        getrandom::fill(&mut salt).expect("Can't generate salt");
+
+        Self {
+            password,
+            iv,
+            salt,
+            num_cycles_power: 8,
+        }
+    }
+
+    pub(crate) fn properties(&self) -> [u8; 34] {
+        let mut props = [0u8; 34];
+        self.write_properties(&mut props);
+        props
+    }
+
+    #[inline]
+    pub(crate) fn write_properties(&self, props: &mut [u8]) {
+        assert!(props.len() >= 34);
+        props[0] = (self.num_cycles_power & 0x3F) | 0xC0;
+        props[1] = 0xFF;
+        props[2..18].copy_from_slice(&self.salt);
+        props[18..34].copy_from_slice(&self.iv);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EncoderOptions {
     Num(u32),
@@ -266,7 +311,7 @@ impl From<AesEncoderOptions> for EncoderOptions {
     }
 }
 
-#[cfg(feature = "aes256")]
+#[cfg(all(feature = "aes256", feature = "compress"))]
 impl From<AesEncoderOptions> for EncoderConfiguration {
     fn from(value: AesEncoderOptions) -> Self {
         Self::new(crate::EncoderMethod::AES256SHA256).with_options(EncoderOptions::Aes(value))

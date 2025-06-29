@@ -1,5 +1,5 @@
 mod counting_writer;
-#[cfg(feature = "util")]
+#[cfg(all(feature = "util", not(target_arch = "wasm32")))]
 mod lazy_file_reader;
 mod pack_info;
 mod seq_reader;
@@ -20,7 +20,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 pub(crate) use counting_writer::CountingWriter;
 use crc32fast::Hasher;
 
-#[cfg(feature = "util")]
+#[cfg(all(feature = "util", not(target_arch = "wasm32")))]
 pub(crate) use self::lazy_file_reader::LazyFileReader;
 pub(crate) use self::seq_reader::SeqReader;
 pub use self::source_reader::SourceReader;
@@ -226,9 +226,10 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     /// * If `entries`'s length not equals to `reader.reader_len()`
     pub fn push_archive_entries<R: Read>(
         &mut self,
-        mut entries: Vec<ArchiveEntry>,
+        entries: Vec<ArchiveEntry>,
         reader: Vec<SourceReader<R>>,
     ) -> Result<&mut Self> {
+        let mut entries = entries;
         let mut r = SeqReader::new(reader);
         assert_eq!(r.reader_len(), entries.len());
         let mut compressed_len = 0;
