@@ -238,7 +238,7 @@ fn decompress_zstdmt_lz4_file() {
 fn test_bcj2() {
     let mut file = File::open("tests/resources/7za433_7zip_lzma2_bcj2.7z").unwrap();
     let archive = Archive::read(&mut file, &Password::empty()).unwrap();
-    for i in 0..archive.folders.len() {
+    for i in 0..archive.blocks.len() {
         let password = Password::empty();
         let fd = BlockDecoder::new(i, &archive, &password, &mut file);
         println!("entry_count:{}", fd.entry_count());
@@ -260,8 +260,8 @@ fn test_entry_compressed_size() {
             println!("{path:?}");
             let mut file = File::open(path).unwrap();
             let archive = Archive::read(&mut file, &Password::empty()).unwrap();
-            for i in 0..archive.folders.len() {
-                let fi = archive.stream_map.folder_first_file_index[i];
+            for i in 0..archive.blocks.len() {
+                let fi = archive.stream_map.block_first_file_index[i];
                 let file = &archive.files[fi];
                 println!(
                     "\t:{}\tsize={}, \tcompressed={}",

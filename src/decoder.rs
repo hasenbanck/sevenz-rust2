@@ -20,9 +20,9 @@ use crate::encryption::Aes256Sha256Decoder;
 use crate::{
     Password,
     archive::EncoderMethod,
+    block::Coder,
     error::Error,
     filter::{bcj::SimpleReader, delta::DeltaReader},
-    folder::Coder,
 };
 
 #[allow(clippy::upper_case_acronyms)]
@@ -81,13 +81,13 @@ pub fn add_decoder<I: Read>(
     #[allow(unused)] password: &Password,
     max_mem_limit_kb: usize,
 ) -> Result<Decoder<I>, Error> {
-    let method = EncoderMethod::by_id(coder.decompression_method_id());
+    let method = EncoderMethod::by_id(coder.encoder_method_id());
     let method = if let Some(m) = method {
         m
     } else {
         return Err(Error::UnsupportedCompressionMethod(format!(
             "{:?}",
-            coder.decompression_method_id()
+            coder.encoder_method_id()
         )));
     };
     match method.id() {

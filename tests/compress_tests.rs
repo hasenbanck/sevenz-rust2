@@ -185,13 +185,13 @@ fn test_compression_method(methods: &[EncoderConfiguration]) {
         let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
 
         let file = ArchiveEntry::new_file("data/decompress_x86.exe");
-        let folder = ArchiveEntry::new_folder("data");
+        let directory = ArchiveEntry::new_directory("data");
 
         writer.set_content_methods(methods.to_vec());
         writer
             .push_archive_entry(file, Some(content.as_slice()))
             .unwrap();
-        writer.push_archive_entry::<&[u8]>(folder, None).unwrap();
+        writer.push_archive_entry::<&[u8]>(directory, None).unwrap();
         writer.finish().unwrap();
     }
 

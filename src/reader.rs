@@ -8,7 +8,7 @@ use std::{
 
 use crc32fast::Hasher;
 
-use crate::{Password, archive::*, bitset::BitSet, decoder::add_decoder, error::Error, folder::*};
+use crate::{Password, archive::*, bitset::BitSet, block::*, decoder::add_decoder, error::Error};
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 
@@ -372,9 +372,9 @@ impl Archive {
         }
 
         archive.is_solid = archive
-            .folders
+            .blocks
             .iter()
-            .any(|folder| folder.num_unpack_sub_streams > 1);
+            .any(|block| block.num_unpack_sub_streams > 1);
 
         Ok(archive)
     }
@@ -386,27 +386,27 @@ impl Archive {
         password: &Password,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
         Self::read_streams_info(header, archive)?;
-        let folder = archive
-            .folders
+        let block = archive
+            .blocks
             .first()
-            .ok_or(Error::other("no folders, can't read encoded header"))?;
+            .ok_or(Error::other("no blocks, can't read encoded header"))?;
         let first_pack_stream_index = 0;
-        let folder_offset = SIGNATURE_HEADER_SIZE + archive.pack_pos;
+        let block_offset = SIGNATURE_HEADER_SIZE + archive.pack_pos;
         if archive.pack_sizes.is_empty() {
             return Err(Error::other("no packed streams, can't read encoded header"));
         }
 
         reader
-            .seek(SeekFrom::Start(folder_offset))
+            .seek(SeekFrom::Start(block_offset))
             .map_err(Error::io)?;
-        let coder_len = folder.coders.len();
-        let unpack_size = folder.get_unpack_size() as usize;
+        let coder_len = block.coders.len();
+        let unpack_size = block.get_unpack_size() as usize;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
         let input_reader =
-            SeekableBoundedReader::new(reader, (folder_offset, folder_offset + pack_size as u64));
+            SeekableBoundedReader::new(reader, (block_offset, block_offset + pack_size as u64));
         let mut decoder: Box<dyn Read> = Box::new(input_reader);
         let mut decoder = if coder_len > 0 {
-            for (index, coder) in folder.ordered_coder_iter() {
+            for (index, coder) in block.ordered_coder_iter() {
                 if coder.num_in_streams != 1 || coder.num_out_streams != 1 {
                     return Err(Error::other(
                         "Multi input/output stream coders are not yet supported",
@@ -414,7 +414,7 @@ impl Archive {
                 }
                 let next = add_decoder(
                     decoder,
-                    folder.get_unpack_size_at_index(index) as usize,
+                    block.get_unpack_size_at_index(index) as usize,
                     coder,
                     password,
                     MAX_MEM_LIMIT_KB,
@@ -425,8 +425,8 @@ impl Archive {
         } else {
             decoder
         };
-        if folder.has_crc {
-            decoder = Box::new(Crc32VerifyingReader::new(decoder, unpack_size, folder.crc));
+        if block.has_crc {
+            decoder = Box::new(Crc32VerifyingReader::new(decoder, unpack_size, block.crc));
         }
 
         Ok((decoder, unpack_size))
@@ -443,7 +443,7 @@ impl Archive {
             Self::read_unpack_info(header, archive)?;
             nid = read_u8(header)?;
         } else {
-            archive.folders.clear();
+            archive.blocks.clear();
         }
         if nid == K_SUB_STREAMS_INFO {
             Self::read_sub_streams_info(header, archive)?;
@@ -636,12 +636,12 @@ impl Archive {
     fn calculate_stream_map(archive: &mut Archive) -> Result<(), Error> {
         let mut stream_map = StreamMap::default();
 
-        let mut next_folder_pack_stream_index = 0;
-        let num_folders = archive.folders.len();
-        stream_map.folder_first_pack_stream_index = vec![0; num_folders];
-        for i in 0..num_folders {
-            stream_map.folder_first_pack_stream_index[i] = next_folder_pack_stream_index;
-            next_folder_pack_stream_index += archive.folders[i].packed_streams.len();
+        let mut next_block_pack_stream_index = 0;
+        let num_blocks = archive.blocks.len();
+        stream_map.block_first_pack_stream_index = vec![0; num_blocks];
+        for i in 0..num_blocks {
+            stream_map.block_first_pack_stream_index[i] = next_block_pack_stream_index;
+            next_block_pack_stream_index += archive.blocks[i].packed_streams.len();
         }
 
         let mut next_pack_stream_offset = 0;
@@ -652,47 +652,47 @@ impl Archive {
             next_pack_stream_offset += archive.pack_sizes[i];
         }
 
-        stream_map.folder_first_file_index = vec![0; num_folders];
-        stream_map.file_folder_index = vec![None; archive.files.len()];
-        let mut next_folder_index = 0;
-        let mut next_folder_unpack_stream_index = 0;
+        stream_map.block_first_file_index = vec![0; num_blocks];
+        stream_map.file_block_index = vec![None; archive.files.len()];
+        let mut next_block_index = 0;
+        let mut next_block_unpack_stream_index = 0;
         for i in 0..archive.files.len() {
-            if !archive.files[i].has_stream && next_folder_unpack_stream_index == 0 {
-                stream_map.file_folder_index[i] = None;
+            if !archive.files[i].has_stream && next_block_unpack_stream_index == 0 {
+                stream_map.file_block_index[i] = None;
                 continue;
             }
-            if next_folder_unpack_stream_index == 0 {
-                while next_folder_index < archive.folders.len() {
-                    stream_map.folder_first_file_index[next_folder_index] = i;
-                    if archive.folders[next_folder_index].num_unpack_sub_streams > 0 {
+            if next_block_unpack_stream_index == 0 {
+                while next_block_index < archive.blocks.len() {
+                    stream_map.block_first_file_index[next_block_index] = i;
+                    if archive.blocks[next_block_index].num_unpack_sub_streams > 0 {
                         break;
                     }
-                    next_folder_index += 1;
+                    next_block_index += 1;
                 }
-                if next_folder_index >= archive.folders.len() {
-                    return Err(Error::other("Too few folders in archive"));
+                if next_block_index >= archive.blocks.len() {
+                    return Err(Error::other("Too few blocks in archive"));
                 }
             }
-            stream_map.file_folder_index[i] = Some(next_folder_index);
+            stream_map.file_block_index[i] = Some(next_block_index);
             if !archive.files[i].has_stream {
                 continue;
             }
 
             //set `compressed_size` of first file in block
-            if stream_map.folder_first_file_index[next_folder_index] == i {
+            if stream_map.block_first_file_index[next_block_index] == i {
                 let first_pack_stream_index =
-                    stream_map.folder_first_pack_stream_index[next_folder_index];
+                    stream_map.block_first_pack_stream_index[next_block_index];
                 let pack_size = archive.pack_sizes[first_pack_stream_index];
 
                 archive.files[i].compressed_size = pack_size;
             }
 
-            next_folder_unpack_stream_index += 1;
-            if next_folder_unpack_stream_index
-                >= archive.folders[next_folder_index].num_unpack_sub_streams
+            next_block_unpack_stream_index += 1;
+            if next_block_unpack_stream_index
+                >= archive.blocks[next_block_index].num_unpack_sub_streams
             {
-                next_folder_index += 1;
-                next_folder_unpack_stream_index = 0;
+                next_block_index += 1;
+                next_block_unpack_stream_index = 0;
             }
         }
 
@@ -734,16 +734,16 @@ impl Archive {
         if nid != K_FOLDER {
             return Err(Error::other(format!("Expected kFolder, got {nid}")));
         }
-        let num_folders = read_usize(header, "num folders")?;
+        let num_blocks = read_usize(header, "num blocks")?;
 
-        archive.folders.reserve_exact(num_folders);
+        archive.blocks.reserve_exact(num_blocks);
         let external = read_u8(header)?;
         if external != 0 {
             return Err(Error::ExternalUnsupported);
         }
 
-        for _ in 0..num_folders {
-            archive.folders.push(Self::read_folder(header)?);
+        for _ in 0..num_blocks {
+            archive.blocks.push(Self::read_block(header)?);
         }
 
         let nid = read_u8(header)?;
@@ -753,23 +753,23 @@ impl Archive {
             )));
         }
 
-        for folder in archive.folders.iter_mut() {
-            let tos = folder.total_output_streams;
-            folder.unpack_sizes.reserve_exact(tos);
+        for block in archive.blocks.iter_mut() {
+            let tos = block.total_output_streams;
+            block.unpack_sizes.reserve_exact(tos);
             for _ in 0..tos {
-                folder.unpack_sizes.push(read_u64(header)?);
+                block.unpack_sizes.push(read_u64(header)?);
             }
         }
 
         let mut nid = read_u8(header)?;
         if nid == K_CRC {
-            let crcs_defined = read_all_or_bits(header, num_folders)?;
-            for i in 0..num_folders {
+            let crcs_defined = read_all_or_bits(header, num_blocks)?;
+            for i in 0..num_blocks {
                 if crcs_defined.contains(i) {
-                    archive.folders[i].has_crc = true;
-                    archive.folders[i].crc = read_u32(header)? as u64;
+                    archive.blocks[i].has_crc = true;
+                    archive.blocks[i].crc = read_u32(header)? as u64;
                 } else {
-                    archive.folders[i].has_crc = false;
+                    archive.blocks[i].has_crc = false;
                 }
             }
             nid = read_u8(header)?;
@@ -782,17 +782,17 @@ impl Archive {
     }
 
     fn read_sub_streams_info<R: Read>(header: &mut R, archive: &mut Archive) -> Result<(), Error> {
-        for folder in archive.folders.iter_mut() {
-            folder.num_unpack_sub_streams = 1;
+        for block in archive.blocks.iter_mut() {
+            block.num_unpack_sub_streams = 1;
         }
-        let mut total_unpack_streams = archive.folders.len();
+        let mut total_unpack_streams = archive.blocks.len();
 
         let mut nid = read_u8(header)?;
         if nid == K_NUM_UNPACK_STREAM {
             total_unpack_streams = 0;
-            for folder in archive.folders.iter_mut() {
+            for block in archive.blocks.iter_mut() {
                 let num_streams = read_usize(header, "numStreams")?;
-                folder.num_unpack_sub_streams = num_streams;
+                block.num_unpack_sub_streams = num_streams;
                 total_unpack_streams += num_streams;
             }
             nid = read_u8(header)?;
@@ -808,25 +808,25 @@ impl Archive {
         sub_streams_info.crcs = vec![0; total_unpack_streams];
 
         let mut next_unpack_stream = 0;
-        for folder in archive.folders.iter() {
-            if folder.num_unpack_sub_streams == 0 {
+        for block in archive.blocks.iter() {
+            if block.num_unpack_sub_streams == 0 {
                 continue;
             }
             let mut sum = 0;
             if nid == K_SIZE {
-                for _i in 0..folder.num_unpack_sub_streams - 1 {
+                for _i in 0..block.num_unpack_sub_streams - 1 {
                     let size = read_u64(header)?;
                     sub_streams_info.unpack_sizes[next_unpack_stream] = size;
                     next_unpack_stream += 1;
                     sum += size;
                 }
             }
-            if sum > folder.get_unpack_size() {
+            if sum > block.get_unpack_size() {
                 return Err(Error::other(
-                    "sum of unpack sizes of folder exceeds total unpack size",
+                    "sum of unpack sizes of block exceeds total unpack size",
                 ));
             }
-            sub_streams_info.unpack_sizes[next_unpack_stream] = folder.get_unpack_size() - sum;
+            sub_streams_info.unpack_sizes[next_unpack_stream] = block.get_unpack_size() - sum;
             next_unpack_stream += 1;
         }
         if nid == K_SIZE {
@@ -834,9 +834,9 @@ impl Archive {
         }
 
         let mut num_digests = 0;
-        for folder in archive.folders.iter() {
-            if folder.num_unpack_sub_streams != 1 || !folder.has_crc {
-                num_digests += folder.num_unpack_sub_streams;
+        for block in archive.blocks.iter() {
+            if block.num_unpack_sub_streams != 1 || !block.has_crc {
+                num_digests += block.num_unpack_sub_streams;
             }
         }
 
@@ -850,13 +850,13 @@ impl Archive {
             }
             let mut next_crc = 0;
             let mut next_missing_crc = 0;
-            for folder in archive.folders.iter() {
-                if folder.num_unpack_sub_streams == 1 && folder.has_crc {
+            for block in archive.blocks.iter() {
+                if block.num_unpack_sub_streams == 1 && block.has_crc {
                     sub_streams_info.has_crc.insert(next_crc);
-                    sub_streams_info.crcs[next_crc] = folder.crc;
+                    sub_streams_info.crcs[next_crc] = block.crc;
                     next_crc += 1;
                 } else {
-                    for _i in 0..folder.num_unpack_sub_streams {
+                    for _i in 0..block.num_unpack_sub_streams {
                         if has_missing_crc.contains(next_missing_crc) {
                             sub_streams_info.has_crc.insert(next_crc);
                         } else {
@@ -880,8 +880,8 @@ impl Archive {
         Ok(())
     }
 
-    fn read_folder<R: Read>(header: &mut R) -> Result<Folder, Error> {
-        let mut folder = Folder::default();
+    fn read_block<R: Read>(header: &mut R) -> Result<Block, Error> {
+        let mut block = Block::default();
 
         let num_coders = read_usize(header, "num coders")?;
         let mut coders = Vec::with_capacity(num_coders);
@@ -923,11 +923,11 @@ impl Archive {
                 ));
             }
         }
-        folder.coders = coders;
+        block.coders = coders;
         let total_in_streams = assert_usize(total_in_streams, "totalInStreams")?;
         let total_out_streams = assert_usize(total_out_streams, "totalOutStreams")?;
-        folder.total_input_streams = total_in_streams;
-        folder.total_output_streams = total_out_streams;
+        block.total_input_streams = total_in_streams;
+        block.total_output_streams = total_out_streams;
 
         if total_out_streams == 0 {
             return Err(Error::other("Total output streams can't be 0"));
@@ -941,7 +941,7 @@ impl Archive {
             };
             bind_pairs.push(bp);
         }
-        folder.bind_pairs = bind_pairs;
+        block.bind_pairs = bind_pairs;
 
         if total_in_streams < num_bind_pairs {
             return Err(Error::other(
@@ -953,7 +953,7 @@ impl Archive {
         if num_packed_streams == 1 {
             let mut index = u64::MAX;
             for i in 0..total_in_streams {
-                if folder.find_bind_pair_for_in_stream(i).is_none() {
+                if block.find_bind_pair_for_in_stream(i).is_none() {
                     index = i as u64;
                     break;
                 }
@@ -967,9 +967,9 @@ impl Archive {
                 *packed_stream = read_u64(header)?;
             }
         }
-        folder.packed_streams = packed_streams;
+        block.packed_streams = packed_streams;
 
-        Ok(folder)
+        Ok(block)
     }
 }
 
@@ -1099,7 +1099,7 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
 
 #[derive(Copy, Clone)]
 struct IndexEntry {
-    folder_index: Option<usize>,
+    block_index: Option<usize>,
     file_index: usize,
 }
 
@@ -1156,12 +1156,12 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
     fn fill_index(&mut self) {
         for (file_index, file) in self.archive.files.iter().enumerate() {
-            let folder_index = self.archive.stream_map.file_folder_index[file_index];
+            let block_index = self.archive.stream_map.file_block_index[file_index];
 
             self.index.insert(
                 file.name.clone(),
                 IndexEntry {
-                    folder_index,
+                    block_index,
                     file_index,
                 },
             );
@@ -1176,27 +1176,26 @@ impl<R: Read + Seek> ArchiveReader<R> {
     fn build_decode_stack<'r>(
         source: &'r mut R,
         archive: &Archive,
-        folder_index: usize,
+        block_index: usize,
         password: &Password,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
-        let folder = &archive.folders[folder_index];
-        if folder.total_input_streams > folder.total_output_streams {
-            return Self::build_decode_stack2(source, archive, folder_index, password);
+        let block = &archive.blocks[block_index];
+        if block.total_input_streams > block.total_output_streams {
+            return Self::build_decode_stack2(source, archive, block_index, password);
         }
-        let first_pack_stream_index =
-            archive.stream_map.folder_first_pack_stream_index[folder_index];
-        let folder_offset = SIGNATURE_HEADER_SIZE
+        let first_pack_stream_index = archive.stream_map.block_first_pack_stream_index[block_index];
+        let block_offset = SIGNATURE_HEADER_SIZE
             + archive.pack_pos
             + archive.stream_map.pack_stream_offsets[first_pack_stream_index];
 
         source
-            .seek(SeekFrom::Start(folder_offset))
+            .seek(SeekFrom::Start(block_offset))
             .map_err(Error::io)?;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
 
         let mut decoder: Box<dyn Read> = Box::new(BoundedReader::new(source, pack_size));
-        let folder = &archive.folders[folder_index];
-        for (index, coder) in folder.ordered_coder_iter() {
+        let block = &archive.blocks[block_index];
+        for (index, coder) in block.ordered_coder_iter() {
             if coder.num_in_streams != 1 || coder.num_out_streams != 1 {
                 return Err(Error::unsupported(
                     "Multi input/output stream coders are not yet supported",
@@ -1204,18 +1203,18 @@ impl<R: Read + Seek> ArchiveReader<R> {
             }
             let next = add_decoder(
                 decoder,
-                folder.get_unpack_size_at_index(index) as usize,
+                block.get_unpack_size_at_index(index) as usize,
                 coder,
                 password,
                 MAX_MEM_LIMIT_KB,
             )?;
             decoder = Box::new(next);
         }
-        if folder.has_crc {
+        if block.has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
-                folder.get_unpack_size() as usize,
-                folder.crc,
+                block.get_unpack_size() as usize,
+                block.crc,
             ));
         }
 
@@ -1225,28 +1224,27 @@ impl<R: Read + Seek> ArchiveReader<R> {
     fn build_decode_stack2<'r>(
         source: &'r mut R,
         archive: &Archive,
-        folder_index: usize,
+        block_index: usize,
         password: &Password,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
         const MAX_CODER_COUNT: usize = 32;
-        let folder = &archive.folders[folder_index];
-        if folder.coders.len() > MAX_CODER_COUNT {
+        let block = &archive.blocks[block_index];
+        if block.coders.len() > MAX_CODER_COUNT {
             return Err(Error::unsupported(format!(
                 "Too many coders: {}",
-                folder.coders.len()
+                block.coders.len()
             )));
         }
 
-        assert!(folder.total_input_streams > folder.total_output_streams);
+        assert!(block.total_input_streams > block.total_output_streams);
         let source = ReaderPointer::new(source);
-        let first_pack_stream_index =
-            archive.stream_map.folder_first_pack_stream_index[folder_index];
+        let first_pack_stream_index = archive.stream_map.block_first_pack_stream_index[block_index];
         let start_pos = SIGNATURE_HEADER_SIZE + archive.pack_pos;
         let offsets = &archive.stream_map.pack_stream_offsets[first_pack_stream_index..];
 
-        let mut sources = Vec::with_capacity(folder.packed_streams.len());
+        let mut sources = Vec::with_capacity(block.packed_streams.len());
 
-        for (i, offset) in offsets[..folder.packed_streams.len()].iter().enumerate() {
+        for (i, offset) in offsets[..block.packed_streams.len()].iter().enumerate() {
             let pack_pos = start_pos + offset;
             let pack_size = archive.pack_sizes[first_pack_stream_index + i];
             let pack_reader =
@@ -1257,18 +1255,18 @@ impl<R: Read + Seek> ArchiveReader<R> {
         let mut coder_to_stream_map = [usize::MAX; MAX_CODER_COUNT];
 
         let mut si = 0;
-        for (i, coder) in folder.coders.iter().enumerate() {
+        for (i, coder) in block.coders.iter().enumerate() {
             coder_to_stream_map[i] = si;
             si += coder.num_in_streams as usize;
         }
 
         let main_coder_index = {
             let mut coder_used = [false; MAX_CODER_COUNT];
-            for bp in folder.bind_pairs.iter() {
+            for bp in block.bind_pairs.iter() {
                 coder_used[bp.out_index as usize] = true;
             }
             let mut mci = 0;
-            for (i, used) in coder_used[..folder.coders.len()].iter().enumerate() {
+            for (i, used) in coder_used[..block.coders.len()].iter().enumerate() {
                 if !used {
                     mci = i;
                     break;
@@ -1277,17 +1275,17 @@ impl<R: Read + Seek> ArchiveReader<R> {
             mci
         };
 
-        let id = folder.coders[main_coder_index].decompression_method_id();
+        let id = block.coders[main_coder_index].encoder_method_id();
         if id != EncoderMethod::ID_BCJ2 {
             return Err(Error::unsupported(format!("Unsupported method: {id:?}")));
         }
 
-        let num_in_streams = folder.coders[main_coder_index].num_in_streams as usize;
+        let num_in_streams = block.coders[main_coder_index].num_in_streams as usize;
         let mut inputs: Vec<Box<dyn Read>> = Vec::with_capacity(num_in_streams);
         let start_i = coder_to_stream_map[main_coder_index];
         for i in start_i..num_in_streams + start_i {
             inputs.push(Self::get_in_stream(
-                folder,
+                block,
                 &sources,
                 &coder_to_stream_map,
                 password,
@@ -1296,13 +1294,13 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
         let mut decoder: Box<dyn Read> = Box::new(crate::filter::bcj2::BCJ2Reader::new(
             inputs,
-            folder.get_unpack_size(),
+            block.get_unpack_size(),
         ));
-        if folder.has_crc {
+        if block.has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
-                folder.get_unpack_size() as usize,
-                folder.crc,
+                block.get_unpack_size() as usize,
+                block.crc,
             ));
         }
         Ok((
@@ -1312,7 +1310,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
     }
 
     fn get_in_stream<'r>(
-        folder: &Folder,
+        block: &Block,
         sources: &[SeekableBoundedReader<ReaderPointer<'r, R>>],
         coder_to_stream_map: &[usize],
         password: &Password,
@@ -1322,7 +1320,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
     where
         R: 'r,
     {
-        let index = folder
+        let index = block
             .packed_streams
             .iter()
             .position(|&i| i == in_stream_index as u64);
@@ -1330,20 +1328,20 @@ impl<R: Read + Seek> ArchiveReader<R> {
             return Ok(Box::new(sources[index].clone()));
         }
 
-        let bp = folder
+        let bp = block
             .find_bind_pair_for_in_stream(in_stream_index)
             .ok_or_else(|| {
                 Error::other(format!(
                     "Couldn't find bind pair for stream {in_stream_index}"
                 ))
             })?;
-        let index = folder.bind_pairs[bp].out_index as usize;
+        let index = block.bind_pairs[bp].out_index as usize;
 
-        Self::get_in_stream2(folder, sources, coder_to_stream_map, password, index)
+        Self::get_in_stream2(block, sources, coder_to_stream_map, password, index)
     }
 
     fn get_in_stream2<'r>(
-        folder: &Folder,
+        block: &Block,
         sources: &[SeekableBoundedReader<ReaderPointer<'r, R>>],
         coder_to_stream_map: &[usize],
         password: &Password,
@@ -1352,15 +1350,15 @@ impl<R: Read + Seek> ArchiveReader<R> {
     where
         R: 'r,
     {
-        let coder = &folder.coders[in_stream_index];
+        let coder = &block.coders[in_stream_index];
         let start_index = coder_to_stream_map[in_stream_index];
         if start_index == usize::MAX {
             return Err(Error::other("in_stream_index out of range"));
         }
-        let uncompressed_len = folder.unpack_sizes[in_stream_index] as usize;
+        let uncompressed_len = block.unpack_sizes[in_stream_index] as usize;
         if coder.num_in_streams == 1 {
             let input =
-                Self::get_in_stream(folder, sources, coder_to_stream_map, password, start_index)?;
+                Self::get_in_stream(block, sources, coder_to_stream_map, password, start_index)?;
 
             let decoder = add_decoder(input, uncompressed_len, coder, password, MAX_MEM_LIMIT_KB)?;
             return Ok(Box::new(decoder));
@@ -1379,20 +1377,16 @@ impl<R: Read + Seek> ArchiveReader<R> {
         &mut self,
         mut each: F,
     ) -> Result<(), Error> {
-        let folder_count = self.archive.folders.len();
-        for folder_index in 0..folder_count {
-            let forder_dec = BlockDecoder::new(
-                folder_index,
-                &self.archive,
-                &self.password,
-                &mut self.source,
-            );
+        let block_count = self.archive.blocks.len();
+        for block_index in 0..block_count {
+            let forder_dec =
+                BlockDecoder::new(block_index, &self.archive, &self.password, &mut self.source);
             forder_dec.for_each_entries(&mut each)?;
         }
         // decode empty files
         for file_index in 0..self.archive.files.len() {
-            let folder_index = self.archive.stream_map.file_folder_index[file_index];
-            if folder_index.is_none() {
+            let block_index = self.archive.stream_map.file_block_index[file_index];
+            if block_index.is_none() {
                 let file = &self.archive.files[file_index];
                 let empty_reader: &mut dyn Read = &mut ([0u8; 0].as_slice());
                 if !each(file, empty_reader)? {
@@ -1416,53 +1410,47 @@ impl<R: Read + Seek> ArchiveReader<R> {
             return Ok(Vec::new());
         }
 
-        let folder_index = index_entry
-            .folder_index
-            .ok_or_else(|| Error::other("File has no associated folder"))?;
+        let block_index = index_entry
+            .block_index
+            .ok_or_else(|| Error::other("File has no associated block"))?;
 
         match self.archive.is_solid {
             true => {
                 let mut result = None;
                 let target_file_ptr = file as *const _;
 
-                BlockDecoder::new(
-                    folder_index,
-                    &self.archive,
-                    &self.password,
-                    &mut self.source,
-                )
-                .for_each_entries(&mut |archive_entry, reader| {
-                    let mut data = Vec::with_capacity(archive_entry.size as usize);
-                    reader.read_to_end(&mut data)?;
+                BlockDecoder::new(block_index, &self.archive, &self.password, &mut self.source)
+                    .for_each_entries(&mut |archive_entry, reader| {
+                        let mut data = Vec::with_capacity(archive_entry.size as usize);
+                        reader.read_to_end(&mut data)?;
 
-                    if std::ptr::eq(archive_entry, target_file_ptr) {
-                        result = Some(data);
-                        Ok(false)
-                    } else {
-                        Ok(true)
-                    }
-                })?;
+                        if std::ptr::eq(archive_entry, target_file_ptr) {
+                            result = Some(data);
+                            Ok(false)
+                        } else {
+                            Ok(true)
+                        }
+                    })?;
 
                 result.ok_or(Error::FileNotFound)
             }
             false => {
-                let pack_index =
-                    self.archive.stream_map.folder_first_pack_stream_index[folder_index];
+                let pack_index = self.archive.stream_map.block_first_pack_stream_index[block_index];
                 let pack_offset = self.archive.stream_map.pack_stream_offsets[pack_index];
-                let folder_offset = SIGNATURE_HEADER_SIZE + self.archive.pack_pos + pack_offset;
+                let block_offset = SIGNATURE_HEADER_SIZE + self.archive.pack_pos + pack_offset;
 
-                self.source.seek(SeekFrom::Start(folder_offset))?;
+                self.source.seek(SeekFrom::Start(block_offset))?;
 
-                let (mut folder_reader, _size) = Self::build_decode_stack(
+                let (mut block_reader, _size) = Self::build_decode_stack(
                     &mut self.source,
                     &self.archive,
-                    folder_index,
+                    block_index,
                     &self.password,
                 )?;
 
                 let mut data = Vec::with_capacity(file.size as usize);
                 let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut folder_reader, file.size as usize));
+                    Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
 
                 if file.has_crc {
                     decoder = Box::new(Crc32VerifyingReader::new(
@@ -1492,20 +1480,20 @@ impl<R: Read + Seek> ArchiveReader<R> {
             return Ok(());
         }
 
-        let folder_index = index_entry
-            .folder_index
-            .ok_or_else(|| Error::other("File has no associated folder"))?;
+        let block_index = index_entry
+            .block_index
+            .ok_or_else(|| Error::other("File has no associated block"))?;
 
-        let folder = self
+        let block = self
             .archive
-            .folders
-            .get(folder_index)
-            .ok_or_else(|| Error::other("Folder not found"))?;
+            .blocks
+            .get(block_index)
+            .ok_or_else(|| Error::other("Block not found"))?;
 
-        folder
+        block
             .coders
             .iter()
-            .filter_map(|coder| EncoderMethod::by_id(coder.decompression_method_id()))
+            .filter_map(|coder| EncoderMethod::by_id(coder.encoder_method_id()))
             .for_each(|method| {
                 methods.push(method);
             });
@@ -1515,7 +1503,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 }
 
 pub struct BlockDecoder<'a, R: Read + Seek> {
-    folder_index: usize,
+    block_index: usize,
     archive: &'a Archive,
     password: &'a Password,
     source: &'a mut R,
@@ -1523,13 +1511,13 @@ pub struct BlockDecoder<'a, R: Read + Seek> {
 
 impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     pub fn new(
-        folder_index: usize,
+        block_index: usize,
         archive: &'a Archive,
         password: &'a Password,
         source: &'a mut R,
     ) -> Self {
         Self {
-            folder_index,
+            block_index,
             archive,
             password,
             source,
@@ -1537,13 +1525,13 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     }
 
     pub fn entries(&self) -> &[ArchiveEntry] {
-        let start = self.archive.stream_map.folder_first_file_index[self.folder_index];
-        let file_count = self.archive.folders[self.folder_index].num_unpack_sub_streams;
+        let start = self.archive.stream_map.block_first_file_index[self.block_index];
+        let file_count = self.archive.blocks[self.block_index].num_unpack_sub_streams;
         &self.archive.files[start..(file_count + start)]
     }
 
     pub fn entry_count(&self) -> usize {
-        self.archive.folders[self.folder_index].num_unpack_sub_streams
+        self.archive.blocks[self.block_index].num_unpack_sub_streams
     }
 
     /// Takes a closure to decode each files in this block.
@@ -1557,21 +1545,21 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         each: &mut F,
     ) -> Result<bool, Error> {
         let Self {
-            folder_index,
+            block_index,
             archive,
             password,
             source,
         } = self;
-        let (mut folder_reader, _size) =
-            ArchiveReader::build_decode_stack(source, archive, folder_index, password)?;
-        let start = archive.stream_map.folder_first_file_index[folder_index];
-        let file_count = archive.folders[folder_index].num_unpack_sub_streams;
+        let (mut block_reader, _size) =
+            ArchiveReader::build_decode_stack(source, archive, block_index, password)?;
+        let start = archive.stream_map.block_first_file_index[block_index];
+        let file_count = archive.blocks[block_index].num_unpack_sub_streams;
 
         for file_index in start..(file_count + start) {
             let file = &archive.files[file_index];
             if file.has_stream && file.size > 0 {
                 let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut folder_reader, file.size as usize));
+                    Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
                 if file.has_crc {
                     decoder = Box::new(Crc32VerifyingReader::new(
                         decoder,

@@ -50,16 +50,17 @@ mod writer;
 
 pub(crate) mod archive;
 pub(crate) mod bitset;
+pub(crate) mod block;
 mod codec;
 pub(crate) mod decoder;
 mod filter;
-pub(crate) mod folder;
 
 mod time;
 #[cfg(feature = "util")]
 mod util;
 
 pub use archive::*;
+pub use block::*;
 pub use encryption::Password;
 pub use error::Error;
 pub use reader::{ArchiveReader, BlockDecoder};

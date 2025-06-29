@@ -5,7 +5,7 @@ pub enum NtTimeError {
     Overflow,
 }
 
-/// [`NtTime`] is a type that represents a [Windows file time] and is used in the 7z archive format.
+/// A type that represents a Windows file time and is used in the 7z archive format.
 ///
 /// Can easily be converted to and from [`std::time::SystemTime`].
 ///

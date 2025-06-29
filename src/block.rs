@@ -1,23 +1,25 @@
+// In the 7zip specification this is called "folder". But since in the UI of 7zip they are called
+// "block" we chose to also call them under that name.
 #[derive(Debug, Default, Clone)]
-pub struct Folder {
+pub struct Block {
     pub coders: Vec<Coder>,
-    pub total_input_streams: usize,
-    pub total_output_streams: usize,
-    pub bind_pairs: Vec<BindPair>,
-    pub packed_streams: Vec<u64>,
-    pub unpack_sizes: Vec<u64>,
     pub has_crc: bool,
     pub crc: u64,
-    pub num_unpack_sub_streams: usize,
+    pub(crate) total_input_streams: usize,
+    pub(crate) total_output_streams: usize,
+    pub(crate) bind_pairs: Vec<BindPair>,
+    pub(crate) packed_streams: Vec<u64>,
+    pub(crate) unpack_sizes: Vec<u64>,
+    pub(crate) num_unpack_sub_streams: usize,
 }
 
-impl Folder {
-    pub fn find_bind_pair_for_in_stream(&self, index: usize) -> Option<usize> {
+impl Block {
+    pub(crate) fn find_bind_pair_for_in_stream(&self, index: usize) -> Option<usize> {
         let index = index as u64;
         (0..self.bind_pairs.len()).find(|&i| self.bind_pairs[i].in_index == index)
     }
 
-    pub fn find_bind_pair_for_out_stream(&self, index: usize) -> Option<usize> {
+    pub(crate) fn find_bind_pair_for_out_stream(&self, index: usize) -> Option<usize> {
         let index = index as u64;
         (0..self.bind_pairs.len()).find(|&i| self.bind_pairs[i].out_index == index)
     }
@@ -54,38 +56,38 @@ impl Folder {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Coder {
-    decompression_method_id: [u8; 0xF],
-    pub id_size: usize,
-    pub num_in_streams: u64,
-    pub num_out_streams: u64,
-    pub properties: Vec<u8>,
+    encoder_method_id: [u8; 0xF],
+    pub(crate) id_size: usize,
+    pub(crate) num_in_streams: u64,
+    pub(crate) num_out_streams: u64,
+    pub(crate) properties: Vec<u8>,
 }
 
 impl Coder {
-    pub fn decompression_method_id(&self) -> &[u8] {
-        &self.decompression_method_id[0..self.id_size]
+    pub fn encoder_method_id(&self) -> &[u8] {
+        &self.encoder_method_id[0..self.id_size]
     }
 
-    pub fn decompression_method_id_mut(&mut self) -> &mut [u8] {
-        &mut self.decompression_method_id[0..self.id_size]
+    pub(crate) fn decompression_method_id_mut(&mut self) -> &mut [u8] {
+        &mut self.encoder_method_id[0..self.id_size]
     }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct BindPair {
-    pub in_index: u64,
-    pub out_index: u64,
+pub(crate) struct BindPair {
+    pub(crate) in_index: u64,
+    pub(crate) out_index: u64,
 }
 
 pub struct OrderedCoderIter<'a> {
-    folder: &'a Folder,
+    block: &'a Block,
     current: Option<u64>,
 }
 
 impl<'a> OrderedCoderIter<'a> {
-    fn new(folder: &'a Folder) -> Self {
-        let current = folder.packed_streams.first().copied();
-        Self { folder, current }
+    fn new(block: &'a Block) -> Self {
+        let current = block.packed_streams.first().copied();
+        Self { block, current }
     }
 }
 
@@ -94,13 +96,13 @@ impl<'a> Iterator for OrderedCoderIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(i) = self.current {
-            self.current = if let Some(pair) = self.folder.find_bind_pair_for_out_stream(i as usize)
+            self.current = if let Some(pair) = self.block.find_bind_pair_for_out_stream(i as usize)
             {
-                Some(self.folder.bind_pairs[pair].in_index)
+                Some(self.block.bind_pairs[pair].in_index)
             } else {
                 None
             };
-            self.folder
+            self.block
                 .coders
                 .get(i as usize)
                 .map(|item| (i as usize, item))

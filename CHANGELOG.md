@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `SevenZMethod` -> `EncoderMethod`
     - `SevenZMethodConfiguration` -> `EncoderConfiguration`
     - `MethodOptions` -> `EncoderOptions`
-- Internal `Archive` and `SteamMap` fields are removed from the public API.
+    - `Folder` -> `Block`
+- Internal `Archive`, `SteamMap`, `Coder` and `Block` fields are removed from the public API.
+- What the 7z specification calls "folders" are a false friend and we instead call them "blocks".
 - Every API that takes a password now uses the `Password` struct instead. Added helper
   functions to create password from strings and raw bytes.
 - The needed features for WASM changed. Please use the "default_wasm" feature.

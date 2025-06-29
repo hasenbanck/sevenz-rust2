@@ -1,6 +1,6 @@
 #[cfg(feature = "compress")]
 use crate::encoder_options::EncoderOptions;
-use crate::{NtTime, bitset::BitSet, folder::*};
+use crate::{NtTime, bitset::BitSet, block::*};
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -43,7 +43,7 @@ pub struct Archive {
     pub(crate) pack_crcs_defined: BitSet,
     pub(crate) pack_crcs: Vec<u64>,
     pub(crate) sub_streams_info: Option<SubStreamsInfo>,
-    pub folders: Vec<Folder>,
+    pub blocks: Vec<Block>,
     pub files: Vec<ArchiveEntry>,
     pub stream_map: StreamMap,
     pub is_solid: bool,
@@ -91,7 +91,7 @@ impl ArchiveEntry {
         }
     }
 
-    pub fn new_folder(entry_name: &str) -> Self {
+    pub fn new_directory(entry_name: &str) -> Self {
         Self {
             name: entry_name.to_string(),
             has_stream: false,
@@ -320,10 +320,10 @@ impl EncoderMethod {
 
 #[derive(Debug, Default, Clone)]
 pub struct StreamMap {
-    pub folder_first_pack_stream_index: Vec<usize>,
+    pub(crate) block_first_pack_stream_index: Vec<usize>,
     pub(crate) pack_stream_offsets: Vec<u64>,
-    pub folder_first_file_index: Vec<usize>,
-    pub file_folder_index: Vec<Option<usize>>,
+    pub block_first_file_index: Vec<usize>,
+    pub file_block_index: Vec<Option<usize>>,
 }
 
 #[derive(Debug, Clone, Copy)]

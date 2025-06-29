@@ -6,11 +6,11 @@ fn main() {
     let mut file = std::fs::File::open("examples/data/sample.7z").unwrap();
     let password = Password::empty();
     let archive = Archive::read(&mut file, &password).unwrap();
-    let folder_count = archive.folders.len();
+    let block_count = archive.blocks.len();
     let my_file_name = "7zFormat.txt";
 
-    for folder_index in 0..folder_count {
-        let forder_dec = BlockDecoder::new(folder_index, &archive, &password, &mut file);
+    for block_index in 0..block_count {
+        let forder_dec = BlockDecoder::new(block_index, &archive, &password, &mut file);
 
         if !forder_dec
             .entries()

@@ -57,6 +57,10 @@ name = "advance"
 required-features = ["default"]
 
 [[example]]
+name = "block_decompress"
+required-features = ["default"]
+
+[[example]]
 name = "compress"
 required-features = ["default"]
 
@@ -66,10 +70,6 @@ required-features = ["default"]
 
 [[example]]
 name = "decompress_progress"
-required-features = ["default"]
-
-[[example]]
-name = "folder_decompress"
 required-features = ["default"]
 
 [[example]]

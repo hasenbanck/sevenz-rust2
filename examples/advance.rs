@@ -58,7 +58,7 @@ fn main() {
     // println!("archive:{:?}", archive);
     let mut sz = ArchiveReader::open(&dest, "sevenz-rust".into()).expect("create reader ok");
     assert_eq!(contents.len(), sz.archive().files.len());
-    assert_eq!(1, sz.archive().folders.len());
+    assert_eq!(1, sz.archive().blocks.len());
     sz.for_each_entries(|entry, reader| {
         let content = std::io::read_to_string(reader)?;
         assert_eq!(content, contents[entry.name()]);

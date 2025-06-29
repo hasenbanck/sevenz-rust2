@@ -7,22 +7,22 @@ fn main() {
     let mut file = std::fs::File::open("examples/data/sample.7z").unwrap();
     let password = Password::empty();
     let archive = Archive::read(&mut file, &password).unwrap();
-    let folder_count = archive.folders.len();
-    if folder_count <= 1 {
-        println!("folder count less than 1, use single thread");
+    let block_count = archive.blocks.len();
+    if block_count <= 1 {
+        println!("block count less than 1, use single thread");
         //TODO use single thread
     }
     let archive = Arc::new(archive);
     let password = Arc::new(password);
 
     let mut threads = Vec::new();
-    for folder_index in 0..folder_count {
+    for block_index in 0..block_count {
         let archive = archive.clone();
         let password = password.clone();
         //TODO: use thread pool
         let handle = std::thread::spawn(move || {
             let mut source = std::fs::File::open("examples/data/sample.7z").unwrap();
-            let forder_dec = BlockDecoder::new(folder_index, &archive, &password, &mut source);
+            let forder_dec = BlockDecoder::new(block_index, &archive, &password, &mut source);
             let dest = PathBuf::from("examples/data/sample_mt/");
             forder_dec
                 .for_each_entries(&mut |entry, reader| {

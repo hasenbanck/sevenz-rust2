@@ -4,7 +4,7 @@ use super::*;
 use crate::EncoderConfiguration;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct UnpackInfo {
-    pub(crate) folders: Vec<FolderInfo>,
+    pub(crate) blocks: Vec<BlockInfo>,
 }
 
 impl UnpackInfo {
@@ -14,7 +14,7 @@ impl UnpackInfo {
         sizes: Vec<u64>,
         crc: u32,
     ) {
-        self.folders.push(FolderInfo {
+        self.blocks.push(BlockInfo {
             methods,
             sizes,
             crc,
@@ -32,7 +32,7 @@ impl UnpackInfo {
         sub_stream_sizes: Vec<u64>,
         sub_stream_crcs: Vec<u32>,
     ) {
-        self.folders.push(FolderInfo {
+        self.blocks.push(BlockInfo {
             methods,
             sizes,
             crc,
@@ -45,22 +45,22 @@ impl UnpackInfo {
     pub(crate) fn write_to<H: Write>(&mut self, header: &mut H) -> std::io::Result<()> {
         header.write_u8(K_UNPACK_INFO)?;
         header.write_u8(K_FOLDER)?;
-        write_u64(header, self.folders.len() as u64)?;
+        write_u64(header, self.blocks.len() as u64)?;
         header.write_u8(0)?;
         let mut cache = Vec::with_capacity(32);
-        for folder in self.folders.iter() {
-            folder.write_to(header, &mut cache)?;
+        for block in self.blocks.iter() {
+            block.write_to(header, &mut cache)?;
         }
         header.write_u8(K_CODERS_UNPACK_SIZE)?;
-        for folder in self.folders.iter() {
-            for size in folder.sizes.iter().copied() {
+        for block in self.blocks.iter() {
+            for size in block.sizes.iter().copied() {
                 write_u64(header, size)?;
             }
         }
         header.write_u8(K_CRC)?;
         header.write_u8(1)?; //all defined
-        for folder in self.folders.iter() {
-            header.write_u32::<LittleEndian>(folder.crc)?;
+        for block in self.blocks.iter() {
+            header.write_u32::<LittleEndian>(block.crc)?;
         }
         header.write_u8(K_END)?;
         Ok(())
@@ -70,11 +70,11 @@ impl UnpackInfo {
         header.write_u8(K_SUB_STREAMS_INFO)?;
 
         header.write_u8(K_NUM_UNPACK_STREAM)?;
-        for f in &self.folders {
+        for f in &self.blocks {
             write_u64(header, f.num_sub_unpack_streams)?;
         }
         header.write_u8(K_SIZE)?;
-        for f in &self.folders {
+        for f in &self.blocks {
             if f.sub_stream_sizes.len() <= 1 {
                 continue;
             }
@@ -85,7 +85,7 @@ impl UnpackInfo {
         }
         header.write_u8(K_CRC)?;
         header.write_u8(1)?; // all crc defined
-        for f in &self.folders {
+        for f in &self.blocks {
             if f.sub_stream_crcs.len() <= 1 && f.crc != 0 {
                 continue;
             }
@@ -101,7 +101,7 @@ impl UnpackInfo {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct FolderInfo {
+pub(crate) struct BlockInfo {
     pub(crate) methods: Arc<Vec<EncoderConfiguration>>,
     pub(crate) sizes: Vec<u64>,
     pub(crate) crc: u32,
@@ -110,7 +110,7 @@ pub(crate) struct FolderInfo {
     pub(crate) sub_stream_crcs: Vec<u32>,
 }
 
-impl FolderInfo {
+impl BlockInfo {
     pub(crate) fn write_to<W: Write>(
         &self,
         header: &mut W,
