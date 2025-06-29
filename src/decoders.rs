@@ -5,6 +5,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
+use lzma_rust2::{LZMA2Reader, LZMAReader, lzma2_get_memory_usage};
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{
     PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
@@ -19,7 +20,6 @@ use crate::lz4::Lz4Decoder;
 use crate::{
     archive::SevenZMethod, bcj::SimpleReader, delta::DeltaReader, error::Error, folder::Coder,
 };
-use lzma_rust2::{LZMA2Reader, LZMAReader, lzma2_get_memory_usage};
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),

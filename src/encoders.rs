@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use lzma_rust2::{LZMA2Options, LZMA2Writer, LZMAWriter};
+
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
 #[cfg(feature = "bzip2")]
@@ -10,19 +12,17 @@ use crate::method_options::DeflateOptions;
 use crate::method_options::PPMDOptions;
 #[cfg(feature = "zstd")]
 use crate::method_options::ZStandardOptions;
-use crate::writer::CountingWriter;
 use crate::{
     Error,
     archive::{SevenZMethod, SevenZMethodConfiguration},
     delta::DeltaWriter,
-    method_options::DeltaOptions,
-    method_options::MethodOptions,
+    method_options::{DeltaOptions, MethodOptions},
+    writer::CountingWriter,
 };
 #[cfg(feature = "brotli")]
 use crate::{brotli::BrotliEncoder, method_options::BrotliOptions};
 #[cfg(feature = "lz4")]
 use crate::{lz4::Lz4Encoder, method_options::LZ4Options};
-use lzma_rust2::{LZMA2Options, LZMA2Writer, LZMAWriter};
 
 #[allow(clippy::upper_case_acronyms)]
 pub(crate) enum Encoder<W: Write> {

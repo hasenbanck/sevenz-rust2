@@ -1,6 +1,9 @@
-mod counting;
+mod counting_writer;
+#[cfg(feature = "util")]
+mod lazy_file_reader;
 mod pack_info;
 mod seq_reader;
+mod source_reader;
 mod unpack_info;
 
 use std::{
@@ -14,13 +17,15 @@ use std::{fs::File, path::Path};
 
 use bit_set::BitSet;
 use byteorder::{LittleEndian, WriteBytesExt};
+pub(crate) use counting_writer::CountingWriter;
 use crc32fast::Hasher;
 
-pub use self::seq_reader::SourceReader;
-pub(crate) use self::seq_reader::{LazyFileReader, SeqReader};
+#[cfg(feature = "util")]
+pub(crate) use self::lazy_file_reader::LazyFileReader;
+pub(crate) use self::seq_reader::SeqReader;
+pub use self::source_reader::SourceReader;
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
 use crate::{Error, SevenZArchiveEntry, archive::*, encoders};
-pub(crate) use counting::CountingWriter;
 
 macro_rules! write_times {
     //write_i64
