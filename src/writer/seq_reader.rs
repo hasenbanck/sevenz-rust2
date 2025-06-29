@@ -1,21 +1,12 @@
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::Path;
 #[cfg(feature = "util")]
 use std::path::PathBuf;
 use std::{fs::File, io::Read, ops::Deref};
 
 use crc32fast::Hasher;
 
-#[derive(Default)]
-pub struct SeqReader<R> {
+pub(crate) struct SeqReader<R> {
     readers: Vec<R>,
     current: usize,
-}
-
-impl<R> From<Vec<R>> for SeqReader<R> {
-    fn from(value: Vec<R>) -> Self {
-        Self::new(value)
-    }
 }
 
 impl<R> Deref for SeqReader<R> {
@@ -26,32 +17,15 @@ impl<R> Deref for SeqReader<R> {
     }
 }
 
-impl<R> AsRef<[R]> for SeqReader<R> {
-    fn as_ref(&self) -> &[R] {
-        &self.readers
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl SeqReader<File> {
-    pub fn from_path_iter<'a>(paths: impl Iterator<Item = &'a Path>) -> std::io::Result<Self> {
-        let mut readers = Vec::new();
-        for path in paths {
-            readers.push(File::open(path)?);
-        }
-        Ok(Self::new(readers))
-    }
-}
-
 impl<R> SeqReader<R> {
-    pub fn new(readers: Vec<R>) -> Self {
+    pub(crate) fn new(readers: Vec<R>) -> Self {
         Self {
             readers,
             current: 0,
         }
     }
 
-    pub fn reader_len(&self) -> usize {
+    pub(crate) fn reader_len(&self) -> usize {
         self.readers.len()
     }
 }

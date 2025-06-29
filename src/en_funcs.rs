@@ -220,7 +220,7 @@ fn encode_path<W: Write + Seek>(
             continue;
         }
         if file_size + size >= MAX_BLOCK_SIZE {
-            zip.push_archive_entries(entries, SeqReader::new(files))?;
+            zip.push_archive_entries(entries, files)?;
             entries = Vec::new();
             files = Vec::new();
             file_size = 0;
@@ -230,7 +230,7 @@ fn encode_path<W: Write + Seek>(
         files.push(LazyFileReader::new(ele).into());
     }
     if !entries.is_empty() {
-        zip.push_archive_entries(entries, SeqReader::new(files))?;
+        zip.push_archive_entries(entries, files)?;
     }
 
     Ok(())

@@ -16,8 +16,8 @@ use bit_set::BitSet;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crc32fast::Hasher;
 
-pub(crate) use self::seq_reader::LazyFileReader;
-pub use self::seq_reader::{SeqReader, SourceReader};
+pub use self::seq_reader::SourceReader;
+pub(crate) use self::seq_reader::{LazyFileReader, SeqReader};
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
 use crate::{Error, SevenZArchiveEntry, archive::*, encoders};
 pub(crate) use counting::CountingWriter;
@@ -225,9 +225,9 @@ impl<W: Write + Seek> SevenZWriter<W> {
     pub fn push_archive_entries<R: Read>(
         &mut self,
         mut entries: Vec<SevenZArchiveEntry>,
-        reader: SeqReader<SourceReader<R>>,
+        reader: Vec<SourceReader<R>>,
     ) -> Result<&mut Self> {
-        let mut r = reader;
+        let mut r = SeqReader::new(reader);
         assert_eq!(r.reader_len(), entries.len());
         let mut compressed_len = 0;
         let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
