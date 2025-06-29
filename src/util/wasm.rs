@@ -5,6 +5,15 @@ use wasm_bindgen::prelude::*;
 
 use crate::*;
 
+/// Decompresses a 7z archive in WebAssembly environment.
+///
+/// This function is specifically designed for WASM targets and uses JavaScript interop
+/// to handle the decompression process with a callback function.
+///
+/// # Arguments
+/// * `src` - Uint8Array containing the compressed archive data
+/// * `pwd` - Password string for encrypted archives (use empty string for unencrypted)
+/// * `f` - JavaScript callback function to handle extracted entries
 #[wasm_bindgen]
 pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String> {
     let mut src_reader = Uint8ArrayStream::new(src);
@@ -35,6 +44,14 @@ pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String
     Ok(())
 }
 
+/// Compresses multiple entries into a 7z archive in WebAssembly environment.
+///
+/// This function creates a compressed archive from multiple file entries,
+/// designed specifically for WASM targets.
+///
+/// # Arguments
+/// * `entries` - Vector of JavaScript strings representing file names/paths
+/// * `datas` - Vector of Uint8Arrays containing the file data corresponding to entries
 #[wasm_bindgen]
 pub fn compress(entries: Vec<JsString>, datas: Vec<Uint8Array>) -> Result<Uint8Array, String> {
     let output = Uint8Array::new_with_length(32);

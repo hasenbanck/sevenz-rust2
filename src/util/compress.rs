@@ -11,7 +11,11 @@ use crate::encoder_options::AesEncoderOptions;
 use crate::writer::LazyFileReader;
 use crate::{ArchiveEntry, ArchiveWriter, EncoderMethod, Error, Password};
 
-/// Helper function to compress `src` path to `dest` writer.
+/// Compresses a source file or directory to a destination writer.
+///
+/// # Arguments
+/// * `src` - Path to the source file or directory to compress
+/// * `dest` - Writer that implements `Write + Seek` to write the compressed archive to
 #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Error> {
     let mut archive_writer = ArchiveWriter::new(dest)?;
@@ -24,6 +28,12 @@ pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Er
     archive_writer.finish().map_err(Error::io)
 }
 
+/// Compresses a source file or directory to a destination writer with password encryption.
+///
+/// # Arguments
+/// * `src` - Path to the source file or directory to compress
+/// * `dest` - Writer that implements `Write + Seek` to write the compressed archive to
+/// * `password` - Password to encrypt the archive with
 #[cfg(feature = "aes256")]
 #[cfg_attr(
     docsrs,
@@ -50,7 +60,13 @@ pub fn compress_encrypted<W: Write + Seek>(
     archive_writer.finish().map_err(Error::io)
 }
 
-/// Helper function to compress `src` path to `dest` path.
+/// Compresses a source file or directory to a destination file path.
+///
+/// This is a convenience function that handles file creation automatically.
+///
+/// # Arguments
+/// * `src` - Path to the source file or directory to compress
+/// * `dest` - Path where the compressed archive will be created
 #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
     if let Some(path) = dest.as_ref().parent() {
@@ -67,6 +83,14 @@ pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result
     Ok(())
 }
 
+/// Compresses a source file or directory to a destination file path with password encryption.
+///
+/// This is a convenience function that handles file creation automatically.
+///
+/// # Arguments
+/// * `src` - Path to the source file or directory to compress
+/// * `dest` - Path where the encrypted compressed archive will be created
+/// * `password` - Password to encrypt the archive with
 #[cfg(feature = "aes256")]
 #[cfg_attr(
     docsrs,
@@ -130,7 +154,14 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
 }
 
 impl<W: Write + Seek> ArchiveWriter<W> {
-    /// Solid compression - compress all files in `path` with multiple files in one block.
+    /// Adds a source path to the compression builder with a filter function using solid compression.
+    ///
+    /// The filter function allows selective inclusion of files based on their paths.
+    /// Files are compressed using solid compression for better compression ratios.
+    ///
+    /// # Arguments
+    /// * `path` - Path to add to the compression
+    /// * `filter` - Function that returns `true` for paths that should be included
     #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
     pub fn push_source_path(
         &mut self,
@@ -141,7 +172,14 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         Ok(self)
     }
 
-    /// Non-solid compression - compresses all files into `path` with one file per block.
+    /// Adds a source path to the compression builder with a filter function using non-solid compression.
+    ///
+    /// Non-solid compression allows individual file extraction without decompressing the entire archive,
+    /// but typically results in larger archive sizes compared to solid compression.
+    ///
+    /// # Arguments
+    /// * `path` - Path to add to the compression
+    /// * `filter` - Function that returns `true` for paths that should be included
     #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
     pub fn push_source_path_non_solid(
         &mut self,
