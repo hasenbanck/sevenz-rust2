@@ -4,14 +4,14 @@ use std::{
     rc::Rc,
 };
 
-pub struct CountingWriter<W> {
+pub(crate) struct CountingWriter<W> {
     inner: W,
     counting: Rc<Cell<usize>>,
     written_bytes: usize,
 }
 
 impl<W> CountingWriter<W> {
-    pub fn new(inner: W) -> Self {
+    pub(crate) fn new(inner: W) -> Self {
         Self {
             inner,
             counting: Rc::new(Cell::new(0)),
@@ -19,11 +19,7 @@ impl<W> CountingWriter<W> {
         }
     }
 
-    pub fn writed_bytes(&self) -> usize {
-        self.written_bytes
-    }
-
-    pub fn counting(&self) -> Rc<Cell<usize>> {
+    pub(crate) fn counting(&self) -> Rc<Cell<usize>> {
         Rc::clone(&self.counting)
     }
 }

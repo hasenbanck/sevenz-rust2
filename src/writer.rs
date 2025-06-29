@@ -13,12 +13,14 @@ use std::{
 use std::{fs::File, path::Path};
 
 use bit_set::BitSet;
-use byteorder::*;
+use byteorder::{LittleEndian, WriteBytesExt};
 use crc32fast::Hasher;
 
-pub use self::{counting::CountingWriter, seq_reader::*};
+pub(crate) use self::seq_reader::LazyFileReader;
+pub use self::seq_reader::{SeqReader, SourceReader};
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
 use crate::{Error, SevenZArchiveEntry, archive::*, encoders};
+pub(crate) use counting::CountingWriter;
 
 macro_rules! write_times {
     //write_i64

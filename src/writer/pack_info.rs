@@ -1,14 +1,14 @@
 use super::*;
 
 #[derive(Debug, Default, Clone)]
-pub struct PackInfo {
-    pub crcs: Vec<u32>,
-    pub sizes: Vec<u64>,
-    pub pos: u64,
+pub(crate) struct PackInfo {
+    pub(crate) crcs: Vec<u32>,
+    pub(crate) sizes: Vec<u64>,
+    pub(crate) pos: u64,
 }
 
 impl PackInfo {
-    pub fn write_to<H: Write>(&mut self, header: &mut H) -> std::io::Result<()> {
+    pub(crate) fn write_to<H: Write>(&mut self, header: &mut H) -> std::io::Result<()> {
         header.write_u8(K_PACK_INFO)?;
         write_u64(header, self.pos)?;
         write_u64(header, self.len() as u64)?;
@@ -44,13 +44,13 @@ impl PackInfo {
 
 impl PackInfo {
     #[inline]
-    pub fn add_stream(&mut self, size: u64, crc: u32) {
+    pub(crate) fn add_stream(&mut self, size: u64, crc: u32) {
         self.sizes.push(size);
         self.crcs.push(crc);
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.sizes.len()
     }
 }

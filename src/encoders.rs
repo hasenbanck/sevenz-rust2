@@ -10,10 +10,11 @@ use crate::PPMDOptions;
 use crate::ZStandardOptions;
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
+use crate::writer::CountingWriter;
 #[cfg(feature = "brotli")]
 use crate::{BrotliOptions, brotli::BrotliEncoder};
 use crate::{
-    CountingWriter, DeltaOptions, Error,
+    DeltaOptions, Error,
     archive::{SevenZMethod, SevenZMethodConfiguration},
     delta::DeltaWriter,
     lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
