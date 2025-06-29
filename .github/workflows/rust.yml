@@ -36,10 +36,19 @@ jobs:
           toolchain: ${{matrix.toolchain}}
           target: ${{matrix.target}}
       - uses: actions/checkout@v4
-      - name: Build
-        run: cargo build --workspace --release
-      - name: Run tests
-        run: cargo test --workspace --release --all-features
+      - name: Build no default features
+        run: cargo build --no-default-features --release
+      - name: Build default features
+        run: cargo build --release
+      - name: Build all features
+        run: cargo build --release --all-features
+      - name: Run test no default features
+        run: cargo test --no-default-features
+      - name: Run test default features
+        run: cargo test
+      - name: Run test all features
+        run: cargo test --all-features
+
 
   build-wasm:
     runs-on: ${{matrix.os}}
@@ -61,10 +70,10 @@ jobs:
           toolchain: ${{matrix.toolchain}}
           target: ${{matrix.target}}
       - uses: actions/checkout@v4
-      - name: Build Default
-        run: cargo build --target wasm32-unknown-unknown --release
-      - name: Build Compress and Encryption
-        run: RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown --release --features=compress,aes256_wasm
+      - name: Build default features
+        run: cargo build --target wasm32-unknown-unknown --release --no-default-features
+      - name: Build no default features
+        run: RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown --release --no-default-features --features default_wasm
 
   rustfmt:
     name: Rustfmt
