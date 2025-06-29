@@ -217,31 +217,31 @@ impl SevenZMethodConfiguration {
 pub struct SevenZMethod(&'static str, &'static [u8]);
 
 impl SevenZMethod {
-    pub const ID_COPY: &'static [u8] = &[0x00];
-    pub const ID_DELTA: &'static [u8] = &[0x03];
-    pub const ID_BCJ: &'static [u8] = &[0x04];
+    pub(crate) const ID_COPY: &'static [u8] = &[0x00];
+    pub(crate) const ID_DELTA: &'static [u8] = &[0x03];
+    pub(crate) const ID_BCJ: &'static [u8] = &[0x04];
 
-    pub const ID_LZMA: &'static [u8] = &[0x03, 0x01, 0x01];
-    pub const ID_BCJ_X86: &'static [u8] = &[0x03, 0x03, 0x01, 0x03];
-    pub const ID_BCJ2: &'static [u8] = &[0x03, 0x03, 0x01, 0x1B];
-    pub const ID_BCJ_PPC: &'static [u8] = &[0x03, 0x03, 0x02, 0x05];
-    pub const ID_BCJ_IA64: &'static [u8] = &[0x03, 0x03, 0x04, 0x01];
-    pub const ID_BCJ_ARM: &'static [u8] = &[0x03, 0x03, 0x05, 0x01];
-    pub const ID_BCJ_ARM64: &'static [u8] = &[0xA];
-    pub const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
-    pub const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
-    pub const ID_PPMD: &'static [u8] = &[0x03, 0x04, 0x01];
+    pub(crate) const ID_LZMA: &'static [u8] = &[0x03, 0x01, 0x01];
+    pub(crate) const ID_BCJ_X86: &'static [u8] = &[0x03, 0x03, 0x01, 0x03];
+    pub(crate) const ID_BCJ2: &'static [u8] = &[0x03, 0x03, 0x01, 0x1B];
+    pub(crate) const ID_BCJ_PPC: &'static [u8] = &[0x03, 0x03, 0x02, 0x05];
+    pub(crate) const ID_BCJ_IA64: &'static [u8] = &[0x03, 0x03, 0x04, 0x01];
+    pub(crate) const ID_BCJ_ARM: &'static [u8] = &[0x03, 0x03, 0x05, 0x01];
+    pub(crate) const ID_BCJ_ARM64: &'static [u8] = &[0xA];
+    pub(crate) const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
+    pub(crate) const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
+    pub(crate) const ID_PPMD: &'static [u8] = &[0x03, 0x04, 0x01];
 
-    pub const ID_LZMA2: &'static [u8] = &[0x21];
-    pub const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
-    pub const ID_ZSTD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x01];
-    pub const ID_BROTLI: &'static [u8] = &[0x04, 0xF7, 0x11, 0x02];
-    pub const ID_LZ4: &'static [u8] = &[0x04, 0xF7, 0x11, 0x04];
-    pub const ID_LZS: &'static [u8] = &[0x04, 0xF7, 0x11, 0x05];
-    pub const ID_LIZARD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x06];
-    pub const ID_DEFLATE: &'static [u8] = &[0x04, 0x01, 0x08];
-    pub const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
-    pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xF1, 0x07, 0x01];
+    pub(crate) const ID_LZMA2: &'static [u8] = &[0x21];
+    pub(crate) const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
+    pub(crate) const ID_ZSTD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x01];
+    pub(crate) const ID_BROTLI: &'static [u8] = &[0x04, 0xF7, 0x11, 0x02];
+    pub(crate) const ID_LZ4: &'static [u8] = &[0x04, 0xF7, 0x11, 0x04];
+    pub(crate) const ID_LZS: &'static [u8] = &[0x04, 0xF7, 0x11, 0x05];
+    pub(crate) const ID_LIZARD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x06];
+    pub(crate) const ID_DEFLATE: &'static [u8] = &[0x04, 0x01, 0x08];
+    pub(crate) const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
+    pub(crate) const ID_AES256SHA256: &'static [u8] = &[0x06, 0xF1, 0x07, 0x01];
 
     pub const COPY: Self = Self("COPY", Self::ID_COPY);
     pub const LZMA: Self = Self("LZMA", Self::ID_LZMA);
