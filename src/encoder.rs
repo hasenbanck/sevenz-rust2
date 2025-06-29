@@ -20,11 +20,11 @@ use crate::encoder_options::PPMDOptions;
 use crate::encoder_options::ZStandardOptions;
 #[cfg(feature = "aes256")]
 use crate::encryption::Aes256Sha256Encoder;
-use crate::filter::delta::DeltaWriter;
 use crate::{
     Error,
     archive::{EncoderConfiguration, EncoderMethod},
     encoder_options::{DeltaOptions, EncoderOptions},
+    filter::delta::DeltaWriter,
     writer::CountingWriter,
 };
 

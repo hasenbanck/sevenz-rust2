@@ -15,7 +15,6 @@ use std::{
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::File, path::Path};
 
-use bit_set::BitSet;
 use byteorder::{LittleEndian, WriteBytesExt};
 pub(crate) use counting_writer::CountingWriter;
 use crc32fast::Hasher;
@@ -25,7 +24,12 @@ pub(crate) use self::lazy_file_reader::LazyFileReader;
 pub(crate) use self::seq_reader::SeqReader;
 pub use self::source_reader::SourceReader;
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
-use crate::{ArchiveEntry, Error, archive::*, encoder};
+use crate::{
+    ArchiveEntry, Error,
+    archive::*,
+    bitset::{BitSet, write_bit_set},
+    encoder,
+};
 
 macro_rules! write_times {
     //write_i64
@@ -609,25 +613,6 @@ pub(crate) fn write_u64<W: Write>(header: &mut W, mut value: u64) -> std::io::Re
         header.write_u8((value & 0xFF) as u8)?;
         value >>= 8;
         i -= 1;
-    }
-    Ok(())
-}
-
-fn write_bit_set<W: Write>(mut write: W, bs: &BitSet) -> std::io::Result<()> {
-    let mut cache = 0;
-    let mut shift = 7;
-    for i in 0..bs.get_ref().len() {
-        let set = if bs.contains(i) { 1 } else { 0 };
-        cache |= set << shift;
-        shift -= 1;
-        if shift < 0 {
-            write.write_u8(cache)?;
-            shift = 7;
-            cache = 0;
-        }
-    }
-    if shift != 7 {
-        write.write_u8(cache)?;
     }
     Ok(())
 }

@@ -1,8 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use sevenz_rust2::Password;
-
-use sevenz_rust2::{Archive, BlockDecoder};
+use sevenz_rust2::{Archive, BlockDecoder, Password};
 
 fn main() {
     let time = std::time::Instant::now();

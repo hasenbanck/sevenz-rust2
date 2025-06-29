@@ -1,6 +1,6 @@
-use sevenz_rust2::Password;
-use sevenz_rust2::{Archive, BlockDecoder};
 use std::path::PathBuf;
+
+use sevenz_rust2::{Archive, BlockDecoder, Password};
 
 fn main() {
     let mut file = std::fs::File::open("examples/data/sample.7z").unwrap();

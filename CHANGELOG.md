@@ -18,9 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `SevenZMethod` -> `EncoderMethod`
     - `SevenZMethodConfiguration` -> `EncoderConfiguration`
     - `MethodOptions` -> `EncoderOptions`
+- Internal `Archive` and `SteamMap` fields are removed from the public API.
 - Every API that takes a password now uses the `Password` struct instead. Added helper
   functions to create password from strings and raw bytes.
 - The needed features for WASM changed. Please use the "default_wasm" feature.
+
+### Removed
+
+- Removed the dependency to `bit-set` and `filetime_creation`.
 
 ## 0.15.3 - 2025-06-28
 

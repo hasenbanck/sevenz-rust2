@@ -6,13 +6,11 @@ use std::{
 };
 
 #[cfg(all(feature = "compress", feature = "util"))]
+use sevenz_rust2::encoder_options::*;
+#[cfg(all(feature = "compress", feature = "util"))]
 use sevenz_rust2::*;
-
 #[cfg(all(feature = "compress", feature = "util"))]
 use tempfile::*;
-
-#[cfg(all(feature = "compress", feature = "util"))]
-use sevenz_rust2::encoder_options::*;
 
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]

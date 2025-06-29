@@ -1,11 +1,6 @@
-#![allow(unused)]
-use bit_set::BitSet;
-use nt_time::FileTime;
-
 #[cfg(feature = "compress")]
 use crate::encoder_options::EncoderOptions;
-
-use crate::folder::*;
+use crate::{bitset::BitSet, folder::*};
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -32,6 +27,9 @@ pub(crate) const K_C_TIME: u8 = 0x12;
 pub(crate) const K_A_TIME: u8 = 0x13;
 pub(crate) const K_M_TIME: u8 = 0x14;
 pub(crate) const K_WIN_ATTRIBUTES: u8 = 0x15;
+
+/// TODO: Implement reading & writing comments
+#[allow(unused)]
 pub(crate) const K_COMMENT: u8 = 0x16;
 pub(crate) const K_ENCODED_HEADER: u8 = 0x17;
 pub(crate) const K_START_POS: u8 = 0x18;
@@ -40,22 +38,22 @@ pub(crate) const K_DUMMY: u8 = 0x19;
 #[derive(Debug, Default, Clone)]
 pub struct Archive {
     /// Offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
-    pub pack_pos: u64,
-    pub pack_sizes: Vec<u64>,
-    pub pack_crcs_defined: BitSet,
-    pub pack_crcs: Vec<u64>,
+    pub(crate) pack_pos: u64,
+    pub(crate) pack_sizes: Vec<u64>,
+    pub(crate) pack_crcs_defined: BitSet,
+    pub(crate) pack_crcs: Vec<u64>,
+    pub(crate) sub_streams_info: Option<SubStreamsInfo>,
     pub folders: Vec<Folder>,
-    pub sub_streams_info: Option<SubStreamsInfo>,
     pub files: Vec<ArchiveEntry>,
     pub stream_map: StreamMap,
     pub is_solid: bool,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct SubStreamsInfo {
-    pub unpack_sizes: Vec<u64>,
-    pub has_crc: BitSet,
-    pub crcs: Vec<u64>,
+pub(crate) struct SubStreamsInfo {
+    pub(crate) unpack_sizes: Vec<u64>,
+    pub(crate) has_crc: BitSet,
+    pub(crate) crcs: Vec<u64>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -67,9 +65,9 @@ pub struct ArchiveEntry {
     pub has_creation_date: bool,
     pub has_last_modified_date: bool,
     pub has_access_date: bool,
-    pub creation_date: FileTime,
-    pub last_modified_date: FileTime,
-    pub access_date: FileTime,
+    pub creation_date: nt_time::FileTime,
+    pub last_modified_date: nt_time::FileTime,
+    pub access_date: nt_time::FileTime,
     pub has_windows_attributes: bool,
     pub windows_attributes: u32,
     pub has_crc: bool,
@@ -123,19 +121,19 @@ impl ArchiveEntry {
 
         if let Ok(meta) = path.metadata() {
             if let Ok(modified) = meta.modified() {
-                if let Ok(date) = modified.try_into() {
+                if let Ok(date) = nt_time::FileTime::try_from(modified) {
                     entry.last_modified_date = date;
                     entry.has_last_modified_date = entry.last_modified_date.to_raw() > 0;
                 }
             }
             if let Ok(date) = meta.created() {
-                if let Ok(date) = date.try_into() {
+                if let Ok(date) = nt_time::FileTime::try_from(date) {
                     entry.creation_date = date;
                     entry.has_creation_date = entry.creation_date.to_raw() > 0;
                 }
             }
             if let Ok(date) = meta.accessed() {
-                if let Ok(date) = date.try_into() {
+                if let Ok(date) = nt_time::FileTime::try_from(date) {
                     entry.access_date = date;
                     entry.has_access_date = entry.access_date.to_raw() > 0;
                 }
@@ -156,11 +154,11 @@ impl ArchiveEntry {
         self.has_stream
     }
 
-    pub fn creation_date(&self) -> FileTime {
+    pub fn creation_date(&self) -> nt_time::FileTime {
         self.creation_date
     }
 
-    pub fn last_modified_date(&self) -> FileTime {
+    pub fn last_modified_date(&self) -> nt_time::FileTime {
         self.last_modified_date
     }
 
@@ -172,7 +170,7 @@ impl ArchiveEntry {
         self.windows_attributes
     }
 
-    pub fn access_date(&self) -> FileTime {
+    pub fn access_date(&self) -> nt_time::FileTime {
         self.access_date
     }
 
@@ -228,7 +226,6 @@ pub struct EncoderMethod(&'static str, &'static [u8]);
 impl EncoderMethod {
     pub(crate) const ID_COPY: &'static [u8] = &[0x00];
     pub(crate) const ID_DELTA: &'static [u8] = &[0x03];
-    pub(crate) const ID_BCJ: &'static [u8] = &[0x04];
 
     pub(crate) const ID_LZMA: &'static [u8] = &[0x03, 0x01, 0x01];
     pub(crate) const ID_BCJ_X86: &'static [u8] = &[0x03, 0x03, 0x01, 0x03];
@@ -324,7 +321,7 @@ impl EncoderMethod {
 #[derive(Debug, Default, Clone)]
 pub struct StreamMap {
     pub folder_first_pack_stream_index: Vec<usize>,
-    pub pack_stream_offsets: Vec<u64>,
+    pub(crate) pack_stream_offsets: Vec<u64>,
     pub folder_first_file_index: Vec<usize>,
     pub file_folder_index: Vec<Option<usize>>,
 }

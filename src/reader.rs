@@ -6,11 +6,9 @@ use std::{
     rc::Rc,
 };
 
-use bit_set::BitSet;
 use crc32fast::Hasher;
 
-use crate::Password;
-use crate::{archive::*, decoder::add_decoder, error::Error, folder::*};
+use crate::{Password, archive::*, bitset::BitSet, decoder::add_decoder, error::Error, folder::*};
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 

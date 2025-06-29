@@ -1,15 +1,16 @@
-use crate::Password;
-
-#[cfg(feature = "compress")]
-use crate::encoder_options::AesEncoderOptions;
-
-use aes::Aes256;
-use aes::cipher::{BlockDecryptMut, KeyIvInit, generic_array::GenericArray};
-use sha2::Digest;
 use std::io::{Read, Seek, Write};
 
 #[cfg(feature = "compress")]
 use aes::cipher::BlockEncryptMut;
+use aes::{
+    Aes256,
+    cipher::{BlockDecryptMut, KeyIvInit, generic_array::GenericArray},
+};
+use sha2::Digest;
+
+use crate::Password;
+#[cfg(feature = "compress")]
+use crate::encoder_options::AesEncoderOptions;
 
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 
@@ -321,8 +322,9 @@ impl<W: Write> Write for Aes256Sha256Encoder<W> {
 
 #[cfg(all(test, feature = "compress"))]
 mod tests {
-    use super::*;
     use std::io::Cursor;
+
+    use super::*;
 
     #[test]
     fn test_aes_codec() {

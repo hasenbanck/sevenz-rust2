@@ -7,7 +7,6 @@ use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_M
 
 #[cfg(feature = "compress")]
 use crate::EncoderConfiguration;
-
 #[cfg(feature = "aes256")]
 use crate::Password;
 

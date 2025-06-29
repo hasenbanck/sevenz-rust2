@@ -1,15 +1,13 @@
+use std::fs::File;
 #[cfg(feature = "util")]
 use std::{
     fs::{read, read_to_string},
     path::PathBuf,
 };
 
-use std::fs::File;
-
 #[cfg(feature = "util")]
 use sevenz_rust2::decompress_file;
 use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password};
-
 #[cfg(feature = "util")]
 use tempfile::tempdir;
 

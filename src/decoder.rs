@@ -17,9 +17,13 @@ use crate::codec::brotli::BrotliDecoder;
 use crate::codec::lz4::Lz4Decoder;
 #[cfg(feature = "aes256")]
 use crate::encryption::Aes256Sha256Decoder;
-use crate::filter::bcj::SimpleReader;
-use crate::filter::delta::DeltaReader;
-use crate::{Password, archive::EncoderMethod, error::Error, folder::Coder};
+use crate::{
+    Password,
+    archive::EncoderMethod,
+    error::Error,
+    filter::{bcj::SimpleReader, delta::DeltaReader},
+    folder::Coder,
+};
 
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {

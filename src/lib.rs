@@ -49,6 +49,7 @@ mod reader;
 mod writer;
 
 pub(crate) mod archive;
+pub(crate) mod bitset;
 mod codec;
 pub(crate) mod decoder;
 mod filter;

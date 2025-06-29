@@ -1,10 +1,14 @@
+#[cfg(target_os = "macos")]
+use std::os::macos::fs::FileTimesExt;
+#[cfg(windows)]
+use std::os::windows::fs::FileTimesExt;
 use std::{
+    fs::FileTimes,
     io::{Read, Seek},
     path::{Path, PathBuf},
 };
 
-use crate::Password;
-use crate::{Error, *};
+use crate::{Error, Password, *};
 
 /// Decompresses an archive file to a destination directory.
 ///
@@ -181,20 +185,18 @@ pub fn default_entry_extract_fn(
         if entry.size() > 0 {
             let mut writer = BufWriter::new(file);
             std::io::copy(reader, &mut writer).map_err(Error::io)?;
-            filetime_creation::set_file_handle_times(
-                writer.get_ref(),
-                Some(filetime_creation::FileTime::from_system_time(
-                    entry.access_date().into(),
-                )),
-                Some(filetime_creation::FileTime::from_system_time(
-                    entry.last_modified_date().into(),
-                )),
-                Some(filetime_creation::FileTime::from_system_time(
-                    entry.creation_date().into(),
-                )),
-            )
-            .unwrap_or_default();
+
+            let file = writer.get_mut();
+            let file_times = FileTimes::new()
+                .set_accessed(entry.access_date().into())
+                .set_modified(entry.last_modified_date().into());
+
+            #[cfg(any(windows, target_os = "macos"))]
+            let file_times = file_times.set_created(entry.creation_date().into());
+
+            let _ = file.set_times(file_times);
         }
     }
+
     Ok(true)
 }
