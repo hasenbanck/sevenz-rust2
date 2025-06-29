@@ -1,27 +1,28 @@
 use std::io::Write;
 
-#[cfg(feature = "bzip2")]
-use crate::Bzip2Options;
-#[cfg(feature = "deflate")]
-use crate::DeflateOptions;
-#[cfg(feature = "ppmd")]
-use crate::PPMDOptions;
-#[cfg(feature = "zstd")]
-use crate::ZStandardOptions;
 #[cfg(feature = "aes256")]
 use crate::aes256sha256::Aes256Sha256Encoder;
+#[cfg(feature = "bzip2")]
+use crate::method_options::Bzip2Options;
+#[cfg(feature = "deflate")]
+use crate::method_options::DeflateOptions;
+#[cfg(feature = "ppmd")]
+use crate::method_options::PPMDOptions;
+#[cfg(feature = "zstd")]
+use crate::method_options::ZStandardOptions;
 use crate::writer::CountingWriter;
-#[cfg(feature = "brotli")]
-use crate::{BrotliOptions, brotli::BrotliEncoder};
 use crate::{
-    DeltaOptions, Error,
+    Error,
     archive::{SevenZMethod, SevenZMethodConfiguration},
     delta::DeltaWriter,
-    lzma::{LZMA2Options, LZMA2Writer, LZMAWriter},
+    method_options::DeltaOptions,
     method_options::MethodOptions,
 };
+#[cfg(feature = "brotli")]
+use crate::{brotli::BrotliEncoder, method_options::BrotliOptions};
 #[cfg(feature = "lz4")]
-use crate::{LZ4Options, lz4::Lz4Encoder};
+use crate::{lz4::Lz4Encoder, method_options::LZ4Options};
+use lzma_rust2::{LZMA2Options, LZMA2Writer, LZMAWriter};
 
 #[allow(clippy::upper_case_acronyms)]
 pub(crate) enum Encoder<W: Write> {

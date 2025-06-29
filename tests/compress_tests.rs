@@ -4,6 +4,7 @@ use std::{
     io::{Cursor, Read},
 };
 
+use sevenz_rust2::method_options::*;
 use sevenz_rust2::*;
 use tempfile::*;
 

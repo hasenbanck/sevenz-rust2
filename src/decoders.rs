@@ -17,14 +17,9 @@ use crate::brotli::BrotliDecoder;
 #[cfg(feature = "lz4")]
 use crate::lz4::Lz4Decoder;
 use crate::{
-    archive::SevenZMethod,
-    bcj::SimpleReader,
-    delta::DeltaReader,
-    error::Error,
-    folder::Coder,
-    lzma::{LZMA2Reader, LZMAReader, lzma2_get_memory_usage},
+    archive::SevenZMethod, bcj::SimpleReader, delta::DeltaReader, error::Error, folder::Coder,
 };
-
+use lzma_rust2::{LZMA2Reader, LZMAReader, lzma2_get_memory_usage};
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),

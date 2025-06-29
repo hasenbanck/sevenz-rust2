@@ -50,7 +50,8 @@ mod encoders;
 mod error;
 #[cfg(feature = "lz4")]
 mod lz4;
-mod method_options;
+/// Options to configure the compression methods.
+pub mod method_options;
 mod password;
 mod reader;
 #[cfg(target_arch = "wasm32")]
@@ -66,8 +67,6 @@ pub use de_funcs::*;
 #[cfg(all(feature = "compress", feature = "util"))]
 pub use en_funcs::*;
 pub use error::Error;
-pub use lzma_rust2 as lzma;
-pub use method_options::*;
 pub use nt_time;
 pub use password::Password;
 pub use reader::{BlockDecoder, SevenZReader};

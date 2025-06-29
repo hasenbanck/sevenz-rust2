@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 #[cfg(feature = "compress")]
-use lzma_rust2::LZMA2Options;
+pub use lzma_rust2::LZMA2Options;
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
 

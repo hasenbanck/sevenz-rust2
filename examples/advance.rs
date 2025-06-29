@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env::temp_dir, time::Instant};
 
-use lzma::LZMA2Options;
+use lzma_rust2::LZMA2Options;
 use rand::Rng;
 use sevenz_rust2::*;
 
