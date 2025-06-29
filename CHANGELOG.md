@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every API that takes a password now uses the `Password` struct instead. Added helper
   functions to create password from strings and raw bytes.
 - The needed features for WASM changed. Please use the "default_wasm" feature.
+- File time handling is now an optional feature (but is included in the default feature).
 
 ### Removed
 

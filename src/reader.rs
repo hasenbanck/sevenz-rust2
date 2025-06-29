@@ -517,6 +517,7 @@ impl Archive {
                         return Err(Error::other("Error parsing file names"));
                     }
                 }
+                #[cfg(feature = "file_time")]
                 K_C_TIME => {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = read_u8(header)?;
@@ -532,6 +533,7 @@ impl Archive {
                         }
                     }
                 }
+                #[cfg(feature = "file_time")]
                 K_A_TIME => {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = read_u8(header)?;
@@ -547,6 +549,7 @@ impl Archive {
                         }
                     }
                 }
+                #[cfg(feature = "file_time")]
                 K_M_TIME => {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = read_u8(header)?;
