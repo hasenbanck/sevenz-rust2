@@ -61,8 +61,6 @@ mod util;
 pub use archive::*;
 pub use encryption::Password;
 pub use error::Error;
-#[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-#[cfg(feature = "file_time")]
 pub use nt_time;
 pub use reader::{ArchiveReader, BlockDecoder};
 #[cfg(all(feature = "compress", feature = "util", not(target_arch = "wasm32")))]

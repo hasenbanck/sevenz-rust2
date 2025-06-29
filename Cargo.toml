@@ -22,10 +22,9 @@ brotli = ["dep:brotli"]
 bzip2 = ["dep:bzip2"]
 compress = ["lzma-rust2/encoder"]
 deflate = ["dep:flate2"]
-file_time = ["dep:nt-time"]
 lz4 = ["dep:lz4_flex"]
 ppmd = ["dep:ppmd-rust"]
-util = ["file_time"]
+util = []
 zstd = ["dep:zstd"]
 
 [dependencies]
@@ -40,7 +39,7 @@ getrandom = { version = "0.3", optional = true }
 lzma-rust2 = { version = "0.2", default-features = false }
 ppmd-rust = { version = "1.1", optional = true }
 lz4_flex = { version = "0.11", optional = true }
-nt-time = { version = "0.11", optional = true }
+nt-time = "0.11"
 sha2 = { version = "0.10", optional = true }
 zstd = { version = "0.13", optional = true }
 

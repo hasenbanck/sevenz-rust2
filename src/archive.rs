@@ -23,11 +23,8 @@ pub(crate) const K_EMPTY_STREAM: u8 = 0x0E;
 pub(crate) const K_EMPTY_FILE: u8 = 0x0F;
 pub(crate) const K_ANTI: u8 = 0x10;
 pub(crate) const K_NAME: u8 = 0x11;
-#[cfg_attr(not(feature = "file_time"), allow(unused))]
 pub(crate) const K_C_TIME: u8 = 0x12;
-#[cfg_attr(not(feature = "file_time"), allow(unused))]
 pub(crate) const K_A_TIME: u8 = 0x13;
-#[cfg_attr(not(feature = "file_time"), allow(unused))]
 pub(crate) const K_M_TIME: u8 = 0x14;
 pub(crate) const K_WIN_ATTRIBUTES: u8 = 0x15;
 
@@ -65,23 +62,11 @@ pub struct ArchiveEntry {
     pub has_stream: bool,
     pub is_directory: bool,
     pub is_anti_item: bool,
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub has_creation_date: bool,
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub has_last_modified_date: bool,
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub has_access_date: bool,
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub creation_date: nt_time::FileTime,
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub last_modified_date: nt_time::FileTime,
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub access_date: nt_time::FileTime,
     pub has_windows_attributes: bool,
     pub windows_attributes: u32,
@@ -127,8 +112,6 @@ impl ArchiveEntry {
             }
             String::from_utf8(name_bytes).unwrap()
         };
-
-        #[cfg_attr(not(feature = "file_time"), allow(unused_mut))]
         let mut entry = ArchiveEntry {
             name: entry_name,
             has_stream: path.is_file(),
@@ -136,7 +119,6 @@ impl ArchiveEntry {
             ..Default::default()
         };
 
-        #[cfg(feature = "file_time")]
         if let Ok(meta) = path.metadata() {
             if let Ok(modified) = meta.modified() {
                 if let Ok(date) = nt_time::FileTime::try_from(modified) {
@@ -157,7 +139,6 @@ impl ArchiveEntry {
                 }
             }
         }
-
         entry
     }
 
@@ -173,22 +154,12 @@ impl ArchiveEntry {
         self.has_stream
     }
 
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub fn creation_date(&self) -> nt_time::FileTime {
         self.creation_date
     }
 
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
     pub fn last_modified_date(&self) -> nt_time::FileTime {
         self.last_modified_date
-    }
-
-    #[cfg_attr(docsrs, doc(cfg(feature = "file_time")))]
-    #[cfg(feature = "file_time")]
-    pub fn access_date(&self) -> nt_time::FileTime {
-        self.access_date
     }
 
     pub fn size(&self) -> u64 {
@@ -197,6 +168,10 @@ impl ArchiveEntry {
 
     pub fn windows_attributes(&self) -> u32 {
         self.windows_attributes
+    }
+
+    pub fn access_date(&self) -> nt_time::FileTime {
+        self.access_date
     }
 
     pub fn is_anti_item(&self) -> bool {
