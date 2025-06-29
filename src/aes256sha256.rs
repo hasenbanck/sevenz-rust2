@@ -9,8 +9,7 @@ use crate::Password;
 
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
-#[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
-pub struct Aes256Sha256Decoder<R> {
+pub(crate) struct Aes256Sha256Decoder<R> {
     cipher: Cipher,
     input: R,
     done: bool,
@@ -21,7 +20,7 @@ pub struct Aes256Sha256Decoder<R> {
 }
 
 impl<R: Read> Aes256Sha256Decoder<R> {
-    pub fn new(input: R, properties: &[u8], password: &[u8]) -> Result<Self, crate::Error> {
+    pub(crate) fn new(input: R, properties: &[u8], password: &[u8]) -> Result<Self, crate::Error> {
         let cipher = Cipher::from_properties(properties, password)?;
         Ok(Self {
             input,
@@ -220,7 +219,7 @@ mod enc {
     use super::*;
 
     #[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
-    pub struct Aes256Sha256Encoder<W> {
+    pub(crate) struct Aes256Sha256Encoder<W> {
         output: W,
         enc: Aes256CbcEnc,
         buffer: Vec<u8>,
@@ -270,7 +269,7 @@ mod enc {
     }
 
     impl<W> Aes256Sha256Encoder<W> {
-        pub fn new(output: W, options: &AesEncoderOptions) -> Result<Self, crate::Error> {
+        pub(crate) fn new(output: W, options: &AesEncoderOptions) -> Result<Self, crate::Error> {
             let (key, iv) = get_aes_key(&options.properties(), options.password.as_slice())?;
 
             Ok(Self {
