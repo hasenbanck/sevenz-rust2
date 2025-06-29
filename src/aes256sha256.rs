@@ -252,14 +252,14 @@ mod enc {
             }
         }
 
-        pub fn properties(&self) -> [u8; 34] {
+        pub(crate) fn properties(&self) -> [u8; 34] {
             let mut props = [0u8; 34];
             self.write_properties(&mut props);
             props
         }
 
         #[inline]
-        pub fn write_properties(&self, props: &mut [u8]) {
+        pub(crate) fn write_properties(&self, props: &mut [u8]) {
             assert!(props.len() >= 34);
             props[0] = (self.num_cycles_power & 0x3F) | 0xC0;
             props[1] = 0xFF;

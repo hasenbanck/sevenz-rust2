@@ -23,7 +23,7 @@ use crate::{
 use crate::{LZ4Options, lz4::Lz4Encoder};
 
 #[allow(clippy::upper_case_acronyms)]
-pub enum Encoder<W: Write> {
+pub(crate) enum Encoder<W: Write> {
     COPY(CountingWriter<W>),
     DELTA(DeltaWriter<CountingWriter<W>>),
     LZMA(Option<LZMAWriter<CountingWriter<W>>>),
