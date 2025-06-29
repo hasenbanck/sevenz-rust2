@@ -29,7 +29,7 @@ fn main() {
 
     let time = Instant::now();
     // start compress
-    let mut sz = SevenZWriter::create(&dest).expect("create writer ok");
+    let mut sz = ArchiveWriter::create(&dest).expect("create writer ok");
     sz.set_encrypt_header(true);
     #[cfg(feature = "aes256")]
     {
@@ -56,7 +56,7 @@ fn main() {
     // decompress
     // let archive = Archive::open_with_password(&dest, &"sevenz-rust-".into()).unwrap();
     // println!("archive:{:?}", archive);
-    let mut sz = SevenZReader::open(&dest, "sevenz-rust".into()).expect("create reader ok");
+    let mut sz = ArchiveReader::open(&dest, "sevenz-rust".into()).expect("create reader ok");
     assert_eq!(contents.len(), sz.archive().files.len());
     assert_eq!(1, sz.archive().folders.len());
     sz.for_each_entries(|entry, reader| {

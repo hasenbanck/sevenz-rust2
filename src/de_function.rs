@@ -22,7 +22,7 @@ pub fn decompress_file(src_path: impl AsRef<Path>, dest: impl AsRef<Path>) -> Re
 pub fn decompress_file_with_extract_fn(
     src_path: impl AsRef<Path>,
     dest: impl AsRef<Path>,
-    extract_fn: impl FnMut(&SevenZArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
+    extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
     let file = std::fs::File::open(src_path.as_ref())
         .map_err(|e| Error::file_open(e, src_path.as_ref().to_string_lossy().to_string()))?;
@@ -40,7 +40,7 @@ pub fn decompress<R: Read + Seek>(src_reader: R, dest: impl AsRef<Path>) -> Resu
 pub fn decompress_with_extract_fn<R: Read + Seek>(
     src_reader: R,
     dest: impl AsRef<Path>,
-    extract_fn: impl FnMut(&SevenZArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
+    extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
     decompress_impl(src_reader, dest, Password::empty(), extract_fn)
 }
@@ -80,7 +80,7 @@ pub fn decompress_with_extract_fn_and_password<R: Read + Seek>(
     src_reader: R,
     dest: impl AsRef<Path>,
     password: Password,
-    extract_fn: impl FnMut(&SevenZArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
+    extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
     decompress_impl(src_reader, dest, password, extract_fn)
 }
@@ -90,13 +90,13 @@ fn decompress_impl<R: Read + Seek>(
     mut src_reader: R,
     dest: impl AsRef<Path>,
     password: Password,
-    mut extract_fn: impl FnMut(&SevenZArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
+    mut extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
     use std::io::SeekFrom;
 
     let pos = src_reader.stream_position().map_err(Error::io)?;
     src_reader.seek(SeekFrom::Start(pos)).map_err(Error::io)?;
-    let mut seven = SevenZReader::new(src_reader, password)?;
+    let mut seven = ArchiveReader::new(src_reader, password)?;
     let dest = PathBuf::from(dest.as_ref());
     if !dest.exists() {
         std::fs::create_dir_all(&dest).map_err(Error::io)?;
@@ -112,7 +112,7 @@ fn decompress_impl<R: Read + Seek>(
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn default_entry_extract_fn(
-    entry: &SevenZArchiveEntry,
+    entry: &ArchiveEntry,
     reader: &mut dyn Read,
     dest: &PathBuf,
 ) -> Result<bool, Error> {

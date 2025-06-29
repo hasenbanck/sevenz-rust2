@@ -1,7 +1,7 @@
 use std::{io::Write, sync::Arc};
 
 use super::*;
-use crate::SevenZMethodConfiguration;
+use crate::EncoderConfiguration;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct UnpackInfo {
     pub(crate) folders: Vec<FolderInfo>,
@@ -10,7 +10,7 @@ pub(crate) struct UnpackInfo {
 impl UnpackInfo {
     pub(crate) fn add(
         &mut self,
-        methods: Arc<Vec<SevenZMethodConfiguration>>,
+        methods: Arc<Vec<EncoderConfiguration>>,
         sizes: Vec<u64>,
         crc: u32,
     ) {
@@ -25,7 +25,7 @@ impl UnpackInfo {
 
     pub(crate) fn add_multiple(
         &mut self,
-        methods: Arc<Vec<SevenZMethodConfiguration>>,
+        methods: Arc<Vec<EncoderConfiguration>>,
         sizes: Vec<u64>,
         crc: u32,
         num_sub_unpack_streams: u64,
@@ -102,7 +102,7 @@ impl UnpackInfo {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FolderInfo {
-    pub(crate) methods: Arc<Vec<SevenZMethodConfiguration>>,
+    pub(crate) methods: Arc<Vec<EncoderConfiguration>>,
     pub(crate) sizes: Vec<u64>,
     pub(crate) crc: u32,
     pub(crate) num_sub_unpack_streams: u64,
@@ -133,12 +133,12 @@ impl FolderInfo {
 
     fn write_single_codec<H: Write>(
         &self,
-        mc: &SevenZMethodConfiguration,
+        mc: &EncoderConfiguration,
         out: &mut H,
     ) -> std::io::Result<()> {
         let id = mc.method.id();
         let mut temp = [0u8; 256];
-        let props = encoders::get_options_as_properties(mc.method, mc.options.as_ref(), &mut temp);
+        let props = encoder::get_options_as_properties(mc.method, mc.options.as_ref(), &mut temp);
         let mut codec_flags = id.len() as u8;
         if !props.is_empty() {
             codec_flags |= 0x20;

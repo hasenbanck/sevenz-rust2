@@ -11,7 +11,7 @@ use crate::*;
 /// Helper function to compress `src` path to `dest` writer.
 #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Error> {
-    let mut z = SevenZWriter::new(dest)?;
+    let mut z = ArchiveWriter::new(dest)?;
     let parent = if src.as_ref().is_dir() {
         src.as_ref()
     } else {
@@ -31,11 +31,11 @@ pub fn compress_encrypted<W: Write + Seek>(
     dest: W,
     password: Password,
 ) -> Result<W, Error> {
-    let mut z = SevenZWriter::new(dest)?;
+    let mut z = ArchiveWriter::new(dest)?;
     if !password.is_empty() {
         z.set_content_methods(vec![
             AesEncoderOptions::new(password).into(),
-            SevenZMethod::LZMA2.into(),
+            EncoderMethod::LZMA2.into(),
         ]);
     }
     let parent = if src.as_ref().is_dir() {
@@ -92,7 +92,7 @@ pub fn compress_to_path_encrypted(
 fn compress_path<W: Write + Seek, P: AsRef<Path>>(
     src: P,
     root: &Path,
-    z: &mut SevenZWriter<W>,
+    z: &mut ArchiveWriter<W>,
 ) -> Result<(), Error> {
     let entry_name = src
         .as_ref()
@@ -100,7 +100,7 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
         .map_err(|e| Error::other(e.to_string()))?
         .to_string_lossy()
         .to_string();
-    let entry = SevenZArchiveEntry::from_path(src.as_ref(), entry_name);
+    let entry = ArchiveEntry::from_path(src.as_ref(), entry_name);
     let path = src.as_ref();
     if path.is_dir() {
         z.push_archive_entry::<&[u8]>(entry, None)?;
@@ -126,7 +126,7 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
     Ok(())
 }
 
-impl<W: Write + Seek> SevenZWriter<W> {
+impl<W: Write + Seek> ArchiveWriter<W> {
     /// Solid compression - compress all files in `path` with multiple files in one block.
     #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
     pub fn push_source_path(
@@ -178,7 +178,7 @@ const MAX_BLOCK_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GiB
 fn encode_path<W: Write + Seek>(
     solid: bool,
     src: impl AsRef<Path>,
-    zip: &mut SevenZWriter<W>,
+    zip: &mut ArchiveWriter<W>,
     filter: impl Fn(&Path) -> bool,
 ) -> Result<(), Error> {
     let mut entries = Vec::new();
@@ -197,7 +197,7 @@ fn encode_path<W: Write + Seek>(
                 .to_string_lossy()
                 .to_string();
             zip.push_archive_entry(
-                SevenZArchiveEntry::from_path(ele.as_path(), name),
+                ArchiveEntry::from_path(ele.as_path(), name),
                 Some(File::open(ele.as_path()).map_err(Error::io)?),
             )?;
         }
@@ -214,7 +214,7 @@ fn encode_path<W: Write + Seek>(
             .to_string();
         if size >= MAX_BLOCK_SIZE {
             zip.push_archive_entry(
-                SevenZArchiveEntry::from_path(ele.as_path(), name),
+                ArchiveEntry::from_path(ele.as_path(), name),
                 Some(File::open(ele.as_path()).map_err(Error::io)?),
             )?;
             continue;
@@ -226,7 +226,7 @@ fn encode_path<W: Write + Seek>(
             file_size = 0;
         }
         file_size += size;
-        entries.push(SevenZArchiveEntry::from_path(ele.as_path(), name));
+        entries.push(ArchiveEntry::from_path(ele.as_path(), name));
         files.push(LazyFileReader::new(ele).into());
     }
     if !entries.is_empty() {

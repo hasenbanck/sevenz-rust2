@@ -13,7 +13,7 @@ pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String
         .seek(SeekFrom::Start(pos))
         .map_err(|e| e.to_string())?;
     let mut seven =
-        SevenZReader::new(src_reader, Password::from(pwd)).map_err(|e| e.to_string())?;
+        ArchiveReader::new(src_reader, Password::from(pwd)).map_err(|e| e.to_string())?;
     seven
         .for_each_entries(|entry, reader| {
             if !entry.is_directory() {
@@ -40,7 +40,7 @@ pub fn compress(entries: Vec<JsString>, datas: Vec<Uint8Array>) -> Result<Uint8A
     let output = Uint8Array::new_with_length(32);
     let writer = Uint8ArrayStream::new(output);
 
-    let mut sz = SevenZWriter::new(writer).map_err(|e| e.to_string())?;
+    let mut sz = ArchiveWriter::new(writer).map_err(|e| e.to_string())?;
     let reader = SeqReader::new(
         datas
             .into_iter()
@@ -50,7 +50,7 @@ pub fn compress(entries: Vec<JsString>, datas: Vec<Uint8Array>) -> Result<Uint8A
     );
     let entries = entries
         .into_iter()
-        .map(|name| SevenZArchiveEntry {
+        .map(|name| ArchiveEntry {
             name: name.into(),
             has_stream: true,
             ..Default::default()

@@ -1,4 +1,6 @@
 use std::{borrow::Cow, fmt::Display};
+
+/// The error type of the crate.
 #[derive(Debug)]
 pub enum Error {
     BadSignature([u8; 6]),
@@ -33,6 +35,7 @@ impl Error {
     pub fn other<S: Into<Cow<'static, str>>>(s: S) -> Self {
         Self::Other(s.into())
     }
+
     #[inline]
     pub fn unsupported<S: Into<Cow<'static, str>>>(s: S) -> Self {
         Self::Unsupported(s.into())
@@ -42,6 +45,7 @@ impl Error {
     pub fn io(e: std::io::Error) -> Self {
         Self::io_msg(e, "")
     }
+
     #[inline]
     pub fn io_msg(e: std::io::Error, msg: impl Into<Cow<'static, str>>) -> Self {
         Self::Io(e, msg.into())

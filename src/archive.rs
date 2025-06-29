@@ -2,7 +2,7 @@
 use bit_set::BitSet;
 use nt_time::FileTime;
 
-use crate::{folder::*, method_options::MethodOptions};
+use crate::{encoder_options::EncoderOptions, folder::*};
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -43,7 +43,7 @@ pub struct Archive {
     pub pack_crcs: Vec<u64>,
     pub folders: Vec<Folder>,
     pub sub_streams_info: Option<SubStreamsInfo>,
-    pub files: Vec<SevenZArchiveEntry>,
+    pub files: Vec<ArchiveEntry>,
     pub stream_map: StreamMap,
     pub is_solid: bool,
 }
@@ -56,7 +56,7 @@ pub struct SubStreamsInfo {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct SevenZArchiveEntry {
+pub struct ArchiveEntry {
     pub name: String,
     pub has_stream: bool,
     pub is_directory: bool,
@@ -76,7 +76,7 @@ pub struct SevenZArchiveEntry {
     pub compressed_size: u64,
 }
 
-impl SevenZArchiveEntry {
+impl ArchiveEntry {
     pub fn new() -> Self {
         Self::default()
     }
@@ -111,7 +111,7 @@ impl SevenZArchiveEntry {
             }
             String::from_utf8(name_bytes).unwrap()
         };
-        let mut entry = SevenZArchiveEntry {
+        let mut entry = ArchiveEntry {
             name: entry_name,
             has_stream: path.is_file(),
             is_directory: path.is_dir(),
@@ -179,18 +179,18 @@ impl SevenZArchiveEntry {
 }
 
 #[derive(Debug, Default)]
-pub struct SevenZMethodConfiguration {
-    pub method: SevenZMethod,
-    pub options: Option<MethodOptions>,
+pub struct EncoderConfiguration {
+    pub method: EncoderMethod,
+    pub options: Option<EncoderOptions>,
 }
 
-impl From<SevenZMethod> for SevenZMethodConfiguration {
-    fn from(value: SevenZMethod) -> Self {
+impl From<EncoderMethod> for EncoderConfiguration {
+    fn from(value: EncoderMethod) -> Self {
         Self::new(value)
     }
 }
 
-impl Clone for SevenZMethodConfiguration {
+impl Clone for EncoderConfiguration {
     fn clone(&self) -> Self {
         Self {
             method: self.method,
@@ -199,24 +199,25 @@ impl Clone for SevenZMethodConfiguration {
     }
 }
 
-impl SevenZMethodConfiguration {
-    pub fn new(method: SevenZMethod) -> Self {
+impl EncoderConfiguration {
+    pub fn new(method: EncoderMethod) -> Self {
         Self {
             method,
             options: None,
         }
     }
 
-    pub fn with_options(mut self, options: MethodOptions) -> Self {
+    pub fn with_options(mut self, options: EncoderOptions) -> Self {
         self.options = Some(options);
         self
     }
 }
 
+/// Encoder method that can be chained (filter, compression and encryption).
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Default, Hash)]
-pub struct SevenZMethod(&'static str, &'static [u8]);
+pub struct EncoderMethod(&'static str, &'static [u8]);
 
-impl SevenZMethod {
+impl EncoderMethod {
     pub(crate) const ID_COPY: &'static [u8] = &[0x00];
     pub(crate) const ID_DELTA: &'static [u8] = &[0x03];
     pub(crate) const ID_BCJ: &'static [u8] = &[0x04];
@@ -267,7 +268,7 @@ impl SevenZMethod {
     pub const DELTA_FILTER: Self = Self("DELTA", Self::ID_DELTA);
     pub const BCJ2_FILTER: Self = Self("BCJ2", Self::ID_BCJ2);
 
-    const METHODS: &'static [&'static SevenZMethod] = &[
+    const ENCODING_METHODS: &'static [&'static EncoderMethod] = &[
         &Self::COPY,
         &Self::LZMA,
         &Self::LZMA2,
@@ -304,7 +305,7 @@ impl SevenZMethod {
 
     #[inline]
     pub fn by_id(id: &[u8]) -> Option<Self> {
-        Self::METHODS
+        Self::ENCODING_METHODS
             .iter()
             .find(|item| item.id() == id)
             .cloned()

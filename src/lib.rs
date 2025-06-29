@@ -41,17 +41,17 @@ mod bcj2;
 #[cfg(feature = "brotli")]
 mod brotli;
 #[cfg(all(feature = "util", not(target_arch = "wasm32")))]
-mod de_funcs;
+mod de_function;
 mod delta;
 #[cfg(all(feature = "compress", feature = "util"))]
-mod en_funcs;
+mod en_function;
 #[cfg(feature = "compress")]
-mod encoders;
+mod encoder;
+/// Encoding options when compressing.
+pub mod encoder_options;
 mod error;
 #[cfg(feature = "lz4")]
 mod lz4;
-/// Options to configure the compression methods.
-pub mod method_options;
 mod password;
 mod reader;
 #[cfg(target_arch = "wasm32")]
@@ -63,13 +63,13 @@ mod writer;
 pub use aes256sha256::*;
 pub use archive::*;
 #[cfg(all(feature = "util", not(target_arch = "wasm32")))]
-pub use de_funcs::*;
+pub use de_function::*;
 #[cfg(all(feature = "compress", feature = "util"))]
-pub use en_funcs::*;
+pub use en_function::*;
 pub use error::Error;
 pub use nt_time;
 pub use password::Password;
-pub use reader::{BlockDecoder, SevenZReader};
+pub use reader::{ArchiveReader, BlockDecoder};
 #[cfg(feature = "compress")]
 pub use writer::*;
 pub(crate) mod archive;

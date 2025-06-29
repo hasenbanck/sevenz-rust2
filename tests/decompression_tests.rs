@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use sevenz_rust2::{Archive, BlockDecoder, Password, SevenZReader, decompress_file};
+use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password, decompress_file};
 use tempfile::tempdir;
 
 #[test]
@@ -267,9 +267,9 @@ fn test_entry_compressed_size() {
 fn test_get_file_by_path() {
     // non_solid.7z and solid.7z are expected to have the same content.
     let mut non_solid_reader =
-        SevenZReader::open("tests/resources/non_solid.7z", Password::empty()).unwrap();
+        ArchiveReader::open("tests/resources/non_solid.7z", Password::empty()).unwrap();
     let mut solid_reader =
-        SevenZReader::open("tests/resources/solid.7z", Password::empty()).unwrap();
+        ArchiveReader::open("tests/resources/solid.7z", Password::empty()).unwrap();
 
     let paths: Vec<String> = non_solid_reader
         .archive()
