@@ -49,7 +49,7 @@ mod writer;
 
 pub(crate) mod archive;
 mod codec;
-pub(crate) mod decoders;
+pub(crate) mod decoder;
 mod filter;
 pub(crate) mod folder;
 

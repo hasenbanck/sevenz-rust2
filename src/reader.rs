@@ -10,7 +10,7 @@ use bit_set::BitSet;
 use crc32fast::Hasher;
 
 use crate::encryption::Password;
-use crate::{archive::*, decoders::add_decoder, error::Error, folder::*};
+use crate::{archive::*, decoder::add_decoder, error::Error, folder::*};
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 
