@@ -10,6 +10,7 @@ pub struct BCJFilter {
     prev_mask: u32,
     filter: FilterFn,
 }
+
 pub type FilterFn = fn(filter: &mut BCJFilter, buf: &mut [u8]) -> usize;
 
 impl BCJFilter {
@@ -19,7 +20,9 @@ impl BCJFilter {
         filter(self, buf)
     }
 }
+
 const FILTER_BUF_SIZE: usize = 4096;
+
 pub struct SimpleReader<R> {
     inner: R,
     filter: BCJFilter,
@@ -57,23 +60,28 @@ impl<R> SimpleReader<R> {
     pub fn new_arm(inner: R) -> Self {
         Self::new(inner, BCJFilter::new_arm(0, false))
     }
+
     #[inline]
     pub fn new_arm64(inner: R) -> Self {
         Self::new(inner, BCJFilter::new_arm64(0, false))
     }
+
     #[inline]
     pub fn new_arm_thumb(inner: R) -> Self {
         Self::new(inner, BCJFilter::new_arm_thumb(0, false))
     }
+
     #[inline]
     pub fn new_ppc(inner: R) -> Self {
         Self::new(inner, BCJFilter::new_power_pc(0, false))
     }
+
     #[inline]
     pub fn new_sparc(inner: R) -> Self {
         Self::new(inner, BCJFilter::new_sparc(0, false))
     }
 }
+
 impl<R: Read> Read for SimpleReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if buf.is_empty() {

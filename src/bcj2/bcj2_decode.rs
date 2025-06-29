@@ -3,18 +3,27 @@ use byteorder::{BigEndian, ReadBytesExt};
 pub const BCJ2_NUM_STREAMS: usize = 4;
 
 pub const BCJ2_STREAM_MAIN: usize = 0;
+
 pub const BCJ2_STREAM_CALL: usize = 1;
+
 pub const BCJ2_STREAM_JUMP: usize = 2;
+
 pub const BCJ2_STREAM_RC: usize = 3;
 
 pub const BCJ2_DEC_STATE_ORIG_0: usize = BCJ2_NUM_STREAMS;
+
 pub const BCJ2_DEC_STATE_ORIG_3: usize = BCJ2_NUM_STREAMS + 3;
+
 pub const BCJ2_DEC_STATE_ORIG: usize = BCJ2_NUM_STREAMS + 4;
+
 pub const BCJ2_DEC_STATE_OK: usize = BCJ2_NUM_STREAMS + 5;
 
 pub const NUM_MODEL_BITS: u16 = 11;
+
 pub const BIT_MODEL_TOTAL: u16 = 1 << NUM_MODEL_BITS;
+
 pub const NUM_MOVE_BITS: u16 = 5;
+
 pub const K_TOP_VALUE: u32 = 1 << 24;
 
 #[derive(Debug)]
@@ -40,6 +49,7 @@ impl Bcj2Decoder {
     pub fn set_dest(&mut self, dest: usize) {
         self.dest = dest;
     }
+
     pub fn new() -> Self {
         Self {
             bufs: Default::default(),

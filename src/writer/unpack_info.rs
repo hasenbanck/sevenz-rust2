@@ -98,7 +98,6 @@ impl UnpackInfo {
 #[derive(Debug, Clone, Default)]
 pub struct FolderInfo {
     pub methods: Arc<Vec<SevenZMethodConfiguration>>,
-    // pub bind_pairs: Vec<BindPair>,
     pub sizes: Vec<u64>,
     pub crc: u32,
     pub num_sub_unpack_streams: u64,

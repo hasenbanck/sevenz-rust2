@@ -11,6 +11,7 @@ impl BCJFilter {
     }
 }
 const MASK_TO_ALLOWED_STATUS: &[bool] = &[true, true, true, false, true, false, false, false];
+
 const MASK_TO_BIT_NUMBER: &[u8] = &[0, 1, 2, 2, 3, 3, 3, 3];
 
 impl BCJFilter {
