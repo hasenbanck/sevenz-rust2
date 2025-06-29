@@ -16,6 +16,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["aes256", "bzip2", "compress", "ppmd", "util"]
 default_wasm = ["aes256_wasm", "bzip2", "compress", "ppmd", "util"]
+nt-time = ["dep:nt-time"]
 aes256 = ["dep:aes", "dep:cbc", "dep:getrandom", "dep:sha2"]
 aes256_wasm = ["aes256", "getrandom/wasm_js"]
 brotli = ["dep:brotli"]
@@ -39,7 +40,7 @@ getrandom = { version = "0.3", optional = true }
 lzma-rust2 = { version = "0.2", default-features = false }
 ppmd-rust = { version = "1.1", optional = true }
 lz4_flex = { version = "0.11", optional = true }
-nt-time = "0.11"
+nt-time = { version = "0.11", optional = true }
 sha2 = { version = "0.10", optional = true }
 zstd = { version = "0.13", optional = true }
 

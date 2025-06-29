@@ -1,6 +1,6 @@
 #[cfg(feature = "compress")]
 use crate::encoder_options::EncoderOptions;
-use crate::{bitset::BitSet, folder::*};
+use crate::{NtTime, bitset::BitSet, folder::*};
 
 pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
@@ -65,9 +65,9 @@ pub struct ArchiveEntry {
     pub has_creation_date: bool,
     pub has_last_modified_date: bool,
     pub has_access_date: bool,
-    pub creation_date: nt_time::FileTime,
-    pub last_modified_date: nt_time::FileTime,
-    pub access_date: nt_time::FileTime,
+    pub creation_date: NtTime,
+    pub last_modified_date: NtTime,
+    pub access_date: NtTime,
     pub has_windows_attributes: bool,
     pub windows_attributes: u32,
     pub has_crc: bool,
@@ -121,21 +121,21 @@ impl ArchiveEntry {
 
         if let Ok(meta) = path.metadata() {
             if let Ok(modified) = meta.modified() {
-                if let Ok(date) = nt_time::FileTime::try_from(modified) {
+                if let Ok(date) = NtTime::try_from(modified) {
                     entry.last_modified_date = date;
-                    entry.has_last_modified_date = entry.last_modified_date.to_raw() > 0;
+                    entry.has_last_modified_date = entry.last_modified_date.0 > 0;
                 }
             }
             if let Ok(date) = meta.created() {
-                if let Ok(date) = nt_time::FileTime::try_from(date) {
+                if let Ok(date) = NtTime::try_from(date) {
                     entry.creation_date = date;
-                    entry.has_creation_date = entry.creation_date.to_raw() > 0;
+                    entry.has_creation_date = entry.creation_date.0 > 0;
                 }
             }
             if let Ok(date) = meta.accessed() {
-                if let Ok(date) = nt_time::FileTime::try_from(date) {
+                if let Ok(date) = NtTime::try_from(date) {
                     entry.access_date = date;
-                    entry.has_access_date = entry.access_date.to_raw() > 0;
+                    entry.has_access_date = entry.access_date.0 > 0;
                 }
             }
         }
@@ -154,11 +154,11 @@ impl ArchiveEntry {
         self.has_stream
     }
 
-    pub fn creation_date(&self) -> nt_time::FileTime {
+    pub fn creation_date(&self) -> NtTime {
         self.creation_date
     }
 
-    pub fn last_modified_date(&self) -> nt_time::FileTime {
+    pub fn last_modified_date(&self) -> NtTime {
         self.last_modified_date
     }
 
@@ -170,7 +170,7 @@ impl ArchiveEntry {
         self.windows_attributes
     }
 
-    pub fn access_date(&self) -> nt_time::FileTime {
+    pub fn access_date(&self) -> NtTime {
         self.access_date
     }
 

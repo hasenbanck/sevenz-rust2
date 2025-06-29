@@ -55,14 +55,15 @@ pub(crate) mod decoder;
 mod filter;
 pub(crate) mod folder;
 
+mod time;
 #[cfg(feature = "util")]
 mod util;
 
 pub use archive::*;
 pub use encryption::Password;
 pub use error::Error;
-pub use nt_time;
 pub use reader::{ArchiveReader, BlockDecoder};
+pub use time::NtTime;
 #[cfg(all(feature = "compress", feature = "util", not(target_arch = "wasm32")))]
 pub use util::compress::*;
 #[cfg(all(feature = "util", not(target_arch = "wasm32")))]

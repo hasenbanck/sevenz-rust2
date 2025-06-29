@@ -22,10 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every API that takes a password now uses the `Password` struct instead. Added helper
   functions to create password from strings and raw bytes.
 - The needed features for WASM changed. Please use the "default_wasm" feature.
+- Removed the hard dependency to `nt-time` by creating our own time struct `NtTime`.
+  The feature can be used to convert to and from `nt-time::FileTime`.
 
 ### Removed
 
 - Removed the dependency to `bit-set` and `filetime_creation`.
+- `nt-time` dependency is now optional.
 
 ## 0.15.3 - 2025-06-28
 
