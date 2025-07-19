@@ -22,7 +22,7 @@ fn main() {
         //TODO: use thread pool
         let handle = std::thread::spawn(move || {
             let mut source = std::fs::File::open("examples/data/sample.7z").unwrap();
-            let forder_dec = BlockDecoder::new(block_index, &archive, &password, &mut source);
+            let forder_dec = BlockDecoder::new(1, block_index, &archive, &password, &mut source);
             let dest = PathBuf::from("examples/data/sample_mt/");
             forder_dec
                 .for_each_entries(&mut |entry, reader| {

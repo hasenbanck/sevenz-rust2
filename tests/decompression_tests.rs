@@ -240,7 +240,7 @@ fn test_bcj2() {
     let archive = Archive::read(&mut file, &Password::empty()).unwrap();
     for i in 0..archive.blocks.len() {
         let password = Password::empty();
-        let fd = BlockDecoder::new(i, &archive, &password, &mut file);
+        let fd = BlockDecoder::new(1, i, &archive, &password, &mut file);
         println!("entry_count:{}", fd.entry_count());
         fd.for_each_entries(&mut |entry, reader| {
             println!("{}=>{:?}", entry.has_stream, entry.name());

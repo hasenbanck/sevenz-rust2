@@ -10,7 +10,7 @@ fn main() {
     let my_file_name = "7zFormat.txt";
 
     for block_index in 0..block_count {
-        let forder_dec = BlockDecoder::new(block_index, &archive, &password, &mut file);
+        let forder_dec = BlockDecoder::new(1, block_index, &archive, &password, &mut file);
 
         if !forder_dec
             .entries()

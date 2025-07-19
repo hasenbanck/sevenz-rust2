@@ -1,11 +1,11 @@
-use std::io::Read;
+use std::{io::Read, num::NonZeroU32};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 #[cfg(feature = "bzip2")]
 use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
-use lzma_rust2::{LZMA2Reader, LZMAReader, lzma2_get_memory_usage};
+use lzma_rust2::{LZMA2Reader, LZMA2ReaderMT, LZMAReader, lzma2_get_memory_usage};
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{
     PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
@@ -28,8 +28,9 @@ use crate::{
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),
-    LZMA(LZMAReader<R>),
-    LZMA2(LZMA2Reader<R>),
+    LZMA(Box<LZMAReader<R>>),
+    LZMA2(Box<LZMA2Reader<R>>),
+    LZMA2MT(Box<LZMA2ReaderMT<R>>),
     #[cfg(feature = "ppmd")]
     PPMD(Box<Ppmd7Decoder<R>>),
     BCJ(SimpleReader<R>),
@@ -45,7 +46,7 @@ pub enum Decoder<R: Read> {
     #[cfg(feature = "zstd")]
     ZSTD(zstd::Decoder<'static, std::io::BufReader<R>>),
     #[cfg(feature = "aes256")]
-    AES256SHA256(Aes256Sha256Decoder<R>),
+    AES256SHA256(Box<Aes256Sha256Decoder<R>>),
 }
 
 impl<R: Read> Read for Decoder<R> {
@@ -54,6 +55,7 @@ impl<R: Read> Read for Decoder<R> {
             Decoder::COPY(r) => r.read(buf),
             Decoder::LZMA(r) => r.read(buf),
             Decoder::LZMA2(r) => r.read(buf),
+            Decoder::LZMA2MT(r) => r.read(buf),
             #[cfg(feature = "ppmd")]
             Decoder::PPMD(r) => r.read(buf),
             Decoder::BCJ(r) => r.read(buf),
@@ -80,6 +82,7 @@ pub fn add_decoder<I: Read>(
     coder: &Coder,
     #[allow(unused)] password: &Password,
     max_mem_limit_kb: usize,
+    threads: u32,
 ) -> Result<Decoder<I>, Error> {
     let method = EncoderMethod::by_id(coder.encoder_method_id());
     let method = if let Some(m) = method {
@@ -101,7 +104,7 @@ pub fn add_decoder<I: Read>(
             let lz =
                 LZMAReader::new_with_props(input, uncompressed_len as _, props, dict_size, None)
                     .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
-            Ok(Decoder::LZMA(lz))
+            Ok(Decoder::LZMA(Box::new(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
             let dic_size = get_lzma2_dic_size(coder)?;
@@ -112,8 +115,19 @@ pub fn add_decoder<I: Read>(
                     actaul_kb: mem_size,
                 });
             }
-            let lz = LZMA2Reader::new(input, dic_size, None);
-            Ok(Decoder::LZMA2(lz))
+
+            let lz = if threads < 2 {
+                Decoder::LZMA2(Box::new(LZMA2Reader::new(input, dic_size, None)))
+            } else {
+                Decoder::LZMA2MT(Box::new(LZMA2ReaderMT::new(
+                    input,
+                    dic_size,
+                    None,
+                    NonZeroU32::new(threads).unwrap(),
+                )))
+            };
+
+            Ok(lz)
         }
         #[cfg(feature = "ppmd")]
         EncoderMethod::ID_PPMD => {
@@ -187,7 +201,7 @@ pub fn add_decoder<I: Read>(
                 return Err(Error::PasswordRequired);
             }
             let de = Aes256Sha256Decoder::new(input, &coder.properties, password)?;
-            Ok(Decoder::AES256SHA256(de))
+            Ok(Decoder::AES256SHA256(Box::new(de)))
         }
         _ => Err(Error::UnsupportedCompressionMethod(
             method.name().to_string(),
