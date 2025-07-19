@@ -31,6 +31,7 @@
 //! | DELTA         | ✓             | ✓           |
 //! | BCJ2          | ✓             |             |
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs)]
 
 #[cfg(target_arch = "wasm32")]
 extern crate wasm_bindgen;

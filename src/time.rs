@@ -35,6 +35,7 @@ impl NtTime {
         Self(ft)
     }
 
+    /// Returns the current system time as an [`NtTime`].
     #[must_use]
     #[inline]
     pub fn now() -> Self {

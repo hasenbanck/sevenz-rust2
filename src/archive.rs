@@ -35,6 +35,10 @@ pub(crate) const K_ENCODED_HEADER: u8 = 0x17;
 pub(crate) const K_START_POS: u8 = 0x18;
 pub(crate) const K_DUMMY: u8 = 0x19;
 
+/// Represents a parsed 7z archive structure.
+///
+/// Contains metadata about the archive including files, compression blocks,
+/// and internal structure information necessary for decompression.
 #[derive(Debug, Default, Clone)]
 pub struct Archive {
     /// Offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
@@ -43,9 +47,13 @@ pub struct Archive {
     pub(crate) pack_crcs_defined: BitSet,
     pub(crate) pack_crcs: Vec<u64>,
     pub(crate) sub_streams_info: Option<SubStreamsInfo>,
+    /// Compression blocks in the archive.
     pub blocks: Vec<Block>,
+    /// File and directory entries in the archive.
     pub files: Vec<ArchiveEntry>,
+    /// Mapping between files, blocks, and pack streams.
     pub stream_map: StreamMap,
+    /// Whether this is a solid archive (better compression, slower random access).
     pub is_solid: bool,
 }
 
@@ -56,32 +64,58 @@ pub(crate) struct SubStreamsInfo {
     pub(crate) crcs: Vec<u64>,
 }
 
+/// Represents a single file or directory entry within a 7z archive.
+///
+/// Contains metadata about the entry including name, timestamps, attributes,
+/// and size information.
 #[derive(Debug, Default, Clone)]
 pub struct ArchiveEntry {
+    /// Name/path of the entry within the archive.
     pub name: String,
+    /// Whether this entry has associated data stream.
     pub has_stream: bool,
+    /// Whether this entry is a directory.
     pub is_directory: bool,
+    /// Whether this is an anti-item (used for deletion in updates).
     pub is_anti_item: bool,
+    /// Whether creation date is present.
     pub has_creation_date: bool,
+    /// Whether last modified date is present.
     pub has_last_modified_date: bool,
+    /// Whether access date is present.
     pub has_access_date: bool,
+    /// Creation date and time.
     pub creation_date: NtTime,
+    /// Last modified date and time.
     pub last_modified_date: NtTime,
+    /// Last access date and time.
     pub access_date: NtTime,
+    /// Whether Windows file attributes are present.
     pub has_windows_attributes: bool,
+    /// Windows file attributes.
     pub windows_attributes: u32,
+    /// Whether CRC is present.
     pub has_crc: bool,
+    /// CRC32 checksum of uncompressed data.
     pub crc: u64,
+    /// CRC32 checksum of compressed data.
     pub compressed_crc: u64,
+    /// Uncompressed size in bytes.
     pub size: u64,
+    /// Compressed size in bytes.
     pub compressed_size: u64,
 }
 
 impl ArchiveEntry {
+    /// Creates a new default archive entry.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Creates a new archive entry representing a file.
+    ///
+    /// # Arguments
+    /// * `entry_name` - The name/path of the file within the archive
     pub fn new_file(entry_name: &str) -> Self {
         Self {
             name: entry_name.to_string(),
@@ -91,6 +125,10 @@ impl ArchiveEntry {
         }
     }
 
+    /// Creates a new archive entry representing a directory.
+    ///
+    /// # Arguments
+    /// * `entry_name` - The name/path of the directory within the archive
     pub fn new_directory(entry_name: &str) -> Self {
         Self {
             name: entry_name.to_string(),
@@ -100,6 +138,14 @@ impl ArchiveEntry {
         }
     }
 
+    /// Creates a new archive entry from a filesystem path.
+    ///
+    /// Automatically extracts metadata like timestamps and attributes from the filesystem.
+    /// On Windows, backslashes in the entry name are converted to forward slashes.
+    ///
+    /// # Arguments
+    /// * `path` - The filesystem path to extract metadata from
+    /// * `entry_name` - The name/path to use for this entry within the archive
     pub fn from_path(path: impl AsRef<std::path::Path>, entry_name: String) -> Self {
         let path = path.as_ref();
         #[cfg(target_os = "windows")]
@@ -142,48 +188,62 @@ impl ArchiveEntry {
         entry
     }
 
+    /// Returns the name/path of this entry within the archive.
     pub fn name(&self) -> &str {
         self.name.as_ref()
     }
 
+    /// Returns whether this entry is a directory.
     pub fn is_directory(&self) -> bool {
         self.is_directory
     }
 
+    /// Returns whether this entry has an associated data stream.
     pub fn has_stream(&self) -> bool {
         self.has_stream
     }
 
+    /// Returns the creation date of this entry.
     pub fn creation_date(&self) -> NtTime {
         self.creation_date
     }
 
+    /// Returns the last modified date of this entry.
     pub fn last_modified_date(&self) -> NtTime {
         self.last_modified_date
     }
 
-    pub fn size(&self) -> u64 {
+    /// Returns the uncompressed size of this entry in bytes.
+    pub fn size(&self) -> u64{
         self.size
     }
 
+    /// Returns the Windows file attributes of this entry.
     pub fn windows_attributes(&self) -> u32 {
         self.windows_attributes
     }
 
+    /// Returns the last access date of this entry.
     pub fn access_date(&self) -> NtTime {
         self.access_date
     }
 
+    /// Returns whether this entry is an anti-item (used for deletion in updates).
     pub fn is_anti_item(&self) -> bool {
         self.is_anti_item
     }
 }
 
+/// Configuration for encoding methods when compressing data.
+///
+/// Combines an encoder method with optional encoder-specific options.
 #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[cfg(feature = "compress")]
 #[derive(Debug, Default)]
 pub struct EncoderConfiguration {
+    /// The encoder method to use.
     pub method: EncoderMethod,
+    /// Optional encoder-specific options.
     pub options: Option<EncoderOptions>,
 }
 
@@ -206,6 +266,10 @@ impl Clone for EncoderConfiguration {
 
 #[cfg(feature = "compress")]
 impl EncoderConfiguration {
+    /// Creates a new encoder configuration with the specified method.
+    ///
+    /// # Arguments
+    /// * `method` - The encoder method to use
     pub fn new(method: EncoderMethod) -> Self {
         Self {
             method,
@@ -213,6 +277,10 @@ impl EncoderConfiguration {
         }
     }
 
+    /// Adds encoder-specific options to this configuration.
+    ///
+    /// # Arguments
+    /// * `options` - The encoder options to apply
     pub fn with_options(mut self, options: EncoderOptions) -> Self {
         self.options = Some(options);
         self
@@ -224,53 +292,97 @@ impl EncoderConfiguration {
 pub struct EncoderMethod(&'static str, &'static [u8]);
 
 impl EncoderMethod {
+    /// Method ID for COPY (no compression).
     pub const ID_COPY: &'static [u8] = &[0x00];
+    /// Method ID for Delta filter.
     pub const ID_DELTA: &'static [u8] = &[0x03];
 
+    /// Method ID for LZMA compression.
     pub const ID_LZMA: &'static [u8] = &[0x03, 0x01, 0x01];
+    /// Method ID for BCJ x86 filter.
     pub const ID_BCJ_X86: &'static [u8] = &[0x03, 0x03, 0x01, 0x03];
+    /// Method ID for BCJ2 filter.
     pub const ID_BCJ2: &'static [u8] = &[0x03, 0x03, 0x01, 0x1B];
+    /// Method ID for BCJ PowerPC filter.
     pub const ID_BCJ_PPC: &'static [u8] = &[0x03, 0x03, 0x02, 0x05];
+    /// Method ID for BCJ IA64 filter.
     pub const ID_BCJ_IA64: &'static [u8] = &[0x03, 0x03, 0x04, 0x01];
+    /// Method ID for BCJ ARM filter.
     pub const ID_BCJ_ARM: &'static [u8] = &[0x03, 0x03, 0x05, 0x01];
+    /// Method ID for BCJ ARM64 filter.
     pub const ID_BCJ_ARM64: &'static [u8] = &[0xA];
+    /// Method ID for BCJ ARM Thumb filter.
     pub const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
+    /// Method ID for BCJ SPARC filter.
     pub const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
+    /// Method ID for PPMD compression.
     pub const ID_PPMD: &'static [u8] = &[0x03, 0x04, 0x01];
 
+    /// Method ID for LZMA2 compression.
     pub const ID_LZMA2: &'static [u8] = &[0x21];
+    /// Method ID for BZIP2 compression.
     pub const ID_BZIP2: &'static [u8] = &[0x04, 0x02, 0x02];
+    /// Method ID for Zstandard compression.
     pub const ID_ZSTD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x01];
+    /// Method ID for Brotli compression.
     pub const ID_BROTLI: &'static [u8] = &[0x04, 0xF7, 0x11, 0x02];
+    /// Method ID for LZ4 compression.
     pub const ID_LZ4: &'static [u8] = &[0x04, 0xF7, 0x11, 0x04];
+    /// Method ID for LZS compression.
     pub const ID_LZS: &'static [u8] = &[0x04, 0xF7, 0x11, 0x05];
+    /// Method ID for Lizard compression.
     pub const ID_LIZARD: &'static [u8] = &[0x04, 0xF7, 0x11, 0x06];
+    /// Method ID for Deflate compression.
     pub const ID_DEFLATE: &'static [u8] = &[0x04, 0x01, 0x08];
+    /// Method ID for Deflate64 compression.
     pub const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
+    /// Method ID for AES256-SHA256 encryption.
     pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xF1, 0x07, 0x01];
 
+    /// COPY method (no compression).
     pub const COPY: Self = Self("COPY", Self::ID_COPY);
+    /// LZMA compression method.
     pub const LZMA: Self = Self("LZMA", Self::ID_LZMA);
+    /// LZMA2 compression method.
     pub const LZMA2: Self = Self("LZMA2", Self::ID_LZMA2);
+    /// PPMD compression method.
     pub const PPMD: Self = Self("PPMD", Self::ID_PPMD);
+    /// BZIP2 compression method.
     pub const BZIP2: Self = Self("BZIP2", Self::ID_BZIP2);
+    /// Zstandard compression method.
     pub const ZSTD: Self = Self("ZSTD", Self::ID_ZSTD);
+    /// Brotli compression method.
     pub const BROTLI: Self = Self("BROTLI", Self::ID_BROTLI);
+    /// LZ4 compression method.
     pub const LZ4: Self = Self("LZ4", Self::ID_LZ4);
+    /// LZS compression method.
     pub const LZS: Self = Self("LZS", Self::ID_LZS);
+    /// Lizard compression method.
     pub const LIZARD: Self = Self("LIZARD", Self::ID_LIZARD);
+    /// Deflate compression method.
     pub const DEFLATE: Self = Self("DEFLATE", Self::ID_DEFLATE);
+    /// Deflate64 compression method.
     pub const DEFLATE64: Self = Self("DEFLATE64", Self::ID_DEFLATE64);
+    /// AES256-SHA256 encryption method.
     pub const AES256SHA256: Self = Self("AES256SHA256", Self::ID_AES256SHA256);
 
+    /// BCJ x86 filter method.
     pub const BCJ_X86_FILTER: Self = Self("BCJ_X86", Self::ID_BCJ_X86);
+    /// BCJ PowerPC filter method.
     pub const BCJ_PPC_FILTER: Self = Self("BCJ_PPC", Self::ID_BCJ_PPC);
+    /// BCJ IA64 filter method.
     pub const BCJ_IA64_FILTER: Self = Self("BCJ_IA64", Self::ID_BCJ_IA64);
+    /// BCJ ARM filter method.
     pub const BCJ_ARM_FILTER: Self = Self("BCJ_ARM", Self::ID_BCJ_ARM);
+    /// BCJ ARM64 filter method.
     pub const BCJ_ARM64_FILTER: Self = Self("BCJ_ARM64", Self::ID_BCJ_ARM64);
+    /// BCJ ARM Thumb filter method.
     pub const BCJ_ARM_THUMB_FILTER: Self = Self("BCJ_ARM_THUMB", Self::ID_BCJ_ARM_THUMB);
+    /// BCJ SPARC filter method.
     pub const BCJ_SPARC_FILTER: Self = Self("BCJ_SPARC", Self::ID_BCJ_SPARC);
+    /// Delta filter method.
     pub const DELTA_FILTER: Self = Self("DELTA", Self::ID_DELTA);
+    /// BCJ2 filter method.
     pub const BCJ2_FILTER: Self = Self("BCJ2", Self::ID_BCJ2);
 
     const ENCODING_METHODS: &'static [&'static EncoderMethod] = &[
@@ -299,16 +411,22 @@ impl EncoderMethod {
     ];
 
     #[inline]
+    /// Returns the human-readable name of this encoder method.
     pub const fn name(&self) -> &'static str {
         self.0
     }
 
     #[inline]
+    /// Returns the binary ID of this encoder method.
     pub const fn id(&self) -> &'static [u8] {
         self.1
     }
 
     #[inline]
+    /// Finds an encoder method by its binary ID.
+    ///
+    /// # Arguments
+    /// * `id` - The binary method ID to search for
     pub fn by_id(id: &[u8]) -> Option<Self> {
         Self::ENCODING_METHODS
             .iter()
@@ -318,11 +436,17 @@ impl EncoderMethod {
     }
 }
 
+/// Mapping structure that correlates files, blocks, and pack streams within an archive.
+///
+/// This structure maintains the relationships between archive entries and their
+/// corresponding compression blocks and packed data streams.
 #[derive(Debug, Default, Clone)]
 pub struct StreamMap {
     pub(crate) block_first_pack_stream_index: Vec<usize>,
     pub(crate) pack_stream_offsets: Vec<u64>,
+    /// Index of first file for each block.
     pub block_first_file_index: Vec<usize>,
+    /// Block index for each file (None if file has no data).
     pub file_block_index: Vec<Option<usize>>,
 }
 

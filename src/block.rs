@@ -1,9 +1,14 @@
-// In the 7zip specification this is called "folder". But since in the UI of 7zip they are called
-// "block" we chose to also call them under that name.
+/// Represents a compression block.
+///
+/// A block contains one or more coders (compression/filter methods) that are chained
+/// together to process data.
 #[derive(Debug, Default, Clone)]
 pub struct Block {
+    /// Coders (compression/filter methods) in this block.
     pub coders: Vec<Coder>,
+    /// Whether this block has a CRC checksum.
     pub has_crc: bool,
+    /// CRC32 checksum of the block data.
     pub crc: u64,
     pub(crate) total_input_streams: usize,
     pub(crate) total_output_streams: usize,
@@ -24,6 +29,7 @@ impl Block {
         (0..self.bind_pairs.len()).find(|&i| self.bind_pairs[i].out_index == index)
     }
 
+    /// Returns the total uncompressed size of data in this block.
     pub fn get_unpack_size(&self) -> u64 {
         if self.total_output_streams == 0 {
             return 0;
@@ -36,6 +42,10 @@ impl Block {
         0
     }
 
+    /// Returns the uncompressed size for a specific coder within this block.
+    ///
+    /// # Arguments
+    /// * `coder` - The coder to get the unpack size for
     pub fn get_unpack_size_for_coder(&self, coder: &Coder) -> u64 {
         for i in 0..self.coders.len() {
             if std::ptr::eq(&self.coders[i], coder) {
@@ -45,15 +55,27 @@ impl Block {
         0
     }
 
+    /// Returns the uncompressed size for the coder at the specified index.
+    ///
+    /// # Arguments
+    /// * `index` - The index of the coder to get the unpack size for
     pub fn get_unpack_size_at_index(&self, index: usize) -> u64 {
         self.unpack_sizes.get(index).cloned().unwrap_or_default()
     }
 
+    /// Returns an iterator over the coders in their processing order.
+    ///
+    /// Coders are chained together in blocks, and this iterator follows the chain
+    /// from the first coder to the last in their proper execution order.
     pub fn ordered_coder_iter(&self) -> OrderedCoderIter {
         OrderedCoderIter::new(self)
     }
 }
 
+/// Represents a single coder within a compression block.
+///
+/// A coder defines a specific compression method, filter, or encryption method
+/// used to process data within a block.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Coder {
     encoder_method_id: [u8; 0xF],
@@ -64,6 +86,10 @@ pub struct Coder {
 }
 
 impl Coder {
+    /// Returns the encoder method ID for this coder.
+    ///
+    /// This ID identifies the specific compression method, filter, or encryption
+    /// method used by this coder.
     pub fn encoder_method_id(&self) -> &[u8] {
         &self.encoder_method_id[0..self.id_size]
     }
@@ -79,6 +105,10 @@ pub(crate) struct BindPair {
     pub(crate) out_index: u64,
 }
 
+/// Iterator that yields coders in their processing order within a block.
+///
+/// Coders are chained together in blocks, and this iterator follows the chain
+/// from the first coder to the last in their proper execution order.
 pub struct OrderedCoderIter<'a> {
     block: &'a Block,
     current: Option<u64>,

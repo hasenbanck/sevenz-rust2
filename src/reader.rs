@@ -268,7 +268,7 @@ impl Archive {
             nid = read_u8(header)?;
         }
         if nid != K_END {
-            return Err(Error::BadTerminatedheader(nid));
+            return Err(Error::BadTerminatedHeader(nid));
         }
 
         Ok(())
@@ -1156,6 +1156,15 @@ impl<R: Read + Seek> ArchiveReader<R> {
         Ok(reader)
     }
 
+    /// Creates an [`ArchiveReader`] from an existing [`Archive`] instance.
+    ///
+    /// This is useful when you already have a parsed archive and want to create a reader
+    /// without re-parsing the archive structure.
+    ///
+    /// # Arguments
+    /// * `archive` - An existing parsed archive instance
+    /// * `source` - The reader providing access to the archive data
+    /// * `password` - Password for encrypted archives
     #[inline]
     pub fn from_archive(archive: Archive, source: R, password: Password) -> Self {
         let mut reader = Self {
@@ -1191,6 +1200,10 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
     }
 
+    /// Returns a reference to the underlying [`Archive`] structure.
+    ///
+    /// This provides access to the archive metadata including files, blocks,
+    /// and compression information.
     #[inline]
     pub fn archive(&self) -> &Archive {
         &self.archive
@@ -1562,6 +1575,10 @@ impl<R: Read + Seek> ArchiveReader<R> {
     }
 }
 
+/// Decoder for a specific block within a 7z archive.
+///
+/// Provides access to entries within a single compression block and allows
+/// decoding files from that block.
 pub struct BlockDecoder<'a, R: Read + Seek> {
     thread_count: u32,
     block_index: usize,
@@ -1571,6 +1588,14 @@ pub struct BlockDecoder<'a, R: Read + Seek> {
 }
 
 impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
+    /// Creates a new [`BlockDecoder`] for decoding a specific block in the archive.
+    ///
+    /// # Arguments
+    /// * `thread_count` - Number of threads to use for multi-threaded decompression
+    /// * `block_index` - Index of the block to decode within the archive
+    /// * `archive` - Reference to the archive containing the block
+    /// * `password` - Password for encrypted blocks
+    /// * `source` - Mutable reference to the reader providing archive data
     pub fn new(
         thread_count: u32,
         block_index: usize,
@@ -1593,12 +1618,16 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         self.thread_count = thread_count.clamp(1, 256);
     }
 
+    /// Returns a slice of archive entries contained in this block.
+    ///
+    /// The entries are returned in the order they appear in the block.
     pub fn entries(&self) -> &[ArchiveEntry] {
         let start = self.archive.stream_map.block_first_file_index[self.block_index];
         let file_count = self.archive.blocks[self.block_index].num_unpack_sub_streams;
         &self.archive.files[start..(file_count + start)]
     }
 
+    /// Returns the number of entries contained in this block.
     pub fn entry_count(&self) -> usize {
         self.archive.blocks[self.block_index].num_unpack_sub_streams
     }

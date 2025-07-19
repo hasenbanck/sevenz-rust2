@@ -2,6 +2,10 @@ use std::io::Read;
 
 use crc32fast::Hasher;
 
+/// A wrapper around a reader that tracks read count and CRC32.
+///
+/// Used during compression to track how much data has been read and compute
+/// the CRC32 checksum of the data.
 pub struct SourceReader<R> {
     reader: R,
     size: usize,
@@ -32,6 +36,10 @@ impl<R: Read> Read for SourceReader<R> {
 }
 
 impl<R> SourceReader<R> {
+    /// Creates a new source reader wrapper.
+    ///
+    /// # Arguments
+    /// * `reader` - The underlying reader to wrap
     pub fn new(reader: R) -> Self {
         Self {
             reader,
@@ -41,10 +49,14 @@ impl<R> SourceReader<R> {
         }
     }
 
+    /// Returns the total number of bytes read so far.
     pub fn read_count(&self) -> usize {
         self.size
     }
 
+    /// Returns the CRC32 value of all data read.
+    ///
+    /// The CRC is only computed once all data has been read (when read returns 0).
     pub fn crc_value(&self) -> u32 {
         self.crc_value
     }

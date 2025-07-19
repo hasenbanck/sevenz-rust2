@@ -13,10 +13,15 @@ use crate::Password;
 #[cfg(feature = "bzip2")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]
 #[derive(Debug, Copy, Clone)]
+/// Options for BZIP2 compression.
 pub struct Bzip2Options(pub(crate) u32);
 
 #[cfg(feature = "bzip2")]
 impl Bzip2Options {
+    /// Creates BZIP2 options with the specified compression level.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (typically 1-9)
     pub const fn from_level(level: u32) -> Self {
         Self(level)
     }
@@ -37,6 +42,7 @@ const DEFAULT_SKIPPABLE_FRAME_SIZE: u32 = 128 * 1024;
 #[cfg(feature = "brotli")]
 #[cfg_attr(docsrs, doc(cfg(feature = "brotli")))]
 #[derive(Debug, Copy, Clone)]
+/// Options for Brotli compression.
 pub struct BrotliOptions {
     pub(crate) quality: u32,
     pub(crate) window: u32,
@@ -45,6 +51,11 @@ pub struct BrotliOptions {
 
 #[cfg(feature = "brotli")]
 impl BrotliOptions {
+    /// Creates Brotli options with the specified quality and window size.
+    ///
+    /// # Arguments
+    /// * `quality` - Compression quality (0-11, clamped to this range)
+    /// * `window` - Window size (10-24, clamped to this range)
     pub const fn from_quality_window(quality: u32, window: u32) -> Self {
         let quality = if quality > 11 { 11 } else { quality };
         let window = if window > 24 { 24 } else { window };
@@ -88,10 +99,15 @@ impl Default for BrotliOptions {
 #[cfg(feature = "compress")]
 #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[derive(Debug, Copy, Clone)]
+/// Options for Delta filter compression.
 pub struct DeltaOptions(pub(crate) u32);
 
 #[cfg(feature = "compress")]
 impl DeltaOptions {
+    /// Creates Delta options with the specified distance.
+    ///
+    /// # Arguments
+    /// * `distance` - Delta distance (1-256, clamped to this range, 0 becomes 1)
     pub const fn from_distance(distance: u32) -> Self {
         let distance = if distance == 0 {
             1
@@ -114,10 +130,15 @@ impl Default for DeltaOptions {
 #[cfg(feature = "deflate")]
 #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
 #[derive(Debug, Copy, Clone)]
+/// Options for Deflate compression.
 pub struct DeflateOptions(pub(crate) u32);
 
 #[cfg(feature = "deflate")]
 impl DeflateOptions {
+    /// Creates Deflate options with the specified compression level.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (0-9, clamped to this range)
     pub const fn from_level(level: u32) -> Self {
         let level = if level > 9 { 9 } else { level };
         Self(level)
@@ -134,6 +155,7 @@ impl Default for DeflateOptions {
 #[cfg(feature = "lz4")]
 #[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
 #[derive(Debug, Copy, Clone, Default)]
+/// Options for LZ4 compression.
 pub struct LZ4Options {
     pub(crate) skippable_frame_size: u32,
 }
@@ -165,6 +187,7 @@ impl LZ4Options {
 #[cfg(feature = "ppmd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
 #[derive(Debug, Copy, Clone)]
+/// Options for PPMD compression.
 pub struct PPMDOptions {
     pub(crate) order: u32,
     pub(crate) memory_size: u32,
@@ -172,6 +195,10 @@ pub struct PPMDOptions {
 
 #[cfg(feature = "ppmd")]
 impl PPMDOptions {
+    /// Creates PPMD options with the specified compression level.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (0-9, clamped to this range)
     pub const fn from_level(level: u32) -> Self {
         const ORDERS: [u32; 10] = [3, 4, 4, 5, 5, 6, 8, 16, 24, 32];
 
@@ -182,6 +209,11 @@ impl PPMDOptions {
         Self { order, memory_size }
     }
 
+    /// Creates PPMD options with specific order and memory size parameters.
+    ///
+    /// # Arguments
+    /// * `order` - Model order (clamped to valid PPMD range)
+    /// * `memory_size` - Memory size in bytes (clamped to valid PPMD range)
     pub const fn from_order_memory_size(order: u32, memory_size: u32) -> Self {
         let order = if order > PPMD7_MAX_ORDER {
             PPMD7_MAX_ORDER
@@ -211,10 +243,15 @@ impl Default for PPMDOptions {
 #[cfg(feature = "zstd")]
 #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
 #[derive(Debug, Copy, Clone)]
+/// Options for Zstandard compression.
 pub struct ZStandardOptions(pub(crate) u32);
 
 #[cfg(feature = "zstd")]
 impl ZStandardOptions {
+    /// Creates Zstandard options with the specified compression level.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (typically 1-22)
     pub const fn from_level(level: u32) -> Self {
         let level = if level > 22 { 22 } else { level };
         Self(level)
@@ -231,15 +268,26 @@ impl Default for ZStandardOptions {
 #[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
 #[cfg(feature = "aes256")]
 #[derive(Debug, Clone)]
+/// Options for AES256 encryption.
 pub struct AesEncoderOptions {
+    /// Password for encryption.
     pub password: Password,
+    /// Initialization vector for encryption.
     pub iv: [u8; 16],
+    /// Salt for key derivation.
     pub salt: [u8; 16],
+    /// Number of cycles power for key derivation.
     pub num_cycles_power: u8,
 }
 
 #[cfg(feature = "aes256")]
 impl AesEncoderOptions {
+    /// Creates new AES encoder options with the specified password.
+    ///
+    /// Generates random IV and salt values automatically.
+    ///
+    /// # Arguments
+    /// * `password` - Password for encryption
     pub fn new(password: Password) -> Self {
         let mut iv = [0; 16];
         getrandom::fill(&mut iv).expect("Can't generate IV");
@@ -271,35 +319,46 @@ impl AesEncoderOptions {
     }
 }
 
+/// Encoder-specific options for various compression and encryption methods.
 #[derive(Debug, Clone)]
 pub enum EncoderOptions {
+    /// Generic numeric option.
     Num(u32),
     #[cfg(feature = "compress")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+    /// Delta filter options.
     Delta(DeltaOptions),
     #[cfg(feature = "compress")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+    /// LZMA2 compression options.
     LZMA2(LZMA2Options),
     #[cfg(feature = "brotli")]
     #[cfg_attr(docsrs, doc(cfg(feature = "brotli")))]
+    /// Brotli compression options.
     BROTLI(BrotliOptions),
     #[cfg(feature = "bzip2")]
     #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]
+    /// BZIP2 compression options.
     BZIP2(Bzip2Options),
     #[cfg(feature = "deflate")]
     #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
+    /// Deflate compression options.
     DEFLATE(DeflateOptions),
     #[cfg(feature = "lz4")]
     #[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
+    /// LZ4 compression options.
     LZ4(LZ4Options),
     #[cfg(feature = "ppmd")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
+    /// PPMD compression options.
     PPMD(PPMDOptions),
     #[cfg(feature = "zstd")]
     #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
+    /// Zstandard compression options.
     ZSTD(ZStandardOptions),
     #[cfg(feature = "aes256")]
     #[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
+    /// AES256 encryption options.
     Aes(AesEncoderOptions),
 }
 
@@ -436,6 +495,9 @@ impl From<ZStandardOptions> for EncoderOptions {
 }
 
 impl EncoderOptions {
+    /// Gets the LZMA2 dictionary size for this encoder option.
+    ///
+    /// Returns the dictionary size if this is an LZMA2 option, or a default value otherwise.
     pub fn get_lzma2_dict_size(&self) -> u32 {
         match self {
             EncoderOptions::Num(n) => *n,

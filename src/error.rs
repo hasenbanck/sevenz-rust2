@@ -3,24 +3,53 @@ use std::{borrow::Cow, fmt::Display};
 /// The error type of the crate.
 #[derive(Debug)]
 pub enum Error {
+    /// Invalid 7z signature found in file header.
     BadSignature([u8; 6]),
-    UnsupportedVersion { major: u8, minor: u8 },
+    /// Unsupported 7z format version.
+    UnsupportedVersion {
+        /// Major version number.
+        major: u8,
+        /// Minor version number.
+        minor: u8,
+    },
+    /// Checksum verification failed during decompression.
     ChecksumVerificationFailed,
+    /// Next header CRC mismatch.
     NextHeaderCrcMismatch,
+    /// IO error with optional context message.
     Io(std::io::Error, Cow<'static, str>),
+    /// Error opening file.
     FileOpen(std::io::Error, String),
+    /// Other error with description.
     Other(Cow<'static, str>),
+    /// Bad terminated streams info.
     BadTerminatedStreamsInfo(u8),
+    /// Bad terminated unpack info.
     BadTerminatedUnpackInfo,
+    /// Bad terminated pack info.
     BadTerminatedPackInfo(u8),
+    /// Bad terminated sub streams info.
     BadTerminatedSubStreamsInfo,
-    BadTerminatedheader(u8),
+    /// Bad terminated header.
+    BadTerminatedHeader(u8),
+    /// External compression method not supported.
     ExternalUnsupported,
+    /// Unsupported compression method.
     UnsupportedCompressionMethod(String),
-    MaxMemLimited { max_kb: usize, actaul_kb: usize },
+    /// Memory limit exceeded.
+    MaxMemLimited {
+        /// Maximum allowed memory in KB.
+        max_kb: usize,
+        /// Actual required memory in KB.
+        actaul_kb: usize,
+    },
+    /// Password required for encrypted archive.
     PasswordRequired,
+    /// Feature or operation not supported.
     Unsupported(Cow<'static, str>),
+    /// Possibly bad password for encrypted content.
     MaybeBadPassword(std::io::Error),
+    /// File not found.
     FileNotFound,
 }
 
@@ -32,26 +61,26 @@ impl From<std::io::Error> for Error {
 
 impl Error {
     #[inline]
-    pub fn other<S: Into<Cow<'static, str>>>(s: S) -> Self {
+    pub(crate) fn other<S: Into<Cow<'static, str>>>(s: S) -> Self {
         Self::Other(s.into())
     }
 
     #[inline]
-    pub fn unsupported<S: Into<Cow<'static, str>>>(s: S) -> Self {
+    pub(crate) fn unsupported<S: Into<Cow<'static, str>>>(s: S) -> Self {
         Self::Unsupported(s.into())
     }
 
     #[inline]
-    pub fn io(e: std::io::Error) -> Self {
+    pub(crate) fn io(e: std::io::Error) -> Self {
         Self::io_msg(e, "")
     }
 
     #[inline]
-    pub fn io_msg(e: std::io::Error, msg: impl Into<Cow<'static, str>>) -> Self {
+    pub(crate) fn io_msg(e: std::io::Error, msg: impl Into<Cow<'static, str>>) -> Self {
         Self::Io(e, msg.into())
     }
 
-    pub fn bad_password(e: std::io::Error, encryped: bool) -> Self {
+    pub(crate) fn bad_password(e: std::io::Error, encryped: bool) -> Self {
         if encryped {
             Self::MaybeBadPassword(e)
         } else {
