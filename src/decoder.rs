@@ -1,4 +1,4 @@
-use std::{io::Read, num::NonZeroU32};
+use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 #[cfg(feature = "bzip2")]
@@ -119,12 +119,7 @@ pub fn add_decoder<I: Read>(
             let lz = if threads < 2 {
                 Decoder::LZMA2(Box::new(LZMA2Reader::new(input, dic_size, None)))
             } else {
-                Decoder::LZMA2MT(Box::new(LZMA2ReaderMT::new(
-                    input,
-                    dic_size,
-                    None,
-                    NonZeroU32::new(threads).unwrap(),
-                )))
+                Decoder::LZMA2MT(Box::new(LZMA2ReaderMT::new(input, dic_size, None, threads)))
             };
 
             Ok(lz)
