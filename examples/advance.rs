@@ -1,8 +1,10 @@
 use std::{collections::HashMap, env::temp_dir, time::Instant};
 
-use lzma_rust2::LZMA2Options;
 use rand::Rng;
-use sevenz_rust2::{encoder_options::AesEncoderOptions, *};
+use sevenz_rust2::{
+    encoder_options::{AesEncoderOptions, LZMA2Options},
+    *,
+};
 
 fn main() {
     let temp_dir = temp_dir();
@@ -28,17 +30,20 @@ fn main() {
     let dest = temp_dir.join("compress/compress.7z");
 
     let time = Instant::now();
-    // start compress
+
+    // start to compress
     let mut sz = ArchiveWriter::create(&dest).expect("create writer ok");
     sz.set_encrypt_header(true);
+
     #[cfg(feature = "aes256")]
     {
         sz.set_content_methods(vec![
             AesEncoderOptions::new(Password::new("sevenz-rust")).into(),
-            LZMA2Options::with_preset(9).into(),
+            // We configure LZMA2 to use multiple threads to encode the data.
+            LZMA2Options::from_level_mt(9, 4, 1 << 18).into(),
         ]);
-        // sz.set_encrypt_header(true);
     }
+
     sz.push_source_path(&src, |_| true).expect("pack ok");
     println!("finish");
     sz.finish().expect("compress ok");
@@ -53,9 +58,7 @@ fn main() {
     println!("dest file len:{:?}", m.len());
     println!("ratio:{:?}", m.len() as f64 / unpack_size as f64);
 
-    // decompress
-    // let archive = Archive::open_with_password(&dest, &"sevenz-rust-".into()).unwrap();
-    // println!("archive:{:?}", archive);
+    // start to decompress
     let mut sz = ArchiveReader::open(&dest, "sevenz-rust".into()).expect("create reader ok");
     assert_eq!(contents.len(), sz.archive().files.len());
     assert_eq!(1, sz.archive().blocks.len());

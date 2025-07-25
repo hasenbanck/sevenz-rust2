@@ -5,12 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.17.0 - 2025-07-**
+## 0.17.0 - 2025-07-25
 
 ### Added
 
-- Added muti threading support for LZMA2 file decompression.
+- Added muti-threading support for LZMA2 compression & decompression.
+- Added `ArchiveReader::set_thread_count()` to set the thread count when decoding with multiple threads.
+  Only LZMA2 is supported right now. `ArchiveReader` will set the thread_count with the help of
+  `std::thread::available_parallelism` as default.
 - Added missing documentation for the public API.
+
+### Changed
+
+- Split `LZMA2Option` into `LZMAOptions` and `LZMA2Options` to better support multi-threading encoding for LZMA2.
+- Removed `EncoderOptions::Num` enum, which means encoders needs to be configured with their respected option struct.
 
 ## 0.16.2 - 2025-07-16
 

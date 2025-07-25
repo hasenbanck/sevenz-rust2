@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use lzma_rust2::{LZMA2Options, LZMA2Writer, LZMAWriter};
+use lzma_rust2::{LZMA2Writer, LZMA2WriterMT, LZMAWriter};
 
 #[cfg(feature = "brotli")]
 use crate::codec::brotli::BrotliEncoder;
@@ -23,7 +23,7 @@ use crate::encryption::Aes256Sha256Encoder;
 use crate::{
     Error,
     archive::{EncoderConfiguration, EncoderMethod},
-    encoder_options::{DeltaOptions, EncoderOptions},
+    encoder_options::{DeltaOptions, EncoderOptions, LZMA2Options, LZMAOptions},
     filter::delta::DeltaWriter,
     writer::CountingWriter,
 };
@@ -34,6 +34,7 @@ pub(crate) enum Encoder<W: Write> {
     DELTA(DeltaWriter<CountingWriter<W>>),
     LZMA(Option<LZMAWriter<CountingWriter<W>>>),
     LZMA2(Option<LZMA2Writer<CountingWriter<W>>>),
+    LZMA2MT(Option<LZMA2WriterMT<CountingWriter<W>>>),
     #[cfg(feature = "ppmd")]
     PPMD(Option<Box<ppmd_rust::Ppmd7Encoder<CountingWriter<W>>>>),
     #[cfg(feature = "brotli")]
@@ -71,6 +72,15 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             Encoder::LZMA2(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    let _ = inner.write(buf);
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
+            Encoder::LZMA2MT(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -143,6 +153,7 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::DELTA(w) => w.flush(),
             Encoder::LZMA(w) => w.as_mut().unwrap().flush(),
             Encoder::LZMA2(w) => w.as_mut().unwrap().flush(),
+            Encoder::LZMA2MT(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "brotli")]
             Encoder::BROTLI(w) => w.flush(),
             #[cfg(feature = "ppmd")]
@@ -178,16 +189,30 @@ pub(crate) fn add_encoder<W: Write>(
             Ok(Encoder::DELTA(dw))
         }
         EncoderMethod::ID_LZMA => {
-            let mut def_opts = LZMA2Options::default();
-            let options = get_lzma2_options(method_config.options.as_ref(), &mut def_opts);
-            let lz = LZMAWriter::new_no_header(input, options, false).map_err(Error::io)?;
+            let options = match &method_config.options {
+                Some(EncoderOptions::LZMA(options)) => options.clone(),
+                _ => LZMAOptions::default(),
+            };
+            let lz = LZMAWriter::new_no_header(input, &options.0, false).map_err(Error::io)?;
             Ok(Encoder::LZMA(Some(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
-            let mut def_opts = LZMA2Options::default();
-            let options = get_lzma2_options(method_config.options.as_ref(), &mut def_opts);
-            let lz = LZMA2Writer::new(input, options);
-            Ok(Encoder::LZMA2(Some(lz)))
+            let options = match &method_config.options {
+                Some(EncoderOptions::LZMA2(options)) => options.clone(),
+                _ => LZMA2Options::default(),
+            };
+
+            let encoder = match options.stream_size {
+                Some(stream_size) => Encoder::LZMA2MT(Some(LZMA2WriterMT::new(
+                    input,
+                    &options.options,
+                    stream_size,
+                    options.threads,
+                ))),
+                None => Encoder::LZMA2(Some(LZMA2Writer::new(input, &options.options))),
+            };
+
+            Ok(encoder)
         }
         #[cfg(feature = "ppmd")]
         EncoderMethod::ID_PPMD => {
@@ -293,9 +318,11 @@ pub(crate) fn get_options_as_properties<'a>(
             &out[0..1]
         }
         EncoderMethod::ID_LZMA2 => {
-            let dict_size = options
-                .map(|o| o.get_lzma2_dict_size())
-                .unwrap_or(LZMA2Options::DICT_SIZE_DEFAULT);
+            let options = match options {
+                Some(EncoderOptions::LZMA2(options)) => options,
+                _ => &LZMA2Options::default(),
+            };
+            let dict_size = options.options.dict_size;
             let lead = dict_size.leading_zeros();
             let second_bit = (dict_size >> (30u32.wrapping_sub(lead))).wrapping_sub(2);
             let prop = (19u32.wrapping_sub(lead) * 2 + second_bit) as u8;
@@ -303,10 +330,12 @@ pub(crate) fn get_options_as_properties<'a>(
             &out[0..1]
         }
         EncoderMethod::ID_LZMA => {
-            let mut def_opts = LZMA2Options::default();
-            let options = get_lzma2_options(options, &mut def_opts);
-            let dict_size = options.dict_size;
-            out[0] = options.get_props();
+            let options = match options {
+                Some(EncoderOptions::LZMA(options)) => options,
+                _ => &LZMAOptions::default(),
+            };
+            let dict_size = options.0.dict_size;
+            out[0] = options.0.get_props();
             out[1..5].copy_from_slice(dict_size.to_le_bytes().as_ref());
             &out[0..5]
         }
@@ -368,23 +397,5 @@ pub(crate) fn get_options_as_properties<'a>(
             &out[..34]
         }
         _ => &[],
-    }
-}
-
-#[inline]
-pub(crate) fn get_lzma2_options<'a>(
-    options: Option<&'a EncoderOptions>,
-    def_opt: &'a mut LZMA2Options,
-) -> &'a LZMA2Options {
-    match options.as_ref() {
-        Some(EncoderOptions::LZMA2(opts)) => opts,
-        Some(EncoderOptions::Num(n)) => {
-            def_opt.dict_size = *n;
-            def_opt
-        }
-        _ => {
-            def_opt.dict_size = LZMA2Options::DICT_SIZE_DEFAULT;
-            def_opt
-        }
     }
 }

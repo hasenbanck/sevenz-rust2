@@ -214,7 +214,7 @@ impl ArchiveEntry {
     }
 
     /// Returns the uncompressed size of this entry in bytes.
-    pub fn size(&self) -> u64{
+    pub fn size(&self) -> u64 {
         self.size
     }
 

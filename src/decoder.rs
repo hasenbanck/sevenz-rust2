@@ -36,7 +36,7 @@ pub enum Decoder<R: Read> {
     BCJ(SimpleReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
-    Brotli(BrotliDecoder<R>),
+    Brotli(Box<BrotliDecoder<R>>),
     #[cfg(feature = "bzip2")]
     BZip2(BzDecoder<R>),
     #[cfg(feature = "deflate")]
@@ -134,7 +134,7 @@ pub fn add_decoder<I: Read>(
         #[cfg(feature = "brotli")]
         EncoderMethod::ID_BROTLI => {
             let de = BrotliDecoder::new(input, 4096)?;
-            Ok(Decoder::Brotli(de))
+            Ok(Decoder::Brotli(Box::new(de)))
         }
         #[cfg(feature = "bzip2")]
         EncoderMethod::ID_BZIP2 => {

@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-#[cfg(feature = "compress")]
-pub use lzma_rust2::LZMA2Options;
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
 
@@ -9,6 +7,91 @@ use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_M
 use crate::EncoderConfiguration;
 #[cfg(feature = "aes256")]
 use crate::Password;
+
+#[cfg(feature = "compress")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+#[derive(Debug, Clone)]
+/// Options for LZMA compression.
+pub struct LZMAOptions(pub(crate) lzma_rust2::LZMAOptions);
+
+impl Default for LZMAOptions {
+    fn default() -> Self {
+        Self(lzma_rust2::LZMAOptions::with_preset(6))
+    }
+}
+
+#[cfg(feature = "compress")]
+impl LZMAOptions {
+    /// Creates LZMA options with the specified compression level.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (0-9, clamped to this range)
+    pub fn from_level(level: u32) -> Self {
+        Self(lzma_rust2::LZMAOptions::with_preset(level))
+    }
+}
+
+#[cfg(feature = "compress")]
+#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+#[derive(Debug, Clone)]
+/// Options for LZMA2 compression.
+pub struct LZMA2Options {
+    pub(crate) options: lzma_rust2::LZMAOptions,
+    pub(crate) threads: u32,
+    pub(crate) stream_size: Option<u64>,
+}
+
+impl Default for LZMA2Options {
+    fn default() -> Self {
+        Self {
+            options: lzma_rust2::LZMAOptions::with_preset(6),
+            threads: 1,
+            stream_size: None,
+        }
+    }
+}
+
+#[cfg(feature = "compress")]
+impl LZMA2Options {
+    /// Creates LZMA2 options with the specified compression level.
+    /// Encoded using a single thread.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (0-9, clamped to this range)
+    pub fn from_level(level: u32) -> Self {
+        Self {
+            options: lzma_rust2::LZMAOptions::with_preset(level),
+            threads: 1,
+            stream_size: None,
+        }
+    }
+
+    /// Creates LZMA2 options with the specified compression level.
+    /// Encoded using a multi-threading.
+    ///
+    /// # Arguments
+    /// * `level` - Compression level (0-9, clamped to this range)
+    /// * `threads` - Count of threads used to compress the data
+    /// * `stream_size` - Size of each independent stream of uncompressed data.
+    ///   The more streams can be created, the more effective is
+    ///   the multi threading, but the worse the compression ratio
+    ///   will be (will be clamped to be at least 256 KiB).
+    pub fn from_level_mt(level: u32, threads: u32, stream_size: u64) -> Self {
+        Self {
+            options: lzma_rust2::LZMAOptions::with_preset(level),
+            threads,
+            stream_size: Some(stream_size.max(lzma_rust2::MIN_STREAM_SIZE)),
+        }
+    }
+
+    /// Sets the dictionary size used when encoding.
+    ///
+    /// Will be clamped between 4096..=4294967280.
+    pub fn set_dictionary_size(&mut self, dict_size: u32) {
+        self.options.dict_size =
+            dict_size.clamp(lzma_rust2::DICT_SIZE_MIN, lzma_rust2::DICT_SIZE_MAX);
+    }
+}
 
 #[cfg(feature = "bzip2")]
 #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]
@@ -322,12 +405,14 @@ impl AesEncoderOptions {
 /// Encoder-specific options for various compression and encryption methods.
 #[derive(Debug, Clone)]
 pub enum EncoderOptions {
-    /// Generic numeric option.
-    Num(u32),
     #[cfg(feature = "compress")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
     /// Delta filter options.
     Delta(DeltaOptions),
+    #[cfg(feature = "compress")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
+    /// LZMA compression options.
+    LZMA(LZMAOptions),
     #[cfg(feature = "compress")]
     #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
     /// LZMA2 compression options.
@@ -432,12 +517,6 @@ impl From<ZStandardOptions> for EncoderConfiguration {
     }
 }
 
-impl From<u32> for EncoderOptions {
-    fn from(n: u32) -> Self {
-        Self::Num(n)
-    }
-}
-
 #[cfg(feature = "compress")]
 impl From<DeltaOptions> for EncoderOptions {
     fn from(o: DeltaOptions) -> Self {
@@ -495,14 +574,15 @@ impl From<ZStandardOptions> for EncoderOptions {
 }
 
 impl EncoderOptions {
-    /// Gets the LZMA2 dictionary size for this encoder option.
+    /// Gets the LZMA & LZMA2 dictionary size for this encoder option.
     ///
-    /// Returns the dictionary size if this is an LZMA2 option, or a default value otherwise.
-    pub fn get_lzma2_dict_size(&self) -> u32 {
+    /// Returns the dictionary size if this is an LZMA & LZMA2 option, or a default value otherwise.
+    pub fn get_lzma_dict_size(&self) -> u32 {
         match self {
-            EncoderOptions::Num(n) => *n,
             #[cfg(feature = "compress")]
-            EncoderOptions::LZMA2(o) => o.dict_size,
+            EncoderOptions::LZMA(o) => o.0.dict_size,
+            #[cfg(feature = "compress")]
+            EncoderOptions::LZMA2(o) => o.options.dict_size,
             #[allow(unused)]
             _ => 0,
         }

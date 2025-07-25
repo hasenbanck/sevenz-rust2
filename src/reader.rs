@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{Read, Seek, SeekFrom},
+    num::NonZeroUsize,
     rc::Rc,
 };
 
@@ -1153,6 +1154,10 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
         reader.fill_index();
 
+        let thread_count =
+            std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
+        reader.set_thread_count(thread_count.get() as u32);
+
         Ok(reader)
     }
 
@@ -1177,11 +1182,17 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
         reader.fill_index();
 
+        let thread_count =
+            std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
+        reader.set_thread_count(thread_count.get() as u32);
+
         reader
     }
 
     /// Sets the thread count to use when multi-threading is supported by the de-compression
     /// (currently only LZMA2 if encoded with MT support).
+    ///
+    /// Defaults to `std::thread::available_parallelism()` if not set manually.
     pub fn set_thread_count(&mut self, thread_count: u32) {
         self.thread_count = thread_count.clamp(1, 256);
     }
@@ -1591,7 +1602,8 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     /// Creates a new [`BlockDecoder`] for decoding a specific block in the archive.
     ///
     /// # Arguments
-    /// * `thread_count` - Number of threads to use for multi-threaded decompression
+    /// * `thread_count` - Number of threads to use for multi-threaded decompression (if supported
+    ///   by the codec)
     /// * `block_index` - Index of the block to decode within the archive
     /// * `archive` - Reference to the archive containing the block
     /// * `password` - Password for encrypted blocks
