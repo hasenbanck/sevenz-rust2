@@ -37,7 +37,7 @@ This is a fork of the original, unmaintained sevenz-rust crate to continue the d
 
 ```toml
 [dependencies]
-sevenz-rust2 = { version = "0.16" }
+sevenz-rust2 = { version = "0.17" }
 ```
 
 Decompress source file "data/sample.7z" to destination path "data/sample":
