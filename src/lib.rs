@@ -54,7 +54,6 @@ pub(crate) mod bitset;
 pub(crate) mod block;
 mod codec;
 pub(crate) mod decoder;
-mod filter;
 
 mod time;
 #[cfg(feature = "util")]

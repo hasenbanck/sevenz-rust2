@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.18.0 - 2025-08-XX
+
+### Added
+
+- Add support for BCJ IA64 filter.
+- Add support for BCJ RISC-V filter.
+- Added encoder support for all BCJ filter. (TODO!)
+
+### Updated
+
+- Target lzma-rust2 v0.8.
+
+### Changed
+
+- Changed one of LZMA2Options::from_level_mt's parameter name.
+
 ## 0.17.1 - 2025-07-26
 
 ### Updated

@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use lzma_rust2::{LZMA2Writer, LZMA2WriterMT, LZMAWriter};
+use lzma_rust2::{LZMA2Writer, LZMA2WriterMT, LZMAWriter, filter::delta::DeltaWriter};
 
 #[cfg(feature = "brotli")]
 use crate::codec::brotli::BrotliEncoder;
@@ -24,7 +24,6 @@ use crate::{
     Error,
     archive::{EncoderConfiguration, EncoderMethod},
     encoder_options::{DeltaOptions, EncoderOptions, LZMA2Options, LZMAOptions},
-    filter::delta::DeltaWriter,
     writer::CountingWriter,
 };
 
@@ -150,6 +149,7 @@ impl<W: Write> Write for Encoder<W> {
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
             Encoder::COPY(w) => w.flush(),
+            // TODO NHA: Add BCJ encoder once implemented
             Encoder::DELTA(w) => w.flush(),
             Encoder::LZMA(w) => w.as_mut().unwrap().flush(),
             Encoder::LZMA2(w) => w.as_mut().unwrap().flush(),
@@ -197,19 +197,20 @@ pub(crate) fn add_encoder<W: Write>(
             Ok(Encoder::LZMA(Some(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
-            let options = match &method_config.options {
+            let lzma2_options = match &method_config.options {
                 Some(EncoderOptions::LZMA2(options)) => options.clone(),
                 _ => LZMA2Options::default(),
             };
 
-            let encoder = match options.stream_size {
-                Some(stream_size) => Encoder::LZMA2MT(Some(LZMA2WriterMT::new(
-                    input,
-                    &options.options,
-                    stream_size,
-                    options.threads,
-                ))),
-                None => Encoder::LZMA2(Some(LZMA2Writer::new(input, &options.options))),
+            let encoder = match lzma2_options.threads {
+                0 | 1 => Encoder::LZMA2(Some(LZMA2Writer::new(input, lzma2_options.options))),
+                _ => {
+                    let threads = lzma2_options.threads;
+                    Encoder::LZMA2MT(Some(
+                        LZMA2WriterMT::new(input, lzma2_options.options, threads)
+                            .map_err(Error::io)?,
+                    ))
+                }
             };
 
             Ok(encoder)
@@ -322,7 +323,7 @@ pub(crate) fn get_options_as_properties<'a>(
                 Some(EncoderOptions::LZMA2(options)) => options,
                 _ => &LZMA2Options::default(),
             };
-            let dict_size = options.options.dict_size;
+            let dict_size = options.options.lzma_options.dict_size;
             let lead = dict_size.leading_zeros();
             let second_bit = (dict_size >> (30u32.wrapping_sub(lead))).wrapping_sub(2);
             let prop = (19u32.wrapping_sub(lead) * 2 + second_bit) as u8;

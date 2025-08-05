@@ -5,7 +5,11 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
-use lzma_rust2::{LZMA2Reader, LZMA2ReaderMT, LZMAReader, lzma2_get_memory_usage};
+use lzma_rust2::{
+    LZMA2Reader, LZMA2ReaderMT, LZMAReader,
+    filter::{bcj::BCJReader, delta::DeltaReader},
+    lzma2_get_memory_usage,
+};
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{
     PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,
@@ -17,13 +21,7 @@ use crate::codec::brotli::BrotliDecoder;
 use crate::codec::lz4::Lz4Decoder;
 #[cfg(feature = "aes256")]
 use crate::encryption::Aes256Sha256Decoder;
-use crate::{
-    Password,
-    archive::EncoderMethod,
-    block::Coder,
-    error::Error,
-    filter::{bcj::SimpleReader, delta::DeltaReader},
-};
+use crate::{Password, archive::EncoderMethod, block::Coder, error::Error};
 
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
@@ -33,7 +31,7 @@ pub enum Decoder<R: Read> {
     LZMA2MT(Box<LZMA2ReaderMT<R>>),
     #[cfg(feature = "ppmd")]
     PPMD(Box<Ppmd7Decoder<R>>),
-    BCJ(SimpleReader<R>),
+    BCJ(BCJReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
     Brotli(Box<BrotliDecoder<R>>),
@@ -158,27 +156,35 @@ pub fn add_decoder<I: Read>(
             Ok(Decoder::ZSTD(zs))
         }
         EncoderMethod::ID_BCJ_X86 => {
-            let de = SimpleReader::new_x86(input);
+            let de = BCJReader::new_x86(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_ARM => {
-            let de = SimpleReader::new_arm(input);
+            let de = BCJReader::new_arm(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_ARM64 => {
-            let de = SimpleReader::new_arm64(input);
+            let de = BCJReader::new_arm64(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_ARM_THUMB => {
-            let de = SimpleReader::new_arm_thumb(input);
+            let de = BCJReader::new_arm_thumb(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_PPC => {
-            let de = SimpleReader::new_ppc(input);
+            let de = BCJReader::new_ppc(input, 0);
+            Ok(Decoder::BCJ(de))
+        }
+        EncoderMethod::ID_BCJ_IA64 => {
+            let de = BCJReader::new_ia64(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_SPARC => {
-            let de = SimpleReader::new_sparc(input);
+            let de = BCJReader::new_sparc(input, 0);
+            Ok(Decoder::BCJ(de))
+        }
+        EncoderMethod::ID_BCJ_RISCV => {
+            let de = BCJReader::new_riscv(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_DELTA => {

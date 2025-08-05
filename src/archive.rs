@@ -315,6 +315,8 @@ impl EncoderMethod {
     pub const ID_BCJ_ARM_THUMB: &'static [u8] = &[0x03, 0x03, 0x07, 0x01];
     /// Method ID for BCJ SPARC filter.
     pub const ID_BCJ_SPARC: &'static [u8] = &[0x03, 0x03, 0x08, 0x05];
+    /// Method ID for BCJ RISCV filter.
+    pub const ID_BCJ_RISCV: &'static [u8] = &[0xB];
     /// Method ID for PPMD compression.
     pub const ID_PPMD: &'static [u8] = &[0x03, 0x04, 0x01];
 
