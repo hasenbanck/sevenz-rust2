@@ -37,7 +37,7 @@ cbc = { version = "0.1", optional = true }
 crc32fast = "1"
 flate2 = { version = "1", optional = true, features = ["zlib-rs"] }
 getrandom = { version = "0.3", optional = true }
-lzma-rust2 = { version = "0.8", default-features = false, features = ["std", "optimization"] }
+lzma-rust2 = { version = "0.10", default-features = false, features = ["std", "optimization"] }
 ppmd-rust = { version = "1.2", optional = true }
 lz4_flex = { version = "0.11", optional = true }
 nt-time = { version = "0.12", optional = true }

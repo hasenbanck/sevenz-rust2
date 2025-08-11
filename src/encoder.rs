@@ -1,6 +1,9 @@
 use std::io::Write;
 
-use lzma_rust2::{LZMA2Writer, LZMA2WriterMT, LZMAWriter, filter::delta::DeltaWriter};
+use lzma_rust2::{
+    LZMA2Writer, LZMA2WriterMT, LZMAWriter,
+    filter::{bcj::BCJWriter, delta::DeltaWriter},
+};
 
 #[cfg(feature = "brotli")]
 use crate::codec::brotli::BrotliEncoder;
@@ -30,6 +33,7 @@ use crate::{
 #[allow(clippy::upper_case_acronyms)]
 pub(crate) enum Encoder<W: Write> {
     COPY(CountingWriter<W>),
+    BCJ(Option<BCJWriter<CountingWriter<W>>>),
     DELTA(DeltaWriter<CountingWriter<W>>),
     LZMA(Option<LZMAWriter<CountingWriter<W>>>),
     LZMA2(Option<LZMA2Writer<CountingWriter<W>>>),
@@ -61,6 +65,15 @@ impl<W: Write> Write for Encoder<W> {
         match self {
             Encoder::COPY(w) => w.write(buf),
             Encoder::DELTA(w) => w.write(buf),
+            Encoder::BCJ(w) => match buf.is_empty() {
+                true => {
+                    let writer = w.take().unwrap();
+                    let mut inner = writer.finish()?;
+                    inner.write(buf)?;
+                    Ok(0)
+                }
+                false => w.as_mut().unwrap().write(buf),
+            },
             Encoder::LZMA(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
@@ -149,7 +162,7 @@ impl<W: Write> Write for Encoder<W> {
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
             Encoder::COPY(w) => w.flush(),
-            // TODO NHA: Add BCJ encoder once implemented
+            Encoder::BCJ(w) => w.as_mut().unwrap().flush(),
             Encoder::DELTA(w) => w.flush(),
             Encoder::LZMA(w) => w.as_mut().unwrap().flush(),
             Encoder::LZMA2(w) => w.as_mut().unwrap().flush(),
@@ -188,6 +201,16 @@ pub(crate) fn add_encoder<W: Write>(
             let dw = DeltaWriter::new(input, options.0 as usize);
             Ok(Encoder::DELTA(dw))
         }
+        EncoderMethod::ID_BCJ_X86 => Ok(Encoder::BCJ(Some(BCJWriter::new_x86(input, 0)))),
+        EncoderMethod::ID_BCJ_ARM => Ok(Encoder::BCJ(Some(BCJWriter::new_arm(input, 0)))),
+        EncoderMethod::ID_BCJ_ARM_THUMB => {
+            Ok(Encoder::BCJ(Some(BCJWriter::new_arm_thumb(input, 0))))
+        }
+        EncoderMethod::ID_BCJ_ARM64 => Ok(Encoder::BCJ(Some(BCJWriter::new_arm64(input, 0)))),
+        EncoderMethod::ID_BCJ_IA64 => Ok(Encoder::BCJ(Some(BCJWriter::new_ia64(input, 0)))),
+        EncoderMethod::ID_BCJ_SPARC => Ok(Encoder::BCJ(Some(BCJWriter::new_sparc(input, 0)))),
+        EncoderMethod::ID_BCJ_PPC => Ok(Encoder::BCJ(Some(BCJWriter::new_ppc(input, 0)))),
+        EncoderMethod::ID_BCJ_RISCV => Ok(Encoder::BCJ(Some(BCJWriter::new_riscv(input, 0)))),
         EncoderMethod::ID_LZMA => {
             let options = match &method_config.options {
                 Some(EncoderOptions::LZMA(options)) => options.clone(),

@@ -382,6 +382,8 @@ impl EncoderMethod {
     pub const BCJ_ARM_THUMB_FILTER: Self = Self("BCJ_ARM_THUMB", Self::ID_BCJ_ARM_THUMB);
     /// BCJ SPARC filter method.
     pub const BCJ_SPARC_FILTER: Self = Self("BCJ_SPARC", Self::ID_BCJ_SPARC);
+    /// BCJ RISC-V filter method.
+    pub const BCJ_RISCV_FILTER: Self = Self("BCJ_RISCV", Self::ID_BCJ_RISCV);
     /// Delta filter method.
     pub const DELTA_FILTER: Self = Self("DELTA", Self::ID_DELTA);
     /// BCJ2 filter method.
@@ -408,6 +410,7 @@ impl EncoderMethod {
         &Self::BCJ_ARM64_FILTER,
         &Self::BCJ_ARM_THUMB_FILTER,
         &Self::BCJ_SPARC_FILTER,
+        &Self::BCJ_RISCV_FILTER,
         &Self::DELTA_FILTER,
         &Self::BCJ2_FILTER,
     ];

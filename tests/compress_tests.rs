@@ -183,7 +183,6 @@ fn test_compression_method(methods: &[EncoderConfiguration]) {
 
     {
         let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
-
         let file = ArchiveEntry::new_file("data/decompress_x86.exe");
         let directory = ArchiveEntry::new_directory("data");
 
@@ -194,8 +193,6 @@ fn test_compression_method(methods: &[EncoderConfiguration]) {
         writer.push_archive_entry::<&[u8]>(directory, None).unwrap();
         writer.finish().unwrap();
     }
-
-    //std::fs::write("test.7z", bytes.as_slice()).unwrap();
 
     let mut reader = ArchiveReader::new(Cursor::new(bytes.as_slice()), Password::empty()).unwrap();
 
@@ -269,6 +266,78 @@ fn compress_with_delta_lzma2_algorithm() {
             DeltaOptions::from_distance(i).into(),
         ]);
     }
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_x86_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_X86_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_arm_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_ARM_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_arm64_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_ARM64_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_arm_thumb_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_ARM_THUMB_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_ia64_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_IA64_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_sparc_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_SPARC_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_ppc_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_PPC_FILTER.into(),
+    ]);
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_with_bcj_riscv_lzma2_algorithm() {
+    test_compression_method(&[
+        EncoderMethod::LZMA2.into(),
+        EncoderMethod::BCJ_RISCV_FILTER.into(),
+    ]);
 }
 
 #[cfg(all(feature = "compress", feature = "util"))]

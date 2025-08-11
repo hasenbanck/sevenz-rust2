@@ -187,6 +187,7 @@ pub fn add_decoder<I: Read>(
             let de = BCJReader::new_riscv(input, 0);
             Ok(Decoder::BCJ(de))
         }
+        // TODO NHA: Add BCJ2 decoder
         EncoderMethod::ID_DELTA => {
             let d = if coder.properties.is_empty() {
                 1

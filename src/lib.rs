@@ -21,15 +21,16 @@
 //!
 //! | Filter        | Decompression | Compression |
 //! |---------------|---------------|-------------|
-//! | BCJ X86       | ✓             |             |
-//! | BCJ PPC       | ✓             |             |
-//! | BCJ IA64      | ✓             |             |
-//! | BCJ ARM       | ✓             |             |
-//! | BCJ ARM64     | ✓             |             |
-//! | BCJ ARM_THUMB | ✓             |             |
-//! | BCJ SPARC     | ✓             |             |
+//! | BCJ X86       | ✓             | ✓           |
+//! | BCJ ARM       | ✓             | ✓           |
+//! | BCJ ARM64     | ✓             | ✓           |
+//! | BCJ ARM_THUMB | ✓             | ✓           |
+//! | BCJ RISC_V    | ✓             | ✓           |
+//! | BCJ PPC       | ✓             | ✓           |
+//! | BCJ SPARC     | ✓             | ✓           |
+//! | BCJ IA64      | ✓             | ✓           |
+//! | BCJ2          |               |             |
 //! | DELTA         | ✓             | ✓           |
-//! | BCJ2          | ✓             |             |
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 

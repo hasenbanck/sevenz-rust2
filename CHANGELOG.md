@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add support for BCJ IA64 filter.
 - Add support for BCJ RISC-V filter.
-- Added encoder support for all BCJ filter. (TODO!)
+- Added encoder support for all BCJ filter.
 
 ### Updated
 
-- Target lzma-rust2 v0.8.
+- Target lzma-rust2 v0.10.
 
 ### Changed
 
