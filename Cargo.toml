@@ -40,7 +40,7 @@ getrandom = { version = "0.3", optional = true }
 lzma-rust2 = { version = "0.6", default-features = false, features = ["std", "optimization"] }
 ppmd-rust = { version = "1.2", optional = true }
 lz4_flex = { version = "0.11", optional = true }
-nt-time = { version = "0.11", optional = true }
+nt-time = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 zstd = { version = "0.13", optional = true }
 
