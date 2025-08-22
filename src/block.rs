@@ -67,7 +67,7 @@ impl Block {
     ///
     /// Coders are chained together in blocks, and this iterator follows the chain
     /// from the first coder to the last in their proper execution order.
-    pub fn ordered_coder_iter(&self) -> OrderedCoderIter {
+    pub fn ordered_coder_iter(&self) -> OrderedCoderIter<'_> {
         OrderedCoderIter::new(self)
     }
 }
