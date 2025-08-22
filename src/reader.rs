@@ -1693,7 +1693,6 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
 }
 
 #[derive(Debug)]
-#[repr(transparent)]
 struct ReaderPointer<'a, R>(Rc<RefCell<&'a mut R>>);
 
 impl<R> Clone for ReaderPointer<'_, R> {
