@@ -42,11 +42,7 @@ impl<R: Read> Read for BoundedReader<R> {
             &mut buf[..self.remain]
         };
         let size = self.inner.read(buf2)?;
-        if self.remain < size {
-            self.remain = 0;
-        } else {
-            self.remain -= size;
-        }
+        self.remain -= size;
         Ok(size)
     }
 }
