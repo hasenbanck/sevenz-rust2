@@ -32,23 +32,18 @@ impl<R: Read> Read for BoundedReader<R> {
         if self.remain == 0 {
             return Ok(0);
         }
-        let remain = self.remain;
-        let buf2 = if buf.len() < remain {
+        let buf2 = if buf.len() < self.remain {
             buf
         } else {
-            &mut buf[..remain]
+            &mut buf[..self.remain]
         };
-        match self.inner.read(buf2) {
-            Ok(size) => {
-                if self.remain < size {
-                    self.remain = 0;
-                } else {
-                    self.remain -= size;
-                }
-                Ok(size)
-            }
-            Err(e) => Err(e),
+        let size = self.inner.read(buf2)?;
+        if self.remain < size {
+            self.remain = 0;
+        } else {
+            self.remain -= size;
         }
+        Ok(size)
     }
 }
 

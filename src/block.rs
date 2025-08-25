@@ -125,19 +125,16 @@ impl<'a> Iterator for OrderedCoderIter<'a> {
     type Item = (usize, &'a Coder);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(i) = self.current {
-            self.current = if let Some(pair) = self.block.find_bind_pair_for_out_stream(i as usize)
-            {
-                Some(self.block.bind_pairs[pair].in_index)
-            } else {
-                None
-            };
-            self.block
-                .coders
-                .get(i as usize)
-                .map(|item| (i as usize, item))
+        let i = self.current?;
+        self.current = if let Some(pair) = self.block.find_bind_pair_for_out_stream(i as usize)
+        {
+            Some(self.block.bind_pairs[pair].in_index)
         } else {
             None
-        }
+        };
+        self.block
+            .coders
+            .get(i as usize)
+            .map(|item| (i as usize, item))
     }
 }
