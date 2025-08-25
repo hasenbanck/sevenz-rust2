@@ -56,14 +56,15 @@ impl<R: Read> Read for BoundedReader<R> {
 pub struct SeekableBoundedReader<R> {
     inner: R,
     cur: u64,
-    bounds: (u64, u64),
+    start: u64,
+    end: u64,
 }
 
 impl<R: Seek> Seek for SeekableBoundedReader<R> {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         let new_pos = match pos {
-            SeekFrom::Start(pos) => self.bounds.0 as i64 + pos as i64,
-            SeekFrom::End(pos) => self.bounds.1 as i64 + pos,
+            SeekFrom::Start(pos) => self.start as i64 + pos as i64,
+            SeekFrom::End(pos) => self.end as i64 + pos,
             SeekFrom::Current(pos) => self.cur as i64 + pos,
         };
         if new_pos < 0 {
@@ -76,16 +77,16 @@ impl<R: Seek> Seek for SeekableBoundedReader<R> {
 
 impl<R: Read + Seek> Read for SeekableBoundedReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if self.cur >= self.bounds.1 {
+        if self.cur >= self.end {
             return Ok(0);
         }
         if self.stream_position()? != self.cur {
             self.inner.seek(SeekFrom::Start(self.cur))?;
         }
-        let buf2 = if buf.len() < (self.bounds.1 - self.cur) as usize {
+        let buf2 = if buf.len() < (self.end - self.cur) as usize {
             buf
         } else {
-            &mut buf[..(self.bounds.1 - self.cur) as usize]
+            &mut buf[..(self.end - self.cur) as usize]
         };
         let size = self.inner.read(buf2)?;
         self.cur += size as u64;
@@ -94,11 +95,12 @@ impl<R: Read + Seek> Read for SeekableBoundedReader<R> {
 }
 
 impl<R> SeekableBoundedReader<R> {
-    pub fn new(inner: R, bounds: (u64, u64)) -> Self {
+    pub fn new(inner: R, (start, end): (u64, u64)) -> Self {
         Self {
             inner,
-            cur: bounds.0,
-            bounds,
+            cur: start,
+            start,
+            end,
         }
     }
 }
