@@ -80,9 +80,7 @@ impl<R: Read + Seek> Read for SeekableBoundedReader<R> {
         if self.cur >= self.end {
             return Ok(0);
         }
-        if self.stream_position()? != self.cur {
-            self.inner.seek(SeekFrom::Start(self.cur))?;
-        }
+        self.inner.seek(SeekFrom::Start(self.cur))?;
         let buf2 = if buf.len() < (self.end - self.cur) as usize {
             buf
         } else {
