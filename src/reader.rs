@@ -1350,29 +1350,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     "Couldn't find bind pair for stream {in_stream_index}"
                 ))
             })?;
-        let index = bp.out_index as usize;
+        let in_stream_index = bp.out_index as usize;
 
-        Self::get_in_stream2(
-            block,
-            sources,
-            coder_to_stream_map,
-            password,
-            index,
-            thread_count,
-        )
-    }
-
-    fn get_in_stream2<'r>(
-        block: &Block,
-        sources: &[SharedBoundedReader<'r, R>],
-        coder_to_stream_map: &[usize],
-        password: &Password,
-        in_stream_index: usize,
-        thread_count: u32,
-    ) -> Result<Box<dyn Read + 'r>, Error>
-    where
-        R: 'r,
-    {
         let coder = &block.coders[in_stream_index];
         let start_index = coder_to_stream_map[in_stream_index];
         if start_index == usize::MAX {
