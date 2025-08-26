@@ -348,7 +348,8 @@ impl Archive {
         let mut archive = Archive::default();
         let mut buf_reader = buf.as_slice();
         let mut nid = read_u8(&mut buf_reader)?;
-        let mut header = if nid == K_ENCODED_HEADER {
+        let mut header = buf_reader;
+        if nid == K_ENCODED_HEADER {
             let (mut out_reader, buf_size) = Self::read_encoded_header(
                 &mut buf_reader,
                 reader,
@@ -356,18 +357,14 @@ impl Archive {
                 password,
                 thread_count,
             )?;
-            buf.clear();
             buf.resize(buf_size, 0);
             out_reader
                 .read_exact(&mut buf)
                 .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
             archive = Archive::default();
-            buf_reader = buf.as_slice();
-            nid = read_u8(&mut buf_reader)?;
-            buf_reader
-        } else {
-            buf_reader
-        };
+            header = buf.as_slice();
+            nid = read_u8(&mut header)?;
+        }
         let mut header = std::io::Cursor::new(&mut header);
         if nid == K_HEADER {
             Self::read_header(&mut header, &mut archive)?;
