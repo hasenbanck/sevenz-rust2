@@ -1652,8 +1652,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         let start = self.archive.stream_map.block_first_file_index[self.block_index];
         let file_count = self.archive.blocks[self.block_index].num_unpack_sub_streams;
 
-        for file_index in start..(file_count + start) {
-            let file = &self.archive.files[file_index];
+        for file in self.archive.files[start..(file_count + start)].iter() {
             if file.has_stream && file.size > 0 {
                 let mut decoder: Box<dyn Read> =
                     Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
