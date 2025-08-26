@@ -1350,7 +1350,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     "Couldn't find bind pair for stream {in_stream_index}"
                 ))
             })?;
-        let index = block.bind_pairs[bp].out_index as usize;
+        let index = bp.out_index as usize;
 
         Self::get_in_stream2(
             block,

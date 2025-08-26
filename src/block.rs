@@ -19,14 +19,16 @@ pub struct Block {
 }
 
 impl Block {
-    pub(crate) fn find_bind_pair_for_in_stream(&self, index: usize) -> Option<usize> {
-        let index = index as u64;
-        (0..self.bind_pairs.len()).find(|&i| self.bind_pairs[i].in_index == index)
+    pub(crate) fn find_bind_pair_for_in_stream(&self, index: usize) -> Option<&BindPair> {
+        self.bind_pairs
+            .iter()
+            .find(|bp| bp.in_index == index as u64)
     }
 
-    pub(crate) fn find_bind_pair_for_out_stream(&self, index: usize) -> Option<usize> {
-        let index = index as u64;
-        (0..self.bind_pairs.len()).find(|&i| self.bind_pairs[i].out_index == index)
+    pub(crate) fn find_bind_pair_for_out_stream(&self, index: usize) -> Option<&BindPair> {
+        self.bind_pairs
+            .iter()
+            .find(|bp| bp.out_index == index as u64)
     }
 
     /// Returns the total uncompressed size of data in this block.
@@ -126,11 +128,10 @@ impl<'a> Iterator for OrderedCoderIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let i = self.current?;
-        self.current = if let Some(pair) = self.block.find_bind_pair_for_out_stream(i as usize) {
-            Some(self.block.bind_pairs[pair].in_index)
-        } else {
-            None
-        };
+        self.current = self
+            .block
+            .find_bind_pair_for_out_stream(i as usize)
+            .map(|bp| bp.in_index);
         self.block
             .coders
             .get(i as usize)
