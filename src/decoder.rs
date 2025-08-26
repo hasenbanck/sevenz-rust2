@@ -112,7 +112,7 @@ pub fn add_decoder<'r>(
             if mem_size > max_mem_limit_kb {
                 return Err(Error::MaxMemLimited {
                     max_kb: max_mem_limit_kb,
-                    actaul_kb: mem_size,
+                    actual_kb: mem_size,
                 });
             }
 
@@ -240,7 +240,7 @@ fn get_ppmd_order_memory_size(coder: &Coder, max_mem_limit_kb: usize) -> Result<
     if memory_size as usize > max_mem_limit_kb {
         return Err(Error::MaxMemLimited {
             max_kb: max_mem_limit_kb,
-            actaul_kb: memory_size as usize,
+            actual_kb: memory_size as usize,
         });
     }
 

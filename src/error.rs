@@ -41,7 +41,7 @@ pub enum Error {
         /// Maximum allowed memory in KB.
         max_kb: usize,
         /// Actual required memory in KB.
-        actaul_kb: usize,
+        actual_kb: usize,
     },
     /// Password required for encrypted archive.
     PasswordRequired,
