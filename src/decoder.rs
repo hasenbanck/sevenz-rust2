@@ -76,14 +76,14 @@ impl<R: Read> Read for Decoder<R> {
     }
 }
 
-pub fn add_decoder<I: Read>(
-    input: I,
+pub fn add_decoder<'r>(
+    input: Box<dyn Read + 'r>,
     uncompressed_len: usize,
     coder: &Coder,
     #[allow(unused)] password: &Password,
     max_mem_limit_kb: usize,
     threads: u32,
-) -> Result<Decoder<I>, Error> {
+) -> Result<Decoder<Box<dyn Read + 'r>>, Error> {
     let method = EncoderMethod::by_id(coder.encoder_method_id());
     let method = if let Some(m) = method {
         m

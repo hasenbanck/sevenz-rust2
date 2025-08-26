@@ -383,9 +383,9 @@ impl Archive {
         Ok(archive)
     }
 
-    fn read_encoded_header<'r, R: Read, RI: 'r + Read + Seek>(
-        header: &mut R,
-        reader: &'r mut RI,
+    fn read_encoded_header<'r, R: 'r + Read + Seek>(
+        header: &mut &[u8],
+        reader: &'r mut R,
         archive: &mut Archive,
         password: &Password,
         thread_count: u32,
