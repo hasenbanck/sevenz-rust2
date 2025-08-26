@@ -1403,29 +1403,29 @@ impl<R: Read + Seek> ArchiveReader<R> {
             return Err(Error::other("in_stream_index out of range"));
         }
         let uncompressed_len = block.unpack_sizes[in_stream_index] as usize;
-        if coder.num_in_streams == 1 {
-            let input = Self::get_in_stream(
-                block,
-                sources,
-                coder_to_stream_map,
-                password,
-                start_index,
-                thread_count,
-            )?;
-
-            let decoder = add_decoder(
-                input,
-                uncompressed_len,
-                coder,
-                password,
-                MAX_MEM_LIMIT_KB,
-                thread_count,
-            )?;
-            return Ok(Box::new(decoder));
+        if coder.num_in_streams != 1 {
+            return Err(Error::unsupported(
+                "Multi input stream coders are not yet supported",
+            ));
         }
-        Err(Error::unsupported(
-            "Multi input stream coders are not yet supported",
-        ))
+        let input = Self::get_in_stream(
+            block,
+            sources,
+            coder_to_stream_map,
+            password,
+            start_index,
+            thread_count,
+        )?;
+
+        let decoder = add_decoder(
+            input,
+            uncompressed_len,
+            coder,
+            password,
+            MAX_MEM_LIMIT_KB,
+            thread_count,
+        )?;
+        Ok(Box::new(decoder))
     }
 
     /// Takes a closure to decode each files in the archive.
