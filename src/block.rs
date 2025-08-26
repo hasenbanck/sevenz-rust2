@@ -31,9 +31,6 @@ impl Block {
 
     /// Returns the total uncompressed size of data in this block.
     pub fn get_unpack_size(&self) -> u64 {
-        if self.total_output_streams == 0 {
-            return 0;
-        }
         for i in (0..self.total_output_streams).rev() {
             if self.find_bind_pair_for_out_stream(i).is_none() {
                 return self.unpack_sizes[i];
