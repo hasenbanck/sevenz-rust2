@@ -334,7 +334,7 @@ mod tests {
         let options = AesEncoderOptions::new(password.clone());
         let mut enc = Aes256Sha256Encoder::new(writer, &options).unwrap();
         let original = include_bytes!("aes.rs");
-        let _ = enc.write_all(original).expect("encode data");
+        enc.write_all(original).expect("encode data");
         let _ = enc.write(&[]).unwrap();
 
         let mut encoded_data = &encoded[..];

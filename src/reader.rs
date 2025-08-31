@@ -902,7 +902,7 @@ impl Archive {
 
             coder.id_size = id_size as usize;
 
-            header.read(coder.decompression_method_id_mut())?;
+            header.read_exact(coder.decompression_method_id_mut())?;
             if is_simple {
                 coder.num_in_streams = 1;
                 coder.num_out_streams = 1;
@@ -915,7 +915,7 @@ impl Archive {
             if has_attributes {
                 let properties_size = read_usize(header, "properties size")?;
                 let mut props = vec![0u8; properties_size];
-                header.read(&mut props)?;
+                header.read_exact(&mut props)?;
                 coder.properties = props;
             }
             coders.push(coder);
