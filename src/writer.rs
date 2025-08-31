@@ -101,9 +101,7 @@ impl ArchiveWriter<File> {
 impl<W: Write + Seek> ArchiveWriter<W> {
     /// Prepares writer to write a 7z archive to.
     pub fn new(mut writer: W) -> Result<Self> {
-        writer
-            .seek(std::io::SeekFrom::Start(SIGNATURE_HEADER_SIZE))
-            .map_err(Error::io)?;
+        writer.seek(std::io::SeekFrom::Start(SIGNATURE_HEADER_SIZE))?;
 
         Ok(Self {
             output: writer,

@@ -28,7 +28,7 @@ impl<R: Read> BrotliDecoder<R> {
         let header_read = match Read::read(&mut input, &mut header) {
             Ok(n) if n >= 4 => n,
             Ok(_) => return Err(Error::other("Input too short")),
-            Err(e) => return Err(Error::io(e)),
+            Err(e) => return Err(e.into()),
         };
 
         let magic_value = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);

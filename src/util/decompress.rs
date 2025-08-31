@@ -136,12 +136,12 @@ fn decompress_impl<R: Read + Seek>(
 ) -> Result<(), Error> {
     use std::io::SeekFrom;
 
-    let pos = src_reader.stream_position().map_err(Error::io)?;
-    src_reader.seek(SeekFrom::Start(pos)).map_err(Error::io)?;
+    let pos = src_reader.stream_position()?;
+    src_reader.seek(SeekFrom::Start(pos))?;
     let mut seven = ArchiveReader::new(src_reader, password)?;
     let dest = PathBuf::from(dest.as_ref());
     if !dest.exists() {
-        std::fs::create_dir_all(&dest).map_err(Error::io)?;
+        std::fs::create_dir_all(&dest)?;
     }
     seven.for_each_entries(|entry, reader| {
         let dest_path = dest.join(entry.name());
@@ -169,7 +169,7 @@ pub fn default_entry_extract_fn(
     if entry.is_directory() {
         let dir = dest;
         if !dir.exists() {
-            std::fs::create_dir_all(dir).map_err(Error::io)?;
+            std::fs::create_dir_all(dir)?;
         }
     } else {
         let path = dest;
@@ -184,7 +184,7 @@ pub fn default_entry_extract_fn(
             .map_err(|e| Error::file_open(e, path.to_string_lossy().to_string()))?;
         if entry.size() > 0 {
             let mut writer = BufWriter::new(file);
-            std::io::copy(reader, &mut writer).map_err(Error::io)?;
+            std::io::copy(reader, &mut writer)?;
 
             let file = writer.get_mut();
             let file_times = FileTimes::new()

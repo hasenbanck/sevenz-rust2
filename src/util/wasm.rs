@@ -30,7 +30,7 @@ pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String
 
                 if entry.size() > 0 {
                     let mut writer = Vec::new();
-                    std::io::copy(reader, &mut writer).map_err(crate::Error::io)?;
+                    std::io::copy(reader, &mut writer)?;
                     let _ = f.call2(
                         &JsValue::NULL,
                         &JsValue::from(path),

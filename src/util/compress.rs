@@ -24,7 +24,7 @@ pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Er
         src.as_ref().parent().unwrap_or(src.as_ref())
     };
     compress_path(src.as_ref(), parent, &mut archive_writer)?;
-    archive_writer.finish().map_err(Error::io)
+    Ok(archive_writer.finish()?)
 }
 
 /// Compresses a source file or directory to a destination writer with password encryption.
@@ -56,7 +56,7 @@ pub fn compress_encrypted<W: Write + Seek>(
         src.as_ref().parent().unwrap_or(src.as_ref())
     };
     compress_path(src.as_ref(), parent, &mut archive_writer)?;
-    archive_writer.finish().map_err(Error::io)
+    Ok(archive_writer.finish()?)
 }
 
 /// Compresses a source file or directory to a destination file path.
@@ -134,8 +134,8 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
             .read_dir()
             .map_err(|e| Error::io_msg(e, "error read dir"))?
         {
-            let dir = dir.map_err(Error::io)?;
-            let ftype = dir.file_type().map_err(Error::io)?;
+            let dir = dir?;
+            let ftype = dir.file_type()?;
             if ftype.is_dir() || ftype.is_file() {
                 compress_path(dir.path(), root, archive_writer)?;
             }
@@ -238,7 +238,7 @@ fn encode_path<W: Write + Seek>(
                 .to_string();
             zip.push_archive_entry(
                 ArchiveEntry::from_path(ele.as_path(), name),
-                Some(File::open(ele.as_path()).map_err(Error::io)?),
+                Some(File::open(ele.as_path())?),
             )?;
         }
         return Ok(());
@@ -255,7 +255,7 @@ fn encode_path<W: Write + Seek>(
         if size >= MAX_BLOCK_SIZE {
             zip.push_archive_entry(
                 ArchiveEntry::from_path(ele.as_path(), name),
-                Some(File::open(ele.as_path()).map_err(Error::io)?),
+                Some(File::open(ele.as_path())?),
             )?;
             continue;
         }

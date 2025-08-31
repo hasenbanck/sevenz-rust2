@@ -55,7 +55,7 @@ pub enum Error {
 
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
-        Self::io(value)
+        Self::io_msg(value, "")
     }
 }
 
@@ -71,11 +71,6 @@ impl Error {
     }
 
     #[inline]
-    pub(crate) fn io(e: std::io::Error) -> Self {
-        Self::io_msg(e, "")
-    }
-
-    #[inline]
     pub(crate) fn io_msg(e: std::io::Error, msg: impl Into<Cow<'static, str>>) -> Self {
         Self::Io(e, msg.into())
     }
@@ -84,7 +79,7 @@ impl Error {
         if encryped {
             Self::MaybeBadPassword(e)
         } else {
-            Self::io(e)
+            Self::io_msg(e, "")
         }
     }
 

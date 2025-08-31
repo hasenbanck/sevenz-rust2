@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{io, io::Read};
 
 use byteorder::{LittleEndian, ReadBytesExt};
 #[cfg(feature = "bzip2")]
@@ -152,7 +152,7 @@ pub fn add_decoder<I: Read>(
         }
         #[cfg(feature = "zstd")]
         EncoderMethod::ID_ZSTD => {
-            let zs = zstd::Decoder::new(input).map_err(Error::io)?;
+            let zs = zstd::Decoder::new(input)?;
             Ok(Decoder::ZSTD(zs))
         }
         EncoderMethod::ID_BCJ_X86 => {
@@ -272,7 +272,7 @@ fn get_lzma2_dic_size(coder: &Coder) -> Result<u32, Error> {
     Ok(size)
 }
 
-fn get_lzma_dic_size(coder: &Coder) -> Result<u32, Error> {
+fn get_lzma_dic_size(coder: &Coder) -> io::Result<u32> {
     let mut props = &coder.properties[1..5];
-    props.read_u32::<LittleEndian>().map_err(Error::io)
+    props.read_u32::<LittleEndian>()
 }

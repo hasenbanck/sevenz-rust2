@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     fs::File,
+    io,
     io::{Read, Seek, SeekFrom},
     num::NonZeroUsize,
     rc::Rc,
@@ -193,12 +194,12 @@ impl Archive {
         reader.seek(SeekFrom::Start(0))?;
 
         let mut signature = [0; 6];
-        reader.read_exact(&mut signature).map_err(Error::io)?;
+        reader.read_exact(&mut signature)?;
         if signature != SEVEN_Z_SIGNATURE {
             return Err(Error::BadSignature(signature));
         }
         let mut versions = [0; 2];
-        reader.read_exact(&mut versions).map_err(Error::io)?;
+        reader.read_exact(&mut versions)?;
         let version_major = versions[0];
         let version_minor = versions[1];
         if version_major != 0 {
@@ -211,12 +212,10 @@ impl Archive {
         let start_header_crc = read_u32(reader)?;
 
         let header_valid = if start_header_crc == 0 {
-            let current_position = reader.stream_position().map_err(Error::io)?;
+            let current_position = reader.stream_position()?;
             let mut buf = [0; 20];
-            reader.read_exact(&mut buf).map_err(Error::io)?;
-            reader
-                .seek(SeekFrom::Start(current_position))
-                .map_err(Error::io)?;
+            reader.read_exact(&mut buf)?;
+            reader.seek(SeekFrom::Start(current_position))?;
             buf.iter().any(|a| *a != 0)
         } else {
             true
@@ -234,7 +233,7 @@ impl Archive {
         start_header_crc: u32,
     ) -> Result<StartHeader, Error> {
         let mut buf = [0; 20];
-        reader.read_exact(&mut buf).map_err(Error::io)?;
+        reader.read_exact(&mut buf)?;
         let crc32 = crc32fast::hash(&buf);
         if crc32 != start_header_crc {
             return Err(Error::ChecksumVerificationFailed);
@@ -280,9 +279,7 @@ impl Archive {
         let mut nid = read_u8(header)?;
         while nid != K_END {
             let property_size = read_usize(header, "propertySize")?;
-            header
-                .seek(SeekFrom::Current(property_size as i64))
-                .map_err(Error::io)?;
+            header.seek(SeekFrom::Current(property_size as i64))?;
             nid = read_u8(header)?;
         }
         Ok(())
@@ -295,10 +292,10 @@ impl Archive {
         thread_count: u32,
     ) -> Result<Self, Error> {
         let search_limit = 1024 * 1024;
-        let prev_data_size = reader.stream_position().map_err(Error::io)? + 20;
+        let prev_data_size = reader.stream_position()? + 20;
         let size = reader_len;
-        let min_pos = if reader.stream_position().map_err(Error::io)? + search_limit > size {
-            reader.stream_position().map_err(Error::io)?
+        let min_pos = if reader.stream_position()? + search_limit > size {
+            reader.stream_position()?
         } else {
             size - search_limit
         };
@@ -306,7 +303,7 @@ impl Archive {
         while pos > min_pos {
             pos -= 1;
 
-            reader.seek(SeekFrom::Start(pos)).map_err(Error::io)?;
+            reader.seek(SeekFrom::Start(pos))?;
             let nid = read_u8(reader)?;
             if nid == K_ENCODED_HEADER || nid == K_HEADER {
                 let start_header = StartHeader {
@@ -343,14 +340,12 @@ impl Archive {
 
         let next_header_size_int = start_header.next_header_size as usize;
 
-        reader
-            .seek(SeekFrom::Start(
-                SIGNATURE_HEADER_SIZE + start_header.next_header_offset,
-            ))
-            .map_err(Error::io)?;
+        reader.seek(SeekFrom::Start(
+            SIGNATURE_HEADER_SIZE + start_header.next_header_offset,
+        ))?;
 
         let mut buf = vec![0; next_header_size_int];
-        reader.read_exact(&mut buf).map_err(Error::io)?;
+        reader.read_exact(&mut buf)?;
         if verify_crc && crc32fast::hash(&buf) as u64 != start_header.next_header_crc {
             return Err(Error::NextHeaderCrcMismatch);
         }
@@ -411,9 +406,7 @@ impl Archive {
             return Err(Error::other("no packed streams, can't read encoded header"));
         }
 
-        reader
-            .seek(SeekFrom::Start(block_offset))
-            .map_err(Error::io)?;
+        reader.seek(SeekFrom::Start(block_offset))?;
         let coder_len = block.coders.len();
         let unpack_size = block.get_unpack_size() as usize;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
@@ -520,7 +513,7 @@ impl Archive {
 
                     let size = assert_usize(size, "file names length")?;
                     // let mut names = vec![0u8; size - 1];
-                    // header.read_exact(&mut names).map_err(Error::io)?;
+                    // header.read_exact(&mut names)?;
                     let names_reader = NamesReader::new(header, size - 1);
 
                     let mut next_file = 0;
@@ -595,14 +588,10 @@ impl Archive {
                 }
                 K_START_POS => return Err(Error::other("kStartPos is unsupported, please report")),
                 K_DUMMY => {
-                    header
-                        .seek(SeekFrom::Current(size as i64))
-                        .map_err(Error::io)?;
+                    header.seek(SeekFrom::Current(size as i64))?;
                 }
                 _ => {
-                    header
-                        .seek(SeekFrom::Current(size as i64))
-                        .map_err(Error::io)?;
+                    header.seek(SeekFrom::Current(size as i64))?;
                 }
             };
         }
@@ -913,9 +902,7 @@ impl Archive {
 
             coder.id_size = id_size as usize;
 
-            header
-                .read(coder.decompression_method_id_mut())
-                .map_err(Error::io)?;
+            header.read(coder.decompression_method_id_mut())?;
             if is_simple {
                 coder.num_in_streams = 1;
                 coder.num_out_streams = 1;
@@ -928,7 +915,7 @@ impl Archive {
             if has_attributes {
                 let properties_size = read_usize(header, "properties size")?;
                 let mut props = vec![0u8; properties_size];
-                header.read(&mut props).map_err(Error::io)?;
+                header.read(&mut props)?;
                 coder.properties = props;
             }
             coders.push(coder);
@@ -1004,13 +991,13 @@ fn assert_usize(size: u64, field: &str) -> Result<usize, Error> {
 }
 
 #[inline]
-fn read_u64le<R: Read>(reader: &mut R) -> Result<u64, Error> {
+fn read_u64le<R: Read>(reader: &mut R) -> io::Result<u64> {
     let mut buf = [0; 8];
-    reader.read_exact(&mut buf).map_err(Error::io)?;
+    reader.read_exact(&mut buf)?;
     Ok(u64::from_le_bytes(buf))
 }
 
-fn read_u64<R: Read>(reader: &mut R) -> Result<u64, Error> {
+fn read_u64<R: Read>(reader: &mut R) -> io::Result<u64> {
     let first = read_u8(reader)? as u64;
     let mut mask = 0x80_u64;
     let mut value = 0;
@@ -1026,20 +1013,20 @@ fn read_u64<R: Read>(reader: &mut R) -> Result<u64, Error> {
 }
 
 #[inline(always)]
-fn read_u32<R: Read>(reader: &mut R) -> Result<u32, Error> {
+fn read_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
     let mut buf = [0; 4];
-    reader.read_exact(&mut buf).map_err(Error::io)?;
+    reader.read_exact(&mut buf)?;
     Ok(u32::from_le_bytes(buf))
 }
 
 #[inline(always)]
-fn read_u8<R: Read>(reader: &mut R) -> Result<u8, Error> {
+fn read_u8<R: Read>(reader: &mut R) -> io::Result<u8> {
     let mut buf = [0];
-    reader.read_exact(&mut buf).map_err(Error::io)?;
+    reader.read_exact(&mut buf)?;
     Ok(buf[0])
 }
 
-fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> Result<BitSet, Error> {
+fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
     let all = read_u8(header)?;
     if all != 0 {
         let mut bits = BitSet::with_capacity(size);
@@ -1052,7 +1039,7 @@ fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> Result<BitSet, Erro
     }
 }
 
-fn read_bits<R: Read>(header: &mut R, size: usize) -> Result<BitSet, Error> {
+fn read_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
     let mut bits = BitSet::with_capacity(size);
     let mut mask = 0u32;
     let mut cache = 0u32;
@@ -1097,10 +1084,10 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
         self.cache.clear();
         let mut buf = [0; 2];
         while self.read_bytes < self.max_bytes {
-            let r = self.reader.read_exact(&mut buf).map_err(Error::io);
+            let r = self.reader.read_exact(&mut buf);
             self.read_bytes += 2;
             if let Err(e) = r {
-                return Some(Err(e));
+                return Some(Err(e.into()));
             }
             let u = u16::from_le_bytes(buf);
             if u == 0 {
@@ -1237,9 +1224,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             + archive.pack_pos
             + archive.stream_map.pack_stream_offsets[first_pack_stream_index];
 
-        source
-            .seek(SeekFrom::Start(block_offset))
-            .map_err(Error::io)?;
+        source.seek(SeekFrom::Start(block_offset))?;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
 
         let mut decoder: Box<dyn Read> = Box::new(BoundedReader::new(source, pack_size));

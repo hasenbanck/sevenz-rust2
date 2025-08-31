@@ -216,7 +216,7 @@ pub(crate) fn add_encoder<W: Write>(
                 Some(EncoderOptions::LZMA(options)) => options.clone(),
                 _ => LZMAOptions::default(),
             };
-            let lz = LZMAWriter::new_no_header(input, &options.0, false).map_err(Error::io)?;
+            let lz = LZMAWriter::new_no_header(input, &options.0, false)?;
             Ok(Encoder::LZMA(Some(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
@@ -230,8 +230,7 @@ pub(crate) fn add_encoder<W: Write>(
                 _ => {
                     let threads = lzma2_options.threads;
                     Encoder::LZMA2MT(Some(
-                        LZMA2WriterMT::new(input, lzma2_options.options, threads)
-                            .map_err(Error::io)?,
+                        LZMA2WriterMT::new(input, lzma2_options.options, threads)?
                     ))
                 }
             };
@@ -308,7 +307,7 @@ pub(crate) fn add_encoder<W: Write>(
                 _ => ZStandardOptions::default(),
             };
 
-            let zstd_encoder = zstd::Encoder::new(input, options.0 as i32).map_err(Error::io)?;
+            let zstd_encoder = zstd::Encoder::new(input, options.0 as i32)?;
 
             Ok(Encoder::ZSTD(Some(zstd_encoder)))
         }
