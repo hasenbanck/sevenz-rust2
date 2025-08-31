@@ -13,12 +13,12 @@ use crate::{Password, archive::*, bitset::BitSet, block::*, decoder::add_decoder
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 
-pub struct BoundedReader<R: Read> {
+pub struct BoundedReader<R> {
     inner: R,
     remain: usize,
 }
 
-impl<R: Read> BoundedReader<R> {
+impl<R> BoundedReader<R> {
     pub fn new(inner: R, max_size: usize) -> Self {
         Self {
             inner,
@@ -53,13 +53,13 @@ impl<R: Read> Read for BoundedReader<R> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct SeekableBoundedReader<R: Read + Seek> {
+pub struct SeekableBoundedReader<R> {
     inner: R,
     cur: u64,
     bounds: (u64, u64),
 }
 
-impl<R: Read + Seek> Seek for SeekableBoundedReader<R> {
+impl<R: Seek> Seek for SeekableBoundedReader<R> {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         let new_pos = match pos {
             SeekFrom::Start(pos) => self.bounds.0 as i64 + pos as i64,
@@ -93,7 +93,7 @@ impl<R: Read + Seek> Read for SeekableBoundedReader<R> {
     }
 }
 
-impl<R: Read + Seek> SeekableBoundedReader<R> {
+impl<R> SeekableBoundedReader<R> {
     pub fn new(inner: R, bounds: (u64, u64)) -> Self {
         Self {
             inner,
@@ -110,7 +110,7 @@ struct Crc32VerifyingReader<R> {
     remaining: i64,
 }
 
-impl<R: Read> Crc32VerifyingReader<R> {
+impl<R> Crc32VerifyingReader<R> {
     fn new(inner: R, remaining: usize, expected_value: u64) -> Self {
         Self {
             inner,
@@ -1068,14 +1068,14 @@ fn read_bits<R: Read>(header: &mut R, size: usize) -> Result<BitSet, Error> {
     Ok(bits)
 }
 
-struct NamesReader<'a, R: Read> {
+struct NamesReader<'a, R> {
     max_bytes: usize,
     read_bytes: usize,
     cache: Vec<u16>,
     reader: &'a mut R,
 }
 
-impl<'a, R: Read> NamesReader<'a, R> {
+impl<'a, R> NamesReader<'a, R> {
     fn new(reader: &'a mut R, max_bytes: usize) -> Self {
         Self {
             max_bytes,
@@ -1119,7 +1119,7 @@ struct IndexEntry {
 }
 
 /// Reads a 7z archive file.
-pub struct ArchiveReader<R: Read + Seek> {
+pub struct ArchiveReader<R> {
     source: R,
     archive: Archive,
     password: Password,
@@ -1590,7 +1590,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 ///
 /// Provides access to entries within a single compression block and allows
 /// decoding files from that block.
-pub struct BlockDecoder<'a, R: Read + Seek> {
+pub struct BlockDecoder<'a, R> {
     thread_count: u32,
     block_index: usize,
     archive: &'a Archive,

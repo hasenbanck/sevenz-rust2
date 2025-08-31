@@ -94,7 +94,7 @@ impl<R: Read> Read for Aes256Sha256Decoder<R> {
     }
 }
 
-impl<R: Read + Seek> Seek for Aes256Sha256Decoder<R> {
+impl<R: Seek> Seek for Aes256Sha256Decoder<R> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         let len = self.ofinish - self.ostart;
         match pos {
