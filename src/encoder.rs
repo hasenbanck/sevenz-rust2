@@ -229,9 +229,11 @@ pub(crate) fn add_encoder<W: Write>(
                 0 | 1 => Encoder::LZMA2(Some(LZMA2Writer::new(input, lzma2_options.options))),
                 _ => {
                     let threads = lzma2_options.threads;
-                    Encoder::LZMA2MT(Some(
-                        LZMA2WriterMT::new(input, lzma2_options.options, threads)?
-                    ))
+                    Encoder::LZMA2MT(Some(LZMA2WriterMT::new(
+                        input,
+                        lzma2_options.options,
+                        threads,
+                    )?))
                 }
             };
 
