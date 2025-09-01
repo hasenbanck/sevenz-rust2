@@ -77,5 +77,4 @@ name = "mt_decompress"
 required-features = ["default"]
 
 [package.metadata.docs.rs]
-features = ["aes256", "brotli", "bzip2", "compress", "deflate", "lz4", "util", "ppmd", "zstd"]
-rustdoc-args = ["--cfg", "docsrs"]
+all-features = true
