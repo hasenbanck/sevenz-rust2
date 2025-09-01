@@ -17,7 +17,6 @@ use crate::{Error, Password, *};
 /// # Arguments
 /// * `src_path` - Path to the source archive file
 /// * `dest` - Path to the destination directory where files will be extracted
-#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn decompress_file(src_path: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
     let file = std::fs::File::open(src_path.as_ref())
         .map_err(|e| Error::file_open(e, src_path.as_ref().to_string_lossy().to_string()))?;
@@ -33,7 +32,6 @@ pub fn decompress_file(src_path: impl AsRef<Path>, dest: impl AsRef<Path>) -> Re
 /// * `src_path` - Path to the source archive file
 /// * `dest` - Path to the destination directory where files will be extracted
 /// * `extract_fn` - Custom function to handle each archive entry during extraction
-#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn decompress_file_with_extract_fn(
     src_path: impl AsRef<Path>,
     dest: impl AsRef<Path>,
@@ -49,7 +47,6 @@ pub fn decompress_file_with_extract_fn(
 /// # Arguments
 /// * `src_reader` - Reader containing the archive data
 /// * `dest` - Path to the destination directory where files will be extracted
-#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn decompress<R: Read + Seek>(src_reader: R, dest: impl AsRef<Path>) -> Result<(), Error> {
     decompress_with_extract_fn(src_reader, dest, default_entry_extract_fn)
 }
@@ -63,7 +60,6 @@ pub fn decompress<R: Read + Seek>(src_reader: R, dest: impl AsRef<Path>) -> Resu
 /// * `dest` - Path to the destination directory where files will be extracted
 /// * `extract_fn` - Custom function to handle each archive entry during extraction
 #[cfg(not(target_arch = "wasm32"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn decompress_with_extract_fn<R: Read + Seek>(
     src_reader: R,
     dest: impl AsRef<Path>,
@@ -79,7 +75,6 @@ pub fn decompress_with_extract_fn<R: Read + Seek>(
 /// * `dest` - Path to the destination directory where files will be extracted
 /// * `password` - Password to decrypt the archive
 #[cfg(all(feature = "aes256", not(target_arch = "wasm32")))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "aes256", feature = "util"))))]
 pub fn decompress_file_with_password(
     src_path: impl AsRef<Path>,
     dest: impl AsRef<Path>,
@@ -97,7 +92,6 @@ pub fn decompress_file_with_password(
 /// * `dest` - Path to the destination directory where files will be extracted
 /// * `password` - Password to decrypt the archive
 #[cfg(all(feature = "aes256", not(target_arch = "wasm32")))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "aes256", feature = "util"))))]
 pub fn decompress_with_password<R: Read + Seek>(
     src_reader: R,
     dest: impl AsRef<Path>,
@@ -117,7 +111,6 @@ pub fn decompress_with_password<R: Read + Seek>(
 /// * `password` - Password to decrypt the archive
 /// * `extract_fn` - Custom function to handle each archive entry during extraction
 #[cfg(all(feature = "aes256", not(target_arch = "wasm32")))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "aes256", feature = "util"))))]
 pub fn decompress_with_extract_fn_and_password<R: Read + Seek>(
     src_reader: R,
     dest: impl AsRef<Path>,
@@ -158,7 +151,6 @@ fn decompress_impl<R: Read + Seek>(
 /// * `reader` - Reader for the entry's data
 /// * `dest` - Destination path for the entry
 #[cfg(not(target_arch = "wasm32"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "util")))]
 pub fn default_entry_extract_fn(
     entry: &ArchiveEntry,
     reader: &mut dyn Read,

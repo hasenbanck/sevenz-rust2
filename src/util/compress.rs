@@ -15,7 +15,6 @@ use crate::{ArchiveEntry, ArchiveWriter, EncoderMethod, Error, Password, writer:
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
 /// * `dest` - Writer that implements `Write + Seek` to write the compressed archive to
-#[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Error> {
     let mut archive_writer = ArchiveWriter::new(dest)?;
     let parent = if src.as_ref().is_dir() {
@@ -34,10 +33,6 @@ pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Er
 /// * `dest` - Writer that implements `Write + Seek` to write the compressed archive to
 /// * `password` - Password to encrypt the archive with
 #[cfg(feature = "aes256")]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(all(feature = "aes256", feature = "compress", feature = "util")))
-)]
 pub fn compress_encrypted<W: Write + Seek>(
     src: impl AsRef<Path>,
     dest: W,
@@ -66,7 +61,6 @@ pub fn compress_encrypted<W: Write + Seek>(
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
 /// * `dest` - Path where the compressed archive will be created
-#[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
 pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
     if let Some(path) = dest.as_ref().parent() {
         if !path.exists() {
@@ -91,10 +85,6 @@ pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result
 /// * `dest` - Path where the encrypted compressed archive will be created
 /// * `password` - Password to encrypt the archive with
 #[cfg(feature = "aes256")]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(all(feature = "aes256", feature = "compress", feature = "util")))
-)]
 pub fn compress_to_path_encrypted(
     src: impl AsRef<Path>,
     dest: impl AsRef<Path>,
@@ -161,7 +151,6 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     /// # Arguments
     /// * `path` - Path to add to the compression
     /// * `filter` - Function that returns `true` for paths that should be included
-    #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
     pub fn push_source_path(
         &mut self,
         path: impl AsRef<Path>,
@@ -179,7 +168,6 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     /// # Arguments
     /// * `path` - Path to add to the compression
     /// * `filter` - Function that returns `true` for paths that should be included
-    #[cfg_attr(docsrs, doc(cfg(all(feature = "compress", feature = "util"))))]
     pub fn push_source_path_non_solid(
         &mut self,
         path: impl AsRef<Path>,

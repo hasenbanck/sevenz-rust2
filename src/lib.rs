@@ -31,7 +31,7 @@
 //! | BCJ IA64      | ✓             | ✓           |
 //! | BCJ2          |               |             |
 //! | DELTA         | ✓             | ✓           |
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![warn(missing_docs)]
 
 #[cfg(target_arch = "wasm32")]
@@ -40,7 +40,6 @@ extern crate wasm_bindgen;
 #[cfg(feature = "compress")]
 mod encoder;
 /// Encoding options when compressing.
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[cfg(feature = "compress")]
 pub mod encoder_options;
 mod encryption;

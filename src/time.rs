@@ -121,7 +121,6 @@ impl TryFrom<std::time::SystemTime> for NtTime {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "nt-time")))]
 #[cfg(feature = "nt-time")]
 impl From<NtTime> for nt_time::FileTime {
     fn from(value: NtTime) -> Self {
@@ -129,7 +128,6 @@ impl From<NtTime> for nt_time::FileTime {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "nt-time")))]
 #[cfg(feature = "nt-time")]
 impl From<nt_time::FileTime> for NtTime {
     fn from(value: nt_time::FileTime) -> Self {

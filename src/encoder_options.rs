@@ -9,7 +9,6 @@ use crate::EncoderConfiguration;
 use crate::Password;
 
 #[cfg(feature = "compress")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[derive(Debug, Clone)]
 /// Options for LZMA compression.
 pub struct LZMAOptions(pub(crate) lzma_rust2::LZMAOptions);
@@ -32,7 +31,6 @@ impl LZMAOptions {
 }
 
 #[cfg(feature = "compress")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[derive(Debug, Clone)]
 /// Options for LZMA2 compression.
 pub struct LZMA2Options {
@@ -91,7 +89,6 @@ impl LZMA2Options {
 }
 
 #[cfg(feature = "bzip2")]
-#[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]
 #[derive(Debug, Copy, Clone)]
 /// Options for BZIP2 compression.
 pub struct Bzip2Options(pub(crate) u32);
@@ -120,7 +117,6 @@ const MINIMAL_SKIPPABLE_FRAME_SIZE: u32 = 64 * 1024;
 const DEFAULT_SKIPPABLE_FRAME_SIZE: u32 = 128 * 1024;
 
 #[cfg(feature = "brotli")]
-#[cfg_attr(docsrs, doc(cfg(feature = "brotli")))]
 #[derive(Debug, Copy, Clone)]
 /// Options for Brotli compression.
 pub struct BrotliOptions {
@@ -177,7 +173,6 @@ impl Default for BrotliOptions {
 }
 
 #[cfg(feature = "compress")]
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[derive(Debug, Copy, Clone)]
 /// Options for Delta filter compression.
 pub struct DeltaOptions(pub(crate) u32);
@@ -208,7 +203,6 @@ impl Default for DeltaOptions {
 }
 
 #[cfg(feature = "deflate")]
-#[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
 #[derive(Debug, Copy, Clone)]
 /// Options for Deflate compression.
 pub struct DeflateOptions(pub(crate) u32);
@@ -233,7 +227,6 @@ impl Default for DeflateOptions {
 }
 
 #[cfg(feature = "lz4")]
-#[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
 #[derive(Debug, Copy, Clone, Default)]
 /// Options for LZ4 compression.
 pub struct LZ4Options {
@@ -265,7 +258,6 @@ impl LZ4Options {
 }
 
 #[cfg(feature = "ppmd")]
-#[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
 #[derive(Debug, Copy, Clone)]
 /// Options for PPMD compression.
 pub struct PPMDOptions {
@@ -321,7 +313,6 @@ impl Default for PPMDOptions {
 }
 
 #[cfg(feature = "zstd")]
-#[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
 #[derive(Debug, Copy, Clone)]
 /// Options for Zstandard compression.
 pub struct ZStandardOptions(pub(crate) u32);
@@ -345,7 +336,6 @@ impl Default for ZStandardOptions {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
 #[cfg(feature = "aes256")]
 #[derive(Debug, Clone)]
 /// Options for AES256 encryption.
@@ -403,43 +393,33 @@ impl AesEncoderOptions {
 #[derive(Debug, Clone)]
 pub enum EncoderOptions {
     #[cfg(feature = "compress")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
     /// Delta filter options.
     Delta(DeltaOptions),
     #[cfg(feature = "compress")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
     /// LZMA compression options.
     LZMA(LZMAOptions),
     #[cfg(feature = "compress")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
     /// LZMA2 compression options.
     LZMA2(LZMA2Options),
     #[cfg(feature = "brotli")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "brotli")))]
     /// Brotli compression options.
     BROTLI(BrotliOptions),
     #[cfg(feature = "bzip2")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "bzip2")))]
     /// BZIP2 compression options.
     BZIP2(Bzip2Options),
     #[cfg(feature = "deflate")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "deflate")))]
     /// Deflate compression options.
     DEFLATE(DeflateOptions),
     #[cfg(feature = "lz4")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "lz4")))]
     /// LZ4 compression options.
     LZ4(LZ4Options),
     #[cfg(feature = "ppmd")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "ppmd")))]
     /// PPMD compression options.
     PPMD(PPMDOptions),
     #[cfg(feature = "zstd")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
     /// Zstandard compression options.
     ZSTD(ZStandardOptions),
     #[cfg(feature = "aes256")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
     /// AES256 encryption options.
     Aes(AesEncoderOptions),
 }

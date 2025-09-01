@@ -78,7 +78,6 @@ macro_rules! write_times {
 type Result<T> = std::result::Result<T, Error>;
 
 /// Writes a 7z archive file.
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 pub struct ArchiveWriter<W: Write> {
     output: W,
     files: Vec<ArchiveEntry>,

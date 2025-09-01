@@ -237,7 +237,6 @@ impl ArchiveEntry {
 /// Configuration for encoding methods when compressing data.
 ///
 /// Combines an encoder method with optional encoder-specific options.
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
 #[cfg(feature = "compress")]
 #[derive(Debug, Default)]
 pub struct EncoderConfiguration {

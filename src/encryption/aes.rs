@@ -225,7 +225,6 @@ impl Cipher {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "aes256")))]
 #[cfg(feature = "compress")]
 pub(crate) struct Aes256Sha256Encoder<W> {
     output: W,
