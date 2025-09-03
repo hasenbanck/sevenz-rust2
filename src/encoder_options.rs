@@ -11,11 +11,11 @@ use crate::Password;
 #[cfg(feature = "compress")]
 #[derive(Debug, Clone)]
 /// Options for LZMA compression.
-pub struct LzmaOptions(pub(crate) lzma_rust2::LZMAOptions);
+pub struct LzmaOptions(pub(crate) lzma_rust2::LzmaOptions);
 
 impl Default for LzmaOptions {
     fn default() -> Self {
-        Self(lzma_rust2::LZMAOptions::with_preset(6))
+        Self(lzma_rust2::LzmaOptions::with_preset(6))
     }
 }
 
@@ -26,7 +26,7 @@ impl LzmaOptions {
     /// # Arguments
     /// * `level` - Compression level (0-9, clamped to this range)
     pub fn from_level(level: u32) -> Self {
-        Self(lzma_rust2::LZMAOptions::with_preset(level))
+        Self(lzma_rust2::LzmaOptions::with_preset(level))
     }
 }
 
@@ -34,14 +34,14 @@ impl LzmaOptions {
 #[derive(Debug, Clone)]
 /// Options for LZMA2 compression.
 pub struct Lzma2Options {
-    pub(crate) options: lzma_rust2::LZMA2Options,
+    pub(crate) options: lzma_rust2::Lzma2Options,
     pub(crate) threads: u32,
 }
 
 impl Default for Lzma2Options {
     fn default() -> Self {
         Self {
-            options: lzma_rust2::LZMA2Options::with_preset(6),
+            options: lzma_rust2::Lzma2Options::with_preset(6),
             threads: 1,
         }
     }
@@ -56,7 +56,7 @@ impl Lzma2Options {
     /// * `level` - Compression level (0-9, clamped to this range)
     pub fn from_level(level: u32) -> Self {
         Self {
-            options: lzma_rust2::LZMA2Options::with_preset(level),
+            options: lzma_rust2::Lzma2Options::with_preset(level),
             threads: 1,
         }
     }
@@ -72,7 +72,7 @@ impl Lzma2Options {
     ///   the multi threading, but the worse the compression ratio
     ///   will be (value will be clamped to have at least the size of the dictionary).
     pub fn from_level_mt(level: u32, threads: u32, chunk_size: u64) -> Self {
-        let mut options = lzma_rust2::LZMA2Options::with_preset(level);
+        let mut options = lzma_rust2::Lzma2Options::with_preset(level);
         options.set_chunk_size(NonZeroU64::new(
             chunk_size.max(options.lzma_options.dict_size as u64),
         ));

@@ -9,7 +9,7 @@ use std::{
 };
 
 use crc32fast::Hasher;
-use lzma_rust2::filter::bcj2::BCJ2Reader;
+use lzma_rust2::filter::bcj2::Bcj2Reader;
 
 use crate::{Password, archive::*, bitset::BitSet, block::*, decoder::add_decoder, error::Error};
 
@@ -1329,7 +1329,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 thread_count,
             )?);
         }
-        let mut decoder: Box<dyn Read> = Box::new(BCJ2Reader::new(inputs, block.get_unpack_size()));
+        let mut decoder: Box<dyn Read> = Box::new(Bcj2Reader::new(inputs, block.get_unpack_size()));
         if block.has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,

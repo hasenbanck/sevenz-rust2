@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Updated
 
-- Target lzma-rust2 v0.11.
+- Target lzma-rust2 v0.13.
 
 ### Fixed
 

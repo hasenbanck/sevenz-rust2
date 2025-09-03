@@ -6,8 +6,8 @@ use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
 use lzma_rust2::{
-    LZMA2Reader, LZMA2ReaderMT, LZMAReader,
-    filter::{bcj::BCJReader, delta::DeltaReader},
+    Lzma2Reader, Lzma2ReaderMt, LzmaReader,
+    filter::{bcj::BcjReader, delta::DeltaReader},
     lzma2_get_memory_usage,
 };
 #[cfg(feature = "ppmd")]
@@ -26,12 +26,12 @@ use crate::{Password, archive::EncoderMethod, block::Coder, error::Error};
 #[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
     COPY(R),
-    LZMA(Box<LZMAReader<R>>),
-    LZMA2(Box<LZMA2Reader<R>>),
-    LZMA2MT(Box<LZMA2ReaderMT<R>>),
+    LZMA(Box<LzmaReader<R>>),
+    LZMA2(Box<Lzma2Reader<R>>),
+    LZMA2MT(Box<Lzma2ReaderMt<R>>),
     #[cfg(feature = "ppmd")]
     PPMD(Box<Ppmd7Decoder<R>>),
-    BCJ(BCJReader<R>),
+    BCJ(BcjReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
     Brotli(Box<BrotliDecoder<R>>),
@@ -100,7 +100,7 @@ pub fn add_decoder<I: Read>(
             }
             let props = coder.properties[0];
             let lz =
-                LZMAReader::new_with_props(input, uncompressed_len as _, props, dict_size, None)
+                LzmaReader::new_with_props(input, uncompressed_len as _, props, dict_size, None)
                     .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
             Ok(Decoder::LZMA(Box::new(lz)))
         }
@@ -115,9 +115,9 @@ pub fn add_decoder<I: Read>(
             }
 
             let lz = if threads < 2 {
-                Decoder::LZMA2(Box::new(LZMA2Reader::new(input, dic_size, None)))
+                Decoder::LZMA2(Box::new(Lzma2Reader::new(input, dic_size, None)))
             } else {
-                Decoder::LZMA2MT(Box::new(LZMA2ReaderMT::new(input, dic_size, None, threads)))
+                Decoder::LZMA2MT(Box::new(Lzma2ReaderMt::new(input, dic_size, None, threads)))
             };
 
             Ok(lz)
@@ -156,35 +156,35 @@ pub fn add_decoder<I: Read>(
             Ok(Decoder::ZSTD(zs))
         }
         EncoderMethod::ID_BCJ_X86 => {
-            let de = BCJReader::new_x86(input, 0);
+            let de = BcjReader::new_x86(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_ARM => {
-            let de = BCJReader::new_arm(input, 0);
+            let de = BcjReader::new_arm(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_ARM64 => {
-            let de = BCJReader::new_arm64(input, 0);
+            let de = BcjReader::new_arm64(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_ARM_THUMB => {
-            let de = BCJReader::new_arm_thumb(input, 0);
+            let de = BcjReader::new_arm_thumb(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_PPC => {
-            let de = BCJReader::new_ppc(input, 0);
+            let de = BcjReader::new_ppc(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_IA64 => {
-            let de = BCJReader::new_ia64(input, 0);
+            let de = BcjReader::new_ia64(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_SPARC => {
-            let de = BCJReader::new_sparc(input, 0);
+            let de = BcjReader::new_sparc(input, 0);
             Ok(Decoder::BCJ(de))
         }
         EncoderMethod::ID_BCJ_RISCV => {
-            let de = BCJReader::new_riscv(input, 0);
+            let de = BcjReader::new_riscv(input, 0);
             Ok(Decoder::BCJ(de))
         }
         // TODO NHA: Add BCJ2 decoder
