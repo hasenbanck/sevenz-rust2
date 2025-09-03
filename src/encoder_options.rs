@@ -11,16 +11,16 @@ use crate::Password;
 #[cfg(feature = "compress")]
 #[derive(Debug, Clone)]
 /// Options for LZMA compression.
-pub struct LZMAOptions(pub(crate) lzma_rust2::LZMAOptions);
+pub struct LzmaOptions(pub(crate) lzma_rust2::LZMAOptions);
 
-impl Default for LZMAOptions {
+impl Default for LzmaOptions {
     fn default() -> Self {
         Self(lzma_rust2::LZMAOptions::with_preset(6))
     }
 }
 
 #[cfg(feature = "compress")]
-impl LZMAOptions {
+impl LzmaOptions {
     /// Creates LZMA options with the specified compression level.
     ///
     /// # Arguments
@@ -33,12 +33,12 @@ impl LZMAOptions {
 #[cfg(feature = "compress")]
 #[derive(Debug, Clone)]
 /// Options for LZMA2 compression.
-pub struct LZMA2Options {
+pub struct Lzma2Options {
     pub(crate) options: lzma_rust2::LZMA2Options,
     pub(crate) threads: u32,
 }
 
-impl Default for LZMA2Options {
+impl Default for Lzma2Options {
     fn default() -> Self {
         Self {
             options: lzma_rust2::LZMA2Options::with_preset(6),
@@ -48,7 +48,7 @@ impl Default for LZMA2Options {
 }
 
 #[cfg(feature = "compress")]
-impl LZMA2Options {
+impl Lzma2Options {
     /// Creates LZMA2 options with the specified compression level.
     /// Encoded using a single thread.
     ///
@@ -229,12 +229,12 @@ impl Default for DeflateOptions {
 #[cfg(feature = "lz4")]
 #[derive(Debug, Copy, Clone, Default)]
 /// Options for LZ4 compression.
-pub struct LZ4Options {
+pub struct Lz4Options {
     pub(crate) skippable_frame_size: u32,
 }
 
 #[cfg(feature = "lz4")]
-impl LZ4Options {
+impl Lz4Options {
     /// Set's the skippable frame size. The size is defined as the size of uncompressed data a frame
     /// contains. A value of 0 deactivates skippable frames and uses the native LZ4 bitstream.
     /// If a value is set, then the similar skippable frame format is used.
@@ -260,13 +260,13 @@ impl LZ4Options {
 #[cfg(feature = "ppmd")]
 #[derive(Debug, Copy, Clone)]
 /// Options for PPMD compression.
-pub struct PPMDOptions {
+pub struct PpmdOptions {
     pub(crate) order: u32,
     pub(crate) memory_size: u32,
 }
 
 #[cfg(feature = "ppmd")]
-impl PPMDOptions {
+impl PpmdOptions {
     /// Creates PPMD options with the specified compression level.
     ///
     /// # Arguments
@@ -306,7 +306,7 @@ impl PPMDOptions {
 }
 
 #[cfg(feature = "ppmd")]
-impl Default for PPMDOptions {
+impl Default for PpmdOptions {
     fn default() -> Self {
         Self::from_level(6)
     }
@@ -315,10 +315,10 @@ impl Default for PPMDOptions {
 #[cfg(feature = "zstd")]
 #[derive(Debug, Copy, Clone)]
 /// Options for Zstandard compression.
-pub struct ZStandardOptions(pub(crate) u32);
+pub struct ZstandardOptions(pub(crate) u32);
 
 #[cfg(feature = "zstd")]
-impl ZStandardOptions {
+impl ZstandardOptions {
     /// Creates Zstandard options with the specified compression level.
     ///
     /// # Arguments
@@ -330,7 +330,7 @@ impl ZStandardOptions {
 }
 
 #[cfg(feature = "zstd")]
-impl Default for ZStandardOptions {
+impl Default for ZstandardOptions {
     fn default() -> Self {
         Self(3)
     }
@@ -397,28 +397,28 @@ pub enum EncoderOptions {
     Delta(DeltaOptions),
     #[cfg(feature = "compress")]
     /// LZMA compression options.
-    LZMA(LZMAOptions),
+    Lzma(LzmaOptions),
     #[cfg(feature = "compress")]
     /// LZMA2 compression options.
-    LZMA2(LZMA2Options),
+    Lzma2(Lzma2Options),
     #[cfg(feature = "brotli")]
     /// Brotli compression options.
-    BROTLI(BrotliOptions),
+    Brotli(BrotliOptions),
     #[cfg(feature = "bzip2")]
     /// BZIP2 compression options.
-    BZIP2(Bzip2Options),
+    Bzip2(Bzip2Options),
     #[cfg(feature = "deflate")]
     /// Deflate compression options.
-    DEFLATE(DeflateOptions),
+    Deflate(DeflateOptions),
     #[cfg(feature = "lz4")]
     /// LZ4 compression options.
-    LZ4(LZ4Options),
+    Lz4(Lz4Options),
     #[cfg(feature = "ppmd")]
     /// PPMD compression options.
-    PPMD(PPMDOptions),
+    Ppmd(PpmdOptions),
     #[cfg(feature = "zstd")]
     /// Zstandard compression options.
-    ZSTD(ZStandardOptions),
+    Zstd(ZstandardOptions),
     #[cfg(feature = "aes256")]
     /// AES256 encryption options.
     Aes(AesEncoderOptions),
@@ -434,7 +434,7 @@ impl From<AesEncoderOptions> for EncoderOptions {
 #[cfg(all(feature = "aes256", feature = "compress"))]
 impl From<AesEncoderOptions> for EncoderConfiguration {
     fn from(value: AesEncoderOptions) -> Self {
-        Self::new(crate::EncoderMethod::AES256SHA256).with_options(EncoderOptions::Aes(value))
+        Self::new(crate::EncoderMethod::AES256_SHA256).with_options(EncoderOptions::Aes(value))
     }
 }
 
@@ -446,51 +446,51 @@ impl From<DeltaOptions> for EncoderConfiguration {
 }
 
 #[cfg(feature = "compress")]
-impl From<LZMA2Options> for EncoderConfiguration {
-    fn from(options: LZMA2Options) -> Self {
-        Self::new(crate::EncoderMethod::LZMA2).with_options(EncoderOptions::LZMA2(options))
+impl From<Lzma2Options> for EncoderConfiguration {
+    fn from(options: Lzma2Options) -> Self {
+        Self::new(crate::EncoderMethod::LZMA2).with_options(EncoderOptions::Lzma2(options))
     }
 }
 
 #[cfg(feature = "bzip2")]
 impl From<Bzip2Options> for EncoderConfiguration {
     fn from(options: Bzip2Options) -> Self {
-        Self::new(crate::EncoderMethod::BZIP2).with_options(EncoderOptions::BZIP2(options))
+        Self::new(crate::EncoderMethod::BZIP2).with_options(EncoderOptions::Bzip2(options))
     }
 }
 
 #[cfg(feature = "brotli")]
 impl From<BrotliOptions> for EncoderConfiguration {
     fn from(options: BrotliOptions) -> Self {
-        Self::new(crate::EncoderMethod::BROTLI).with_options(EncoderOptions::BROTLI(options))
+        Self::new(crate::EncoderMethod::BROTLI).with_options(EncoderOptions::Brotli(options))
     }
 }
 
 #[cfg(feature = "deflate")]
 impl From<DeflateOptions> for EncoderConfiguration {
     fn from(options: DeflateOptions) -> Self {
-        Self::new(crate::EncoderMethod::DEFLATE).with_options(EncoderOptions::DEFLATE(options))
+        Self::new(crate::EncoderMethod::DEFLATE).with_options(EncoderOptions::Deflate(options))
     }
 }
 
 #[cfg(feature = "lz4")]
-impl From<LZ4Options> for EncoderConfiguration {
-    fn from(options: LZ4Options) -> Self {
-        Self::new(crate::EncoderMethod::LZ4).with_options(EncoderOptions::LZ4(options))
+impl From<Lz4Options> for EncoderConfiguration {
+    fn from(options: Lz4Options) -> Self {
+        Self::new(crate::EncoderMethod::LZ4).with_options(EncoderOptions::Lz4(options))
     }
 }
 
 #[cfg(feature = "ppmd")]
-impl From<PPMDOptions> for EncoderConfiguration {
-    fn from(options: PPMDOptions) -> Self {
-        Self::new(crate::EncoderMethod::PPMD).with_options(EncoderOptions::PPMD(options))
+impl From<PpmdOptions> for EncoderConfiguration {
+    fn from(options: PpmdOptions) -> Self {
+        Self::new(crate::EncoderMethod::PPMD).with_options(EncoderOptions::Ppmd(options))
     }
 }
 
 #[cfg(feature = "zstd")]
-impl From<ZStandardOptions> for EncoderConfiguration {
-    fn from(options: ZStandardOptions) -> Self {
-        Self::new(crate::EncoderMethod::ZSTD).with_options(EncoderOptions::ZSTD(options))
+impl From<ZstandardOptions> for EncoderConfiguration {
+    fn from(options: ZstandardOptions) -> Self {
+        Self::new(crate::EncoderMethod::ZSTD).with_options(EncoderOptions::Zstd(options))
     }
 }
 
@@ -502,51 +502,51 @@ impl From<DeltaOptions> for EncoderOptions {
 }
 
 #[cfg(feature = "compress")]
-impl From<LZMA2Options> for EncoderOptions {
-    fn from(o: LZMA2Options) -> Self {
-        Self::LZMA2(o)
+impl From<Lzma2Options> for EncoderOptions {
+    fn from(o: Lzma2Options) -> Self {
+        Self::Lzma2(o)
     }
 }
 
 #[cfg(feature = "bzip2")]
 impl From<Bzip2Options> for EncoderOptions {
     fn from(o: Bzip2Options) -> Self {
-        Self::BZIP2(o)
+        Self::Bzip2(o)
     }
 }
 
 #[cfg(feature = "brotli")]
 impl From<BrotliOptions> for EncoderOptions {
     fn from(o: BrotliOptions) -> Self {
-        Self::BROTLI(o)
+        Self::Brotli(o)
     }
 }
 
 #[cfg(feature = "deflate")]
 impl From<DeflateOptions> for EncoderOptions {
     fn from(o: DeflateOptions) -> Self {
-        Self::DEFLATE(o)
+        Self::Deflate(o)
     }
 }
 
 #[cfg(feature = "lz4")]
-impl From<LZ4Options> for EncoderOptions {
-    fn from(o: LZ4Options) -> Self {
-        Self::LZ4(o)
+impl From<Lz4Options> for EncoderOptions {
+    fn from(o: Lz4Options) -> Self {
+        Self::Lz4(o)
     }
 }
 
 #[cfg(feature = "ppmd")]
-impl From<PPMDOptions> for EncoderOptions {
-    fn from(o: PPMDOptions) -> Self {
-        Self::PPMD(o)
+impl From<PpmdOptions> for EncoderOptions {
+    fn from(o: PpmdOptions) -> Self {
+        Self::Ppmd(o)
     }
 }
 
 #[cfg(feature = "zstd")]
-impl From<ZStandardOptions> for EncoderOptions {
-    fn from(o: ZStandardOptions) -> Self {
-        Self::ZSTD(o)
+impl From<ZstandardOptions> for EncoderOptions {
+    fn from(o: ZstandardOptions) -> Self {
+        Self::Zstd(o)
     }
 }
 
@@ -557,9 +557,9 @@ impl EncoderOptions {
     pub fn get_lzma_dict_size(&self) -> u32 {
         match self {
             #[cfg(feature = "compress")]
-            EncoderOptions::LZMA(o) => o.0.dict_size,
+            EncoderOptions::Lzma(o) => o.0.dict_size,
             #[cfg(feature = "compress")]
-            EncoderOptions::LZMA2(o) => o.options.lzma_options.dict_size,
+            EncoderOptions::Lzma2(o) => o.options.lzma_options.dict_size,
             #[allow(unused)]
             _ => 0,
         }

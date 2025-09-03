@@ -2,7 +2,7 @@ use std::{collections::HashMap, env::temp_dir, time::Instant};
 
 use rand::Rng;
 use sevenz_rust2::{
-    encoder_options::{AesEncoderOptions, LZMA2Options},
+    encoder_options::{AesEncoderOptions, Lzma2Options},
     *,
 };
 
@@ -40,7 +40,7 @@ fn main() {
         sz.set_content_methods(vec![
             AesEncoderOptions::new(Password::new("sevenz-rust")).into(),
             // We configure LZMA2 to use multiple threads to encode the data.
-            LZMA2Options::from_level_mt(9, 4, 1 << 18).into(),
+            Lzma2Options::from_level_mt(9, 4, 1 << 18).into(),
         ]);
     }
 

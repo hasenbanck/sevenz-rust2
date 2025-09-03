@@ -338,7 +338,7 @@ impl EncoderMethod {
     /// Method ID for Deflate64 compression.
     pub const ID_DEFLATE64: &'static [u8] = &[0x04, 0x01, 0x09];
     /// Method ID for AES256-SHA256 encryption.
-    pub const ID_AES256SHA256: &'static [u8] = &[0x06, 0xF1, 0x07, 0x01];
+    pub const ID_AES256_SHA256: &'static [u8] = &[0x06, 0xF1, 0x07, 0x01];
 
     /// COPY method (no compression).
     pub const COPY: Self = Self("COPY", Self::ID_COPY);
@@ -365,7 +365,7 @@ impl EncoderMethod {
     /// Deflate64 compression method.
     pub const DEFLATE64: Self = Self("DEFLATE64", Self::ID_DEFLATE64);
     /// AES256-SHA256 encryption method.
-    pub const AES256SHA256: Self = Self("AES256SHA256", Self::ID_AES256SHA256);
+    pub const AES256_SHA256: Self = Self("AES256_SHA256", Self::ID_AES256_SHA256);
 
     /// BCJ x86 filter method.
     pub const BCJ_X86_FILTER: Self = Self("BCJ_X86", Self::ID_BCJ_X86);
@@ -401,7 +401,7 @@ impl EncoderMethod {
         &Self::LIZARD,
         &Self::DEFLATE,
         &Self::DEFLATE64,
-        &Self::AES256SHA256,
+        &Self::AES256_SHA256,
         &Self::BCJ_X86_FILTER,
         &Self::BCJ_PPC_FILTER,
         &Self::BCJ_IA64_FILTER,

@@ -198,7 +198,7 @@ pub fn add_decoder<I: Read>(
             Ok(Decoder::Delta(de))
         }
         #[cfg(feature = "aes256")]
-        EncoderMethod::ID_AES256SHA256 => {
+        EncoderMethod::ID_AES256_SHA256 => {
             if password.is_empty() {
                 return Err(Error::PasswordRequired);
             }

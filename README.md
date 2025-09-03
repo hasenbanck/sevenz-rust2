@@ -96,7 +96,7 @@ use sevenz_rust2::*;
 let mut writer = ArchiveWriter::create("dest.7z").expect("create writer ok");
 writer.set_content_methods(vec![
     encoder_options::AesEncoderOptions::new("sevenz-rust".into()).into(),
-    encoder_options::LZMA2Options::from_level(9).into(),
+    encoder_options::Lzma2Options::from_level(9).into(),
 ]);
 writer.push_source_path("path/to/compress", | _ | true).expect("pack ok");
 writer.finish().expect("compress ok");

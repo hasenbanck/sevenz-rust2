@@ -387,13 +387,13 @@ fn compress_with_deflate_algorithm() {
 #[cfg(all(feature = "compress", feature = "util", feature = "lz4"))]
 #[test]
 fn compress_with_lz4_algorithm() {
-    test_compression_method(&[LZ4Options::default().with_skippable_frame_size(0).into()]);
+    test_compression_method(&[Lz4Options::default().with_skippable_frame_size(0).into()]);
 }
 
 #[cfg(all(feature = "compress", feature = "util", feature = "lz4"))]
 #[test]
 fn compress_with_lz4_skippable_algorithm() {
-    test_compression_method(&[LZ4Options::default()
+    test_compression_method(&[Lz4Options::default()
         .with_skippable_frame_size(128 * 1024)
         .into()]);
 }

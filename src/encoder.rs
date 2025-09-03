@@ -16,17 +16,17 @@ use crate::encoder_options::Bzip2Options;
 #[cfg(feature = "deflate")]
 use crate::encoder_options::DeflateOptions;
 #[cfg(feature = "lz4")]
-use crate::encoder_options::LZ4Options;
+use crate::encoder_options::Lz4Options;
 #[cfg(feature = "ppmd")]
-use crate::encoder_options::PPMDOptions;
+use crate::encoder_options::PpmdOptions;
 #[cfg(feature = "zstd")]
-use crate::encoder_options::ZStandardOptions;
+use crate::encoder_options::ZstandardOptions;
 #[cfg(feature = "aes256")]
 use crate::encryption::Aes256Sha256Encoder;
 use crate::{
     Error,
     archive::{EncoderConfiguration, EncoderMethod},
-    encoder_options::{DeltaOptions, EncoderOptions, LZMA2Options, LZMAOptions},
+    encoder_options::{DeltaOptions, EncoderOptions, Lzma2Options, LzmaOptions},
     writer::CountingWriter,
 };
 
@@ -213,16 +213,16 @@ pub(crate) fn add_encoder<W: Write>(
         EncoderMethod::ID_BCJ_RISCV => Ok(Encoder::BCJ(Some(BCJWriter::new_riscv(input, 0)))),
         EncoderMethod::ID_LZMA => {
             let options = match &method_config.options {
-                Some(EncoderOptions::LZMA(options)) => options.clone(),
-                _ => LZMAOptions::default(),
+                Some(EncoderOptions::Lzma(options)) => options.clone(),
+                _ => LzmaOptions::default(),
             };
             let lz = LZMAWriter::new_no_header(input, &options.0, false)?;
             Ok(Encoder::LZMA(Some(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
             let lzma2_options = match &method_config.options {
-                Some(EncoderOptions::LZMA2(options)) => options.clone(),
-                _ => LZMA2Options::default(),
+                Some(EncoderOptions::Lzma2(options)) => options.clone(),
+                _ => Lzma2Options::default(),
             };
 
             let encoder = match lzma2_options.threads {
@@ -242,8 +242,8 @@ pub(crate) fn add_encoder<W: Write>(
         #[cfg(feature = "ppmd")]
         EncoderMethod::ID_PPMD => {
             let options = match method_config.options {
-                Some(EncoderOptions::PPMD(options)) => options,
-                _ => PPMDOptions::default(),
+                Some(EncoderOptions::Ppmd(options)) => options,
+                _ => PpmdOptions::default(),
             };
 
             let ppmd_encoder =
@@ -255,7 +255,7 @@ pub(crate) fn add_encoder<W: Write>(
         #[cfg(feature = "brotli")]
         EncoderMethod::ID_BROTLI => {
             let options = match method_config.options {
-                Some(EncoderOptions::BROTLI(options)) => options,
+                Some(EncoderOptions::Brotli(options)) => options,
                 _ => BrotliOptions::default(),
             };
 
@@ -271,7 +271,7 @@ pub(crate) fn add_encoder<W: Write>(
         #[cfg(feature = "bzip2")]
         EncoderMethod::ID_BZIP2 => {
             let options = match method_config.options {
-                Some(EncoderOptions::BZIP2(options)) => options,
+                Some(EncoderOptions::Bzip2(options)) => options,
                 _ => Bzip2Options::default(),
             };
 
@@ -283,7 +283,7 @@ pub(crate) fn add_encoder<W: Write>(
         #[cfg(feature = "deflate")]
         EncoderMethod::ID_DEFLATE => {
             let options = match method_config.options {
-                Some(EncoderOptions::DEFLATE(options)) => options,
+                Some(EncoderOptions::Deflate(options)) => options,
                 _ => DeflateOptions::default(),
             };
 
@@ -294,8 +294,8 @@ pub(crate) fn add_encoder<W: Write>(
         #[cfg(feature = "lz4")]
         EncoderMethod::ID_LZ4 => {
             let options = match method_config.options.as_ref() {
-                Some(EncoderOptions::LZ4(options)) => *options,
-                _ => LZ4Options::default(),
+                Some(EncoderOptions::Lz4(options)) => *options,
+                _ => Lz4Options::default(),
             };
 
             let lz4_encoder = Lz4Encoder::new(input, options.skippable_frame_size as usize)?;
@@ -305,8 +305,8 @@ pub(crate) fn add_encoder<W: Write>(
         #[cfg(feature = "zstd")]
         EncoderMethod::ID_ZSTD => {
             let options = match method_config.options.as_ref() {
-                Some(EncoderOptions::ZSTD(options)) => *options,
-                _ => ZStandardOptions::default(),
+                Some(EncoderOptions::Zstd(options)) => *options,
+                _ => ZstandardOptions::default(),
             };
 
             let zstd_encoder = zstd::Encoder::new(input, options.0 as i32)?;
@@ -314,7 +314,7 @@ pub(crate) fn add_encoder<W: Write>(
             Ok(Encoder::ZSTD(Some(zstd_encoder)))
         }
         #[cfg(feature = "aes256")]
-        EncoderMethod::ID_AES256SHA256 => {
+        EncoderMethod::ID_AES256_SHA256 => {
             let options = match method_config.options.as_ref() {
                 Some(EncoderOptions::Aes(p)) => p,
                 _ => return Err(Error::PasswordRequired),
@@ -344,8 +344,8 @@ pub(crate) fn get_options_as_properties<'a>(
         }
         EncoderMethod::ID_LZMA2 => {
             let options = match options {
-                Some(EncoderOptions::LZMA2(options)) => options,
-                _ => &LZMA2Options::default(),
+                Some(EncoderOptions::Lzma2(options)) => options,
+                _ => &Lzma2Options::default(),
             };
             let dict_size = options.options.lzma_options.dict_size;
             let lead = dict_size.leading_zeros();
@@ -356,8 +356,8 @@ pub(crate) fn get_options_as_properties<'a>(
         }
         EncoderMethod::ID_LZMA => {
             let options = match options {
-                Some(EncoderOptions::LZMA(options)) => options,
-                _ => &LZMAOptions::default(),
+                Some(EncoderOptions::Lzma(options)) => options,
+                _ => &LzmaOptions::default(),
             };
             let dict_size = options.0.dict_size;
             out[0] = options.0.get_props();
@@ -367,8 +367,8 @@ pub(crate) fn get_options_as_properties<'a>(
         #[cfg(feature = "ppmd")]
         EncoderMethod::ID_PPMD => {
             let options = match options {
-                Some(EncoderOptions::PPMD(options)) => *options,
-                _ => PPMDOptions::default(),
+                Some(EncoderOptions::Ppmd(options)) => *options,
+                _ => PpmdOptions::default(),
             };
 
             out[0] = options.order as u8;
@@ -380,7 +380,7 @@ pub(crate) fn get_options_as_properties<'a>(
             let version_major = brotli::VERSION;
             let version_minor = 0;
             let options = match options {
-                Some(EncoderOptions::BROTLI(options)) => *options,
+                Some(EncoderOptions::Brotli(options)) => *options,
                 _ => BrotliOptions::default(),
             };
 
@@ -403,8 +403,8 @@ pub(crate) fn get_options_as_properties<'a>(
             let version_major = zstd::zstd_safe::VERSION_MAJOR;
             let version_minor = zstd::zstd_safe::VERSION_MINOR;
             let options = match options {
-                Some(EncoderOptions::ZSTD(options)) => *options,
-                _ => ZStandardOptions::default(),
+                Some(EncoderOptions::Zstd(options)) => *options,
+                _ => ZstandardOptions::default(),
             };
 
             out[0] = version_major as u8;
@@ -413,7 +413,7 @@ pub(crate) fn get_options_as_properties<'a>(
             &out[0..3]
         }
         #[cfg(feature = "aes256")]
-        EncoderMethod::ID_AES256SHA256 => {
+        EncoderMethod::ID_AES256_SHA256 => {
             let options = match options.as_ref() {
                 Some(EncoderOptions::Aes(p)) => p,
                 _ => return &[],

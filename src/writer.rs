@@ -402,7 +402,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
 
         if self.encrypt_header {
             for conf in self.content_methods.iter() {
-                if conf.method.id() == EncoderMethod::AES256SHA256.id() {
+                if conf.method.id() == EncoderMethod::AES256_SHA256.id() {
                     methods.push(conf.clone());
                     break;
                 }
