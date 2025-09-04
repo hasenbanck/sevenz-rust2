@@ -30,28 +30,27 @@ use crate::{
     writer::CountingWriter,
 };
 
-#[allow(clippy::upper_case_acronyms)]
 pub(crate) enum Encoder<W: Write> {
-    COPY(CountingWriter<W>),
-    BCJ(Option<BcjWriter<CountingWriter<W>>>),
-    DELTA(DeltaWriter<CountingWriter<W>>),
-    LZMA(Option<LzmaWriter<CountingWriter<W>>>),
-    LZMA2(Option<Lzma2Writer<CountingWriter<W>>>),
-    LZMA2MT(Option<Lzma2WriterMt<CountingWriter<W>>>),
+    Copy(CountingWriter<W>),
+    Bcj(Option<BcjWriter<CountingWriter<W>>>),
+    Delta(DeltaWriter<CountingWriter<W>>),
+    Lzma(Option<LzmaWriter<CountingWriter<W>>>),
+    Lzma2(Option<Lzma2Writer<CountingWriter<W>>>),
+    Lzma2Mt(Option<Lzma2WriterMt<CountingWriter<W>>>),
     #[cfg(feature = "ppmd")]
-    PPMD(Option<Box<ppmd_rust::Ppmd7Encoder<CountingWriter<W>>>>),
+    Ppmd(Option<Box<ppmd_rust::Ppmd7Encoder<CountingWriter<W>>>>),
     #[cfg(feature = "brotli")]
-    BROTLI(BrotliEncoder<CountingWriter<W>>),
+    Brotli(BrotliEncoder<CountingWriter<W>>),
     #[cfg(feature = "bzip2")]
-    BZIP2(Option<bzip2::write::BzEncoder<CountingWriter<W>>>),
+    Bzip2(Option<bzip2::write::BzEncoder<CountingWriter<W>>>),
     #[cfg(feature = "deflate")]
-    DEFLATE(Option<flate2::write::DeflateEncoder<CountingWriter<W>>>),
+    Deflate(Option<flate2::write::DeflateEncoder<CountingWriter<W>>>),
     #[cfg(feature = "lz4")]
-    LZ4(Option<Lz4Encoder<CountingWriter<W>>>),
+    Lz4(Option<Lz4Encoder<CountingWriter<W>>>),
     #[cfg(feature = "zstd")]
-    ZSTD(Option<zstd::Encoder<'static, CountingWriter<W>>>),
+    Zstd(Option<zstd::Encoder<'static, CountingWriter<W>>>),
     #[cfg(feature = "aes256")]
-    AES(Aes256Sha256Encoder<CountingWriter<W>>),
+    Aes(Aes256Sha256Encoder<CountingWriter<W>>),
 }
 
 impl<W: Write> Write for Encoder<W> {
@@ -63,9 +62,9 @@ impl<W: Write> Write for Encoder<W> {
         // their data stream. Not a great way to do it, but I couldn't get a proper dynamic
         // dispatch based approach to work.
         match self {
-            Encoder::COPY(w) => w.write(buf),
-            Encoder::DELTA(w) => w.write(buf),
-            Encoder::BCJ(w) => match buf.is_empty() {
+            Encoder::Copy(w) => w.write(buf),
+            Encoder::Delta(w) => w.write(buf),
+            Encoder::Bcj(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -74,7 +73,7 @@ impl<W: Write> Write for Encoder<W> {
                 }
                 false => w.as_mut().unwrap().write(buf),
             },
-            Encoder::LZMA(w) => match buf.is_empty() {
+            Encoder::Lzma(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -83,7 +82,7 @@ impl<W: Write> Write for Encoder<W> {
                 }
                 false => w.as_mut().unwrap().write(buf),
             },
-            Encoder::LZMA2(w) => match buf.is_empty() {
+            Encoder::Lzma2(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -92,7 +91,7 @@ impl<W: Write> Write for Encoder<W> {
                 }
                 false => w.as_mut().unwrap().write(buf),
             },
-            Encoder::LZMA2MT(w) => match buf.is_empty() {
+            Encoder::Lzma2Mt(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -102,7 +101,7 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             #[cfg(feature = "ppmd")]
-            Encoder::PPMD(w) => match buf.is_empty() {
+            Encoder::Ppmd(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish(false)?;
@@ -113,9 +112,9 @@ impl<W: Write> Write for Encoder<W> {
             },
             // TODO: Also add a proper "finish" method here.
             #[cfg(feature = "brotli")]
-            Encoder::BROTLI(w) => w.write(buf),
+            Encoder::Brotli(w) => w.write(buf),
             #[cfg(feature = "bzip2")]
-            Encoder::BZIP2(w) => match buf.is_empty() {
+            Encoder::Bzip2(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -125,7 +124,7 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             #[cfg(feature = "deflate")]
-            Encoder::DEFLATE(w) => match buf.is_empty() {
+            Encoder::Deflate(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -135,7 +134,7 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             #[cfg(feature = "lz4")]
-            Encoder::LZ4(w) => match buf.is_empty() {
+            Encoder::Lz4(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -145,7 +144,7 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             #[cfg(feature = "zstd")]
-            Encoder::ZSTD(w) => match buf.is_empty() {
+            Encoder::Zstd(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
@@ -155,32 +154,32 @@ impl<W: Write> Write for Encoder<W> {
                 false => w.as_mut().unwrap().write(buf),
             },
             #[cfg(feature = "aes256")]
-            Encoder::AES(w) => w.write(buf),
+            Encoder::Aes(w) => w.write(buf),
         }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
-            Encoder::COPY(w) => w.flush(),
-            Encoder::BCJ(w) => w.as_mut().unwrap().flush(),
-            Encoder::DELTA(w) => w.flush(),
-            Encoder::LZMA(w) => w.as_mut().unwrap().flush(),
-            Encoder::LZMA2(w) => w.as_mut().unwrap().flush(),
-            Encoder::LZMA2MT(w) => w.as_mut().unwrap().flush(),
+            Encoder::Copy(w) => w.flush(),
+            Encoder::Bcj(w) => w.as_mut().unwrap().flush(),
+            Encoder::Delta(w) => w.flush(),
+            Encoder::Lzma(w) => w.as_mut().unwrap().flush(),
+            Encoder::Lzma2(w) => w.as_mut().unwrap().flush(),
+            Encoder::Lzma2Mt(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "brotli")]
-            Encoder::BROTLI(w) => w.flush(),
+            Encoder::Brotli(w) => w.flush(),
             #[cfg(feature = "ppmd")]
-            Encoder::PPMD(w) => w.as_mut().unwrap().flush(),
+            Encoder::Ppmd(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "bzip2")]
-            Encoder::BZIP2(w) => w.as_mut().unwrap().flush(),
+            Encoder::Bzip2(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "deflate")]
-            Encoder::DEFLATE(w) => w.as_mut().unwrap().flush(),
+            Encoder::Deflate(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "lz4")]
-            Encoder::LZ4(w) => w.as_mut().unwrap().flush(),
+            Encoder::Lz4(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "zstd")]
-            Encoder::ZSTD(w) => w.as_mut().unwrap().flush(),
+            Encoder::Zstd(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "aes256")]
-            Encoder::AES(w) => w.flush(),
+            Encoder::Aes(w) => w.flush(),
         }
     }
 }
@@ -192,32 +191,32 @@ pub(crate) fn add_encoder<W: Write>(
     let method = method_config.method;
 
     match method.id() {
-        EncoderMethod::ID_COPY => Ok(Encoder::COPY(input)),
+        EncoderMethod::ID_COPY => Ok(Encoder::Copy(input)),
         EncoderMethod::ID_DELTA => {
             let options = match method_config.options {
                 Some(EncoderOptions::Delta(options)) => options,
                 _ => DeltaOptions::default(),
             };
             let dw = DeltaWriter::new(input, options.0 as usize);
-            Ok(Encoder::DELTA(dw))
+            Ok(Encoder::Delta(dw))
         }
-        EncoderMethod::ID_BCJ_X86 => Ok(Encoder::BCJ(Some(BcjWriter::new_x86(input, 0)))),
-        EncoderMethod::ID_BCJ_ARM => Ok(Encoder::BCJ(Some(BcjWriter::new_arm(input, 0)))),
+        EncoderMethod::ID_BCJ_X86 => Ok(Encoder::Bcj(Some(BcjWriter::new_x86(input, 0)))),
+        EncoderMethod::ID_BCJ_ARM => Ok(Encoder::Bcj(Some(BcjWriter::new_arm(input, 0)))),
         EncoderMethod::ID_BCJ_ARM_THUMB => {
-            Ok(Encoder::BCJ(Some(BcjWriter::new_arm_thumb(input, 0))))
+            Ok(Encoder::Bcj(Some(BcjWriter::new_arm_thumb(input, 0))))
         }
-        EncoderMethod::ID_BCJ_ARM64 => Ok(Encoder::BCJ(Some(BcjWriter::new_arm64(input, 0)))),
-        EncoderMethod::ID_BCJ_IA64 => Ok(Encoder::BCJ(Some(BcjWriter::new_ia64(input, 0)))),
-        EncoderMethod::ID_BCJ_SPARC => Ok(Encoder::BCJ(Some(BcjWriter::new_sparc(input, 0)))),
-        EncoderMethod::ID_BCJ_PPC => Ok(Encoder::BCJ(Some(BcjWriter::new_ppc(input, 0)))),
-        EncoderMethod::ID_BCJ_RISCV => Ok(Encoder::BCJ(Some(BcjWriter::new_riscv(input, 0)))),
+        EncoderMethod::ID_BCJ_ARM64 => Ok(Encoder::Bcj(Some(BcjWriter::new_arm64(input, 0)))),
+        EncoderMethod::ID_BCJ_IA64 => Ok(Encoder::Bcj(Some(BcjWriter::new_ia64(input, 0)))),
+        EncoderMethod::ID_BCJ_SPARC => Ok(Encoder::Bcj(Some(BcjWriter::new_sparc(input, 0)))),
+        EncoderMethod::ID_BCJ_PPC => Ok(Encoder::Bcj(Some(BcjWriter::new_ppc(input, 0)))),
+        EncoderMethod::ID_BCJ_RISCV => Ok(Encoder::Bcj(Some(BcjWriter::new_riscv(input, 0)))),
         EncoderMethod::ID_LZMA => {
             let options = match &method_config.options {
                 Some(EncoderOptions::Lzma(options)) => options.clone(),
                 _ => LzmaOptions::default(),
             };
             let lz = LzmaWriter::new_no_header(input, &options.0, false)?;
-            Ok(Encoder::LZMA(Some(lz)))
+            Ok(Encoder::Lzma(Some(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
             let lzma2_options = match &method_config.options {
@@ -226,10 +225,10 @@ pub(crate) fn add_encoder<W: Write>(
             };
 
             let encoder = match lzma2_options.threads {
-                0 | 1 => Encoder::LZMA2(Some(Lzma2Writer::new(input, lzma2_options.options))),
+                0 | 1 => Encoder::Lzma2(Some(Lzma2Writer::new(input, lzma2_options.options))),
                 _ => {
                     let threads = lzma2_options.threads;
-                    Encoder::LZMA2MT(Some(Lzma2WriterMt::new(
+                    Encoder::Lzma2Mt(Some(Lzma2WriterMt::new(
                         input,
                         lzma2_options.options,
                         threads,
@@ -250,7 +249,7 @@ pub(crate) fn add_encoder<W: Write>(
                 ppmd_rust::Ppmd7Encoder::new(input, options.order, options.memory_size)
                     .map_err(|err| Error::other(err.to_string()))?;
 
-            Ok(Encoder::PPMD(Some(Box::new(ppmd_encoder))))
+            Ok(Encoder::Ppmd(Some(Box::new(ppmd_encoder))))
         }
         #[cfg(feature = "brotli")]
         EncoderMethod::ID_BROTLI => {
@@ -266,7 +265,7 @@ pub(crate) fn add_encoder<W: Write>(
                 options.skippable_frame_size as usize,
             )?;
 
-            Ok(Encoder::BROTLI(brotli_encoder))
+            Ok(Encoder::Brotli(brotli_encoder))
         }
         #[cfg(feature = "bzip2")]
         EncoderMethod::ID_BZIP2 => {
@@ -278,7 +277,7 @@ pub(crate) fn add_encoder<W: Write>(
             let bzip2_encoder =
                 bzip2::write::BzEncoder::new(input, bzip2::Compression::new(options.0));
 
-            Ok(Encoder::BZIP2(Some(bzip2_encoder)))
+            Ok(Encoder::Bzip2(Some(bzip2_encoder)))
         }
         #[cfg(feature = "deflate")]
         EncoderMethod::ID_DEFLATE => {
@@ -289,7 +288,7 @@ pub(crate) fn add_encoder<W: Write>(
 
             let deflate_encoder =
                 flate2::write::DeflateEncoder::new(input, flate2::Compression::new(options.0));
-            Ok(Encoder::DEFLATE(Some(deflate_encoder)))
+            Ok(Encoder::Deflate(Some(deflate_encoder)))
         }
         #[cfg(feature = "lz4")]
         EncoderMethod::ID_LZ4 => {
@@ -300,7 +299,7 @@ pub(crate) fn add_encoder<W: Write>(
 
             let lz4_encoder = Lz4Encoder::new(input, options.skippable_frame_size as usize)?;
 
-            Ok(Encoder::LZ4(Some(lz4_encoder)))
+            Ok(Encoder::Lz4(Some(lz4_encoder)))
         }
         #[cfg(feature = "zstd")]
         EncoderMethod::ID_ZSTD => {
@@ -311,7 +310,7 @@ pub(crate) fn add_encoder<W: Write>(
 
             let zstd_encoder = zstd::Encoder::new(input, options.0 as i32)?;
 
-            Ok(Encoder::ZSTD(Some(zstd_encoder)))
+            Ok(Encoder::Zstd(Some(zstd_encoder)))
         }
         #[cfg(feature = "aes256")]
         EncoderMethod::ID_AES256_SHA256 => {
@@ -319,7 +318,7 @@ pub(crate) fn add_encoder<W: Write>(
                 Some(EncoderOptions::Aes(p)) => p,
                 _ => return Err(Error::PasswordRequired),
             };
-            Ok(Encoder::AES(Aes256Sha256Encoder::new(input, options)?))
+            Ok(Encoder::Aes(Aes256Sha256Encoder::new(input, options)?))
         }
         _ => Err(Error::UnsupportedCompressionMethod(
             method.name().to_string(),

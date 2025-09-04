@@ -23,53 +23,52 @@ use crate::codec::lz4::Lz4Decoder;
 use crate::encryption::Aes256Sha256Decoder;
 use crate::{Password, archive::EncoderMethod, block::Coder, error::Error};
 
-#[allow(clippy::upper_case_acronyms)]
 pub enum Decoder<R: Read> {
-    COPY(R),
-    LZMA(Box<LzmaReader<R>>),
-    LZMA2(Box<Lzma2Reader<R>>),
-    LZMA2MT(Box<Lzma2ReaderMt<R>>),
+    Copy(R),
+    Lzma(Box<LzmaReader<R>>),
+    Lzma2(Box<Lzma2Reader<R>>),
+    Lzma2Mt(Box<Lzma2ReaderMt<R>>),
     #[cfg(feature = "ppmd")]
-    PPMD(Box<Ppmd7Decoder<R>>),
-    BCJ(BcjReader<R>),
+    Ppmd(Box<Ppmd7Decoder<R>>),
+    Bcj(BcjReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
     Brotli(Box<BrotliDecoder<R>>),
     #[cfg(feature = "bzip2")]
-    BZip2(BzDecoder<R>),
+    Bzip2(BzDecoder<R>),
     #[cfg(feature = "deflate")]
     Deflate(DeflateDecoder<std::io::BufReader<R>>),
     #[cfg(feature = "lz4")]
-    LZ4(Lz4Decoder<R>),
+    Lz4(Lz4Decoder<R>),
     #[cfg(feature = "zstd")]
-    ZSTD(zstd::Decoder<'static, std::io::BufReader<R>>),
+    Zstd(zstd::Decoder<'static, std::io::BufReader<R>>),
     #[cfg(feature = "aes256")]
-    AES256SHA256(Box<Aes256Sha256Decoder<R>>),
+    Aes256Sha256(Box<Aes256Sha256Decoder<R>>),
 }
 
 impl<R: Read> Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self {
-            Decoder::COPY(r) => r.read(buf),
-            Decoder::LZMA(r) => r.read(buf),
-            Decoder::LZMA2(r) => r.read(buf),
-            Decoder::LZMA2MT(r) => r.read(buf),
+            Decoder::Copy(r) => r.read(buf),
+            Decoder::Lzma(r) => r.read(buf),
+            Decoder::Lzma2(r) => r.read(buf),
+            Decoder::Lzma2Mt(r) => r.read(buf),
             #[cfg(feature = "ppmd")]
-            Decoder::PPMD(r) => r.read(buf),
-            Decoder::BCJ(r) => r.read(buf),
+            Decoder::Ppmd(r) => r.read(buf),
+            Decoder::Bcj(r) => r.read(buf),
             Decoder::Delta(r) => r.read(buf),
             #[cfg(feature = "brotli")]
             Decoder::Brotli(r) => r.read(buf),
             #[cfg(feature = "bzip2")]
-            Decoder::BZip2(r) => r.read(buf),
+            Decoder::Bzip2(r) => r.read(buf),
             #[cfg(feature = "deflate")]
             Decoder::Deflate(r) => r.read(buf),
             #[cfg(feature = "lz4")]
-            Decoder::LZ4(r) => r.read(buf),
+            Decoder::Lz4(r) => r.read(buf),
             #[cfg(feature = "zstd")]
-            Decoder::ZSTD(r) => r.read(buf),
+            Decoder::Zstd(r) => r.read(buf),
             #[cfg(feature = "aes256")]
-            Decoder::AES256SHA256(r) => r.read(buf),
+            Decoder::Aes256Sha256(r) => r.read(buf),
         }
     }
 }
@@ -92,7 +91,7 @@ pub fn add_decoder<I: Read>(
         )));
     };
     match method.id() {
-        EncoderMethod::ID_COPY => Ok(Decoder::COPY(input)),
+        EncoderMethod::ID_COPY => Ok(Decoder::Copy(input)),
         EncoderMethod::ID_LZMA => {
             let dict_size = get_lzma_dic_size(coder)?;
             if coder.properties.is_empty() {
@@ -102,7 +101,7 @@ pub fn add_decoder<I: Read>(
             let lz =
                 LzmaReader::new_with_props(input, uncompressed_len as _, props, dict_size, None)
                     .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
-            Ok(Decoder::LZMA(Box::new(lz)))
+            Ok(Decoder::Lzma(Box::new(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
             let dic_size = get_lzma2_dic_size(coder)?;
@@ -115,9 +114,9 @@ pub fn add_decoder<I: Read>(
             }
 
             let lz = if threads < 2 {
-                Decoder::LZMA2(Box::new(Lzma2Reader::new(input, dic_size, None)))
+                Decoder::Lzma2(Box::new(Lzma2Reader::new(input, dic_size, None)))
             } else {
-                Decoder::LZMA2MT(Box::new(Lzma2ReaderMt::new(input, dic_size, None, threads)))
+                Decoder::Lzma2Mt(Box::new(Lzma2ReaderMt::new(input, dic_size, None, threads)))
             };
 
             Ok(lz)
@@ -127,7 +126,7 @@ pub fn add_decoder<I: Read>(
             let (order, memory_size) = get_ppmd_order_memory_size(coder, max_mem_limit_kb)?;
             let ppmd = Ppmd7Decoder::new(input, order, memory_size)
                 .map_err(|err| Error::other(err.to_string()))?;
-            Ok(Decoder::PPMD(Box::new(ppmd)))
+            Ok(Decoder::Ppmd(Box::new(ppmd)))
         }
         #[cfg(feature = "brotli")]
         EncoderMethod::ID_BROTLI => {
@@ -137,7 +136,7 @@ pub fn add_decoder<I: Read>(
         #[cfg(feature = "bzip2")]
         EncoderMethod::ID_BZIP2 => {
             let de = BzDecoder::new(input);
-            Ok(Decoder::BZip2(de))
+            Ok(Decoder::Bzip2(de))
         }
         #[cfg(feature = "deflate")]
         EncoderMethod::ID_DEFLATE => {
@@ -148,44 +147,44 @@ pub fn add_decoder<I: Read>(
         #[cfg(feature = "lz4")]
         EncoderMethod::ID_LZ4 => {
             let de = Lz4Decoder::new(input)?;
-            Ok(Decoder::LZ4(de))
+            Ok(Decoder::Lz4(de))
         }
         #[cfg(feature = "zstd")]
         EncoderMethod::ID_ZSTD => {
             let zs = zstd::Decoder::new(input)?;
-            Ok(Decoder::ZSTD(zs))
+            Ok(Decoder::Zstd(zs))
         }
         EncoderMethod::ID_BCJ_X86 => {
             let de = BcjReader::new_x86(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_ARM => {
             let de = BcjReader::new_arm(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_ARM64 => {
             let de = BcjReader::new_arm64(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_ARM_THUMB => {
             let de = BcjReader::new_arm_thumb(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_PPC => {
             let de = BcjReader::new_ppc(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_IA64 => {
             let de = BcjReader::new_ia64(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_SPARC => {
             let de = BcjReader::new_sparc(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_BCJ_RISCV => {
             let de = BcjReader::new_riscv(input, 0);
-            Ok(Decoder::BCJ(de))
+            Ok(Decoder::Bcj(de))
         }
         // TODO NHA: Add BCJ2 decoder
         EncoderMethod::ID_DELTA => {
@@ -203,7 +202,7 @@ pub fn add_decoder<I: Read>(
                 return Err(Error::PasswordRequired);
             }
             let de = Aes256Sha256Decoder::new(input, &coder.properties, password)?;
-            Ok(Decoder::AES256SHA256(Box::new(de)))
+            Ok(Decoder::Aes256Sha256(Box::new(de)))
         }
         _ => Err(Error::UnsupportedCompressionMethod(
             method.name().to_string(),
