@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Updated
 
 - Target lzma-rust2 v0.13.
+- Updated the documentation to include the BCJ2 codec again. It was never gone, only overlooked.
 
 ### Fixed
 
