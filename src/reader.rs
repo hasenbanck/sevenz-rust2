@@ -30,7 +30,7 @@ impl<R: Read> BoundedReader<R> {
 }
 
 impl<R: Read> Read for BoundedReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.remain == 0 {
             return Ok(0);
         }
@@ -54,49 +54,63 @@ impl<R: Read> Read for BoundedReader<R> {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct SeekableBoundedReader<R: Read + Seek> {
-    inner: R,
+/// A special reader that shares it's inner reader with other instances and
+/// needs to re-seek every read operation.
+#[derive(Debug)]
+pub(crate) struct SharedBoundedReader<'a, R> {
+    inner: Rc<RefCell<&'a mut R>>,
     cur: u64,
     bounds: (u64, u64),
 }
 
-impl<R: Read + Seek> Seek for SeekableBoundedReader<R> {
-    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+impl<'a, R> Clone for SharedBoundedReader<'a, R> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Rc::clone(&self.inner),
+            cur: self.cur,
+            bounds: self.bounds,
+        }
+    }
+}
+
+impl<'a, R: Read + Seek> Seek for SharedBoundedReader<'a, R> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let new_pos = match pos {
             SeekFrom::Start(pos) => self.bounds.0 as i64 + pos as i64,
             SeekFrom::End(pos) => self.bounds.1 as i64 + pos,
             SeekFrom::Current(pos) => self.cur as i64 + pos,
         };
         if new_pos < 0 {
-            return Err(std::io::Error::other("SeekBeforeStart"));
+            return Err(io::Error::other("SeekBeforeStart"));
         }
         self.cur = new_pos as u64;
-        self.inner.seek(SeekFrom::Start(self.cur))
+        self.inner.borrow_mut().seek(SeekFrom::Start(self.cur))
     }
 }
 
-impl<R: Read + Seek> Read for SeekableBoundedReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+impl<'a, R: Read + Seek> Read for SharedBoundedReader<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.cur >= self.bounds.1 {
             return Ok(0);
         }
-        if self.stream_position()? != self.cur {
-            self.inner.seek(SeekFrom::Start(self.cur))?;
-        }
+
+        let mut inner = self.inner.borrow_mut();
+
+        inner.seek(SeekFrom::Start(self.cur))?;
+
         let buf2 = if buf.len() < (self.bounds.1 - self.cur) as usize {
             buf
         } else {
             &mut buf[..(self.bounds.1 - self.cur) as usize]
         };
-        let size = self.inner.read(buf2)?;
+        let size = inner.read(buf2)?;
         self.cur += size as u64;
         Ok(size)
     }
 }
 
-impl<R: Read + Seek> SeekableBoundedReader<R> {
-    pub fn new(inner: R, bounds: (u64, u64)) -> Self {
+impl<'a, R: Read + Seek> SharedBoundedReader<'a, R> {
+    fn new(inner: Rc<RefCell<&'a mut R>>, bounds: (u64, u64)) -> Self {
         Self {
             inner,
             cur: bounds.0,
@@ -124,7 +138,7 @@ impl<R: Read> Crc32VerifyingReader<R> {
 }
 
 impl<R: Read> Read for Crc32VerifyingReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.remaining <= 0 {
             return Ok(0);
         }
@@ -410,8 +424,7 @@ impl Archive {
         let coder_len = block.coders.len();
         let unpack_size = block.get_unpack_size() as usize;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
-        let input_reader =
-            SeekableBoundedReader::new(reader, (block_offset, block_offset + pack_size as u64));
+        let input_reader = BoundedReader::new(reader, pack_size);
         let mut decoder: Box<dyn Read> = Box::new(input_reader);
         let mut decoder = if coder_len > 0 {
             for (index, coder) in block.ordered_coder_iter() {
@@ -1273,7 +1286,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
 
         assert!(block.total_input_streams > block.total_output_streams);
-        let source = ReaderPointer::new(source);
+        let shared_source = Rc::new(RefCell::new(source));
         let first_pack_stream_index = archive.stream_map.block_first_pack_stream_index[block_index];
         let start_pos = SIGNATURE_HEADER_SIZE + archive.pack_pos;
         let offsets = &archive.stream_map.pack_stream_offsets[first_pack_stream_index..];
@@ -1283,8 +1296,12 @@ impl<R: Read + Seek> ArchiveReader<R> {
         for (i, offset) in offsets[..block.packed_streams.len()].iter().enumerate() {
             let pack_pos = start_pos + offset;
             let pack_size = archive.pack_sizes[first_pack_stream_index + i];
-            let pack_reader =
-                SeekableBoundedReader::new(source.clone(), (pack_pos, pack_pos + pack_size));
+
+            let pack_reader = SharedBoundedReader::new(
+                Rc::clone(&shared_source),
+                (pack_pos, pack_pos + pack_size),
+            );
+
             sources.push(pack_reader);
         }
 
@@ -1345,7 +1362,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
     fn get_in_stream<'r>(
         block: &Block,
-        sources: &[SeekableBoundedReader<ReaderPointer<'r, R>>],
+        sources: &[SharedBoundedReader<'r, R>],
         coder_to_stream_map: &[usize],
         password: &Password,
         in_stream_index: usize,
@@ -1383,7 +1400,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
     fn get_in_stream2<'r>(
         block: &Block,
-        sources: &[SeekableBoundedReader<ReaderPointer<'r, R>>],
+        sources: &[SharedBoundedReader<'r, R>],
         coder_to_stream_map: &[usize],
         password: &Password,
         in_stream_index: usize,
@@ -1679,33 +1696,5 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             }
         }
         Ok(true)
-    }
-}
-
-#[derive(Debug)]
-#[repr(transparent)]
-struct ReaderPointer<'a, R>(Rc<RefCell<&'a mut R>>);
-
-impl<R> Clone for ReaderPointer<'_, R> {
-    fn clone(&self) -> Self {
-        Self(Rc::clone(&self.0))
-    }
-}
-
-impl<'a, R> ReaderPointer<'a, R> {
-    fn new(reader: &'a mut R) -> Self {
-        Self(Rc::new(RefCell::new(reader)))
-    }
-}
-
-impl<R: Read> Read for ReaderPointer<'_, R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.0.borrow_mut().read(buf)
-    }
-}
-
-impl<R: Seek> Seek for ReaderPointer<'_, R> {
-    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        self.0.borrow_mut().seek(pos)
     }
 }
