@@ -1,4 +1,4 @@
-use byteorder::{LittleEndian, WriteBytesExt};
+use crate::ByteWriter;
 
 /// A password used for password protected, encrypted files.
 ///
@@ -55,7 +55,7 @@ impl From<&str> for Password {
         let mut result = Vec::with_capacity(s.len() * 2);
         let utf16 = s.encode_utf16();
         for u in utf16 {
-            let _ = result.write_u16::<LittleEndian>(u);
+            let _ = result.write_u16(u);
         }
         Self(result)
     }

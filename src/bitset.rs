@@ -2,9 +2,6 @@ use std::fmt;
 #[cfg(feature = "compress")]
 use std::io::Write;
 
-#[cfg(feature = "compress")]
-use byteorder::WriteBytesExt;
-
 /// A set of usize values represented as a bit vector.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct BitSet {
@@ -146,6 +143,8 @@ impl fmt::Debug for BitSet {
 
 #[cfg(feature = "compress")]
 pub(crate) fn write_bit_set<W: Write>(mut write: W, bs: &BitSet) -> std::io::Result<()> {
+    use crate::ByteWriter;
+
     let mut cache = 0;
     let mut shift = 7;
     for i in 0..bs.bit_count {

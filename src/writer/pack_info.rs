@@ -21,7 +21,7 @@ impl PackInfo {
         if all_crc_defined {
             header.write_u8(1)?; // all defined
             for crc in self.crcs.iter() {
-                header.write_u32::<LittleEndian>(*crc)?;
+                header.write_u32(*crc)?;
             }
         } else {
             header.write_u8(0)?; // not all defined

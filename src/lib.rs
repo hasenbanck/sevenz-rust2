@@ -59,6 +59,8 @@ mod time;
 #[cfg(feature = "util")]
 mod util;
 
+use std::io::{Read, Write};
+
 pub use archive::*;
 pub use block::*;
 pub use encryption::Password;
@@ -73,3 +75,83 @@ pub use util::decompress::*;
 pub use util::wasm::*;
 #[cfg(feature = "compress")]
 pub use writer::*;
+
+trait ByteReader {
+    fn read_u8(&mut self) -> std::io::Result<u8>;
+
+    #[cfg(feature = "brotli")]
+    fn read_u16(&mut self) -> std::io::Result<u16>;
+
+    fn read_u32(&mut self) -> std::io::Result<u32>;
+
+    fn read_u64(&mut self) -> std::io::Result<u64>;
+}
+
+trait ByteWriter {
+    #[cfg(feature = "compress")]
+    fn write_u8(&mut self, value: u8) -> std::io::Result<()>;
+
+    fn write_u16(&mut self, value: u16) -> std::io::Result<()>;
+
+    #[cfg(feature = "compress")]
+    fn write_u32(&mut self, value: u32) -> std::io::Result<()>;
+
+    #[cfg(feature = "compress")]
+    fn write_u64(&mut self, value: u64) -> std::io::Result<()>;
+}
+
+impl<T: Read> ByteReader for T {
+    #[inline(always)]
+    fn read_u8(&mut self) -> std::io::Result<u8> {
+        let mut buf = [0; 1];
+        self.read_exact(&mut buf)?;
+        Ok(buf[0])
+    }
+
+    #[cfg(feature = "brotli")]
+    #[inline(always)]
+    fn read_u16(&mut self) -> std::io::Result<u16> {
+        let mut buf = [0; 2];
+        self.read_exact(buf.as_mut())?;
+        Ok(u16::from_le_bytes(buf))
+    }
+
+    #[inline(always)]
+    fn read_u32(&mut self) -> std::io::Result<u32> {
+        let mut buf = [0; 4];
+        self.read_exact(buf.as_mut())?;
+        Ok(u32::from_le_bytes(buf))
+    }
+
+    #[inline(always)]
+    fn read_u64(&mut self) -> std::io::Result<u64> {
+        let mut buf = [0; 8];
+        self.read_exact(buf.as_mut())?;
+        Ok(u64::from_le_bytes(buf))
+    }
+}
+
+impl<T: Write> ByteWriter for T {
+    #[cfg(feature = "compress")]
+    #[inline(always)]
+    fn write_u8(&mut self, value: u8) -> std::io::Result<()> {
+        self.write_all(&[value])
+    }
+
+    #[inline(always)]
+    fn write_u16(&mut self, value: u16) -> std::io::Result<()> {
+        self.write_all(&value.to_le_bytes())
+    }
+
+    #[cfg(feature = "compress")]
+    #[inline(always)]
+    fn write_u32(&mut self, value: u32) -> std::io::Result<()> {
+        self.write_all(&value.to_le_bytes())
+    }
+
+    #[cfg(feature = "compress")]
+    #[inline(always)]
+    fn write_u64(&mut self, value: u64) -> std::io::Result<()> {
+        self.write_all(&value.to_le_bytes())
+    }
+}

@@ -60,7 +60,7 @@ impl UnpackInfo {
         header.write_u8(K_CRC)?;
         header.write_u8(1)?; //all defined
         for block in self.blocks.iter() {
-            header.write_u32::<LittleEndian>(block.crc)?;
+            header.write_u32(block.crc)?;
         }
         header.write_u8(K_END)?;
         Ok(())
@@ -91,7 +91,7 @@ impl UnpackInfo {
             }
             for i in 0..f.sub_stream_crcs.len() {
                 let crc = f.sub_stream_crcs[i];
-                header.write_u32::<LittleEndian>(crc)?;
+                header.write_u32(crc)?;
             }
         }
         header.write_u8(K_END)?;

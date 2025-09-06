@@ -15,7 +15,6 @@ use std::{
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::File, path::Path};
 
-use byteorder::{LittleEndian, WriteBytesExt};
 pub(crate) use counting_writer::CountingWriter;
 use crc32fast::Hasher;
 
@@ -25,7 +24,7 @@ pub(crate) use self::seq_reader::SeqReader;
 pub use self::source_reader::SourceReader;
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
 use crate::{
-    ArchiveEntry, Error,
+    ArchiveEntry, ByteWriter, Error,
     archive::*,
     bitset::{BitSet, write_bit_set},
     encoder,
@@ -63,7 +62,7 @@ macro_rules! write_times {
                 out.write_u8(0)?;
                 for file in self.files.iter() {
                     if file.$has_time {
-                        out.$write_fn::<LittleEndian>((file.$time).into())?;
+                        out.$write_fn((file.$time).into())?;
                     }
                 }
                 out.flush()?;
@@ -361,12 +360,12 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             hhw.write_u8(0)?;
             hhw.write_u8(2)?;
             //placeholder for crc: index = 8
-            hhw.write_u32::<LittleEndian>(0)?;
+            hhw.write_u32(0)?;
 
             // start header
-            hhw.write_u64::<LittleEndian>(header_pos - SIGNATURE_HEADER_SIZE)?;
-            hhw.write_u64::<LittleEndian>(0xFFFFFFFF & header.len() as u64)?;
-            hhw.write_u32::<LittleEndian>(crc32)?;
+            hhw.write_u64(header_pos - SIGNATURE_HEADER_SIZE)?;
+            hhw.write_u64(0xFFFFFFFF & header.len() as u64)?;
+            hhw.write_u32(crc32)?;
         }
         let crc32 = crc32fast::hash(&hh[12..]);
         hh[8..12].copy_from_slice(&crc32.to_le_bytes());

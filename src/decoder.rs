@@ -1,6 +1,5 @@
 use std::{io, io::Read};
 
-use byteorder::{LittleEndian, ReadBytesExt};
 #[cfg(feature = "bzip2")]
 use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
@@ -21,7 +20,7 @@ use crate::codec::brotli::BrotliDecoder;
 use crate::codec::lz4::Lz4Decoder;
 #[cfg(feature = "aes256")]
 use crate::encryption::Aes256Sha256Decoder;
-use crate::{Password, archive::EncoderMethod, block::Coder, error::Error};
+use crate::{ByteReader, Password, archive::EncoderMethod, block::Coder, error::Error};
 
 pub enum Decoder<R: Read> {
     Copy(R),
@@ -272,5 +271,5 @@ fn get_lzma2_dic_size(coder: &Coder) -> Result<u32, Error> {
 
 fn get_lzma_dic_size(coder: &Coder) -> io::Result<u32> {
     let mut props = &coder.properties[1..5];
-    props.read_u32::<LittleEndian>()
+    props.read_u32()
 }

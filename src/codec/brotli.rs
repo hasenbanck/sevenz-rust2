@@ -2,11 +2,7 @@
 use std::io::{self, Write};
 use std::io::{Cursor, Read};
 
-#[cfg(feature = "compress")]
-use byteorder::WriteBytesExt;
-use byteorder::{LittleEndian, ReadBytesExt};
-
-use crate::Error;
+use crate::{ByteReader, Error};
 
 /// Magic bytes of a skippable frame format as used in brotli by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;
@@ -135,25 +131,25 @@ impl<R: Read> InnerReader<R> {
                     return Ok(false);
                 }
 
-                match reader.read_u32::<LittleEndian>() {
+                match reader.read_u32() {
                     Ok(magic) => {
                         if magic != SKIPPABLE_FRAME_MAGIC {
                             return Ok(false);
                         }
 
-                        let skippable_size = reader.read_u32::<LittleEndian>()?;
+                        let skippable_size = reader.read_u32()?;
                         if skippable_size != 8 {
                             return Ok(false);
                         }
 
-                        let compressed_size = reader.read_u32::<LittleEndian>()?;
+                        let compressed_size = reader.read_u32()?;
 
-                        let brotli_magic = reader.read_u16::<LittleEndian>()?;
+                        let brotli_magic = reader.read_u16()?;
                         if brotli_magic != BROTLI_MAGIC {
                             return Ok(false);
                         }
 
-                        let _uncompressed_hint = reader.read_u16::<LittleEndian>()?;
+                        let _uncompressed_hint = reader.read_u16()?;
 
                         *remaining_in_frame = compressed_size;
                         *frame_finished = false;
@@ -277,14 +273,16 @@ impl<W: Write> BrotliEncoder<W> {
         compressed_data: &[u8],
         uncompressed_bytes: usize,
     ) -> io::Result<()> {
+        use crate::ByteWriter;
+
         if compressed_data.is_empty() {
             return Ok(());
         }
 
-        writer.write_u32::<LittleEndian>(SKIPPABLE_FRAME_MAGIC)?;
-        writer.write_u32::<LittleEndian>(8)?;
-        writer.write_u32::<LittleEndian>(compressed_data.len() as u32)?;
-        writer.write_u16::<LittleEndian>(BROTLI_MAGIC)?;
+        writer.write_u32(SKIPPABLE_FRAME_MAGIC)?;
+        writer.write_u32(8)?;
+        writer.write_u32(compressed_data.len() as u32)?;
+        writer.write_u16(BROTLI_MAGIC)?;
 
         let hint_value = uncompressed_bytes.div_ceil(HINT_UNIT_SIZE);
         let hint_value = if hint_value > usize::from(u16::MAX) {
@@ -292,7 +290,7 @@ impl<W: Write> BrotliEncoder<W> {
         } else {
             hint_value as u16
         };
-        writer.write_u16::<LittleEndian>(hint_value)?;
+        writer.write_u16(hint_value)?;
 
         writer.write_all(compressed_data)?;
 

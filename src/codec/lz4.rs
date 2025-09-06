@@ -2,10 +2,9 @@
 use std::io::Write;
 use std::io::{Cursor, Read};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use lz4_flex::frame::{FrameDecoder, FrameEncoder, FrameInfo};
 
-use crate::Error;
+use crate::{ByteReader, ByteWriter, Error};
 
 /// Magic bytes of a skippable frame as used in LZ4 by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;
@@ -123,18 +122,18 @@ impl<R: Read> InnerReader<R> {
                     return Ok(false);
                 }
 
-                match reader.read_u32::<LittleEndian>() {
+                match reader.read_u32() {
                     Ok(magic) => {
                         if magic != SKIPPABLE_FRAME_MAGIC {
                             return Ok(false);
                         }
 
-                        let skippable_size = reader.read_u32::<LittleEndian>()?;
+                        let skippable_size = reader.read_u32()?;
                         if skippable_size != 4 {
                             return Ok(false);
                         }
 
-                        let compressed_size = reader.read_u32::<LittleEndian>()?;
+                        let compressed_size = reader.read_u32()?;
 
                         *remaining_in_frame = compressed_size;
                         *frame_finished = false;
@@ -253,9 +252,9 @@ impl<W: Write> Lz4Encoder<W> {
             return Ok(());
         }
 
-        writer.write_u32::<LittleEndian>(SKIPPABLE_FRAME_MAGIC)?;
-        writer.write_u32::<LittleEndian>(4)?;
-        writer.write_u32::<LittleEndian>(compressed_data.len() as u32)?;
+        writer.write_u32(SKIPPABLE_FRAME_MAGIC)?;
+        writer.write_u32(4)?;
+        writer.write_u32(compressed_data.len() as u32)?;
         writer.write_all(compressed_data.as_slice())?;
 
         Ok(())
