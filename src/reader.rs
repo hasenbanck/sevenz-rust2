@@ -36,12 +36,8 @@ impl<R: Read> Read for BoundedReader<R> {
         if self.remain == 0 {
             return Ok(0);
         }
-        let buf2 = if buf.len() < self.remain {
-            buf
-        } else {
-            &mut buf[..self.remain]
-        };
-        let size = self.inner.read(buf2)?;
+        let bound = buf.len().min(self.remain);
+        let size = self.inner.read(&mut buf[..bound])?;
         self.remain -= size;
         Ok(size)
     }
@@ -91,12 +87,8 @@ impl<'a, R: Read + Seek> Read for SharedBoundedReader<'a, R> {
 
         inner.seek(SeekFrom::Start(self.cur))?;
 
-        let buf2 = if buf.len() < (self.bounds.1 - self.cur) as usize {
-            buf
-        } else {
-            &mut buf[..(self.bounds.1 - self.cur) as usize]
-        };
-        let size = inner.read(buf2)?;
+        let bound = buf.len().min((self.bounds.1 - self.cur) as usize);
+        let size = inner.read(&mut buf[..bound])?;
         self.cur += size as u64;
         Ok(size)
     }
