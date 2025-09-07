@@ -1,12 +1,11 @@
 [package]
 description = "A 7z decompressor/compressor written in pure Rust"
 edition = "2024"
-homepage = "https://github.com/hasenbanck/sevenz-rust2"
 keywords = ["7z", "7zip", "sevenz", "decompress"]
 license = "Apache-2.0"
 name = "sevenz-rust2"
 readme = "README.md"
-repository = "https://github.com/hasenbanck/sevenz-rust"
+repository = "https://github.com/hasenbanck/sevenz-rust2"
 rust-version = "1.85"
 version = "0.18.0"
 
