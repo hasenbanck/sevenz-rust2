@@ -2,7 +2,7 @@ use crate::ByteWriter;
 
 /// A password used for password protected, encrypted files.
 ///
-/// Use `[Password::empty()]` to create an empty password when no
+/// Use [`Password::empty()`] to create an empty password when no
 /// password is used.
 ///
 /// You can convert strings easily into password using the Into/From traits:
