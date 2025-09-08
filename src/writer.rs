@@ -24,7 +24,7 @@ pub(crate) use self::seq_reader::SeqReader;
 pub use self::source_reader::SourceReader;
 use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
 use crate::{
-    ArchiveEntry, ByteWriter, Error,
+    ArchiveEntry, AutoFinish, AutoFinisher, ByteWriter, Error,
     archive::*,
     bitset::{BitSet, write_bit_set},
     encoder,
@@ -109,6 +109,11 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             unpack_info: Default::default(),
             encrypt_header: true,
         })
+    }
+
+    /// Returns a wrapper around `self` that will finish the stream on drop.
+    pub fn auto_finish(self) -> AutoFinisher<Self> {
+        AutoFinisher(Some(self))
     }
 
     /// Sets the default compression methods to use for entry data. Default is LZMA2.
@@ -589,6 +594,12 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         windows_attributes,
         write_u32
     );
+}
+
+impl<W: Write + Seek> AutoFinish for ArchiveWriter<W> {
+    fn finish_ignore_error(self) {
+        let _ = self.finish();
+    }
 }
 
 pub(crate) fn write_u64<W: Write>(header: &mut W, mut value: u64) -> std::io::Result<()> {

@@ -59,7 +59,10 @@ mod time;
 #[cfg(feature = "util")]
 mod util;
 
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    ops::{Deref, DerefMut},
+};
 
 pub use archive::*;
 pub use block::*;
@@ -153,5 +156,37 @@ impl<T: Write> ByteWriter for T {
     #[inline(always)]
     fn write_u64(&mut self, value: u64) -> std::io::Result<()> {
         self.write_all(&value.to_le_bytes())
+    }
+}
+
+/// A trait for writers that finishes the stream on drop.
+trait AutoFinish {
+    /// Finish writing the stream without error handling.
+    fn finish_ignore_error(self);
+}
+
+/// A wrapper around a writer that finishes the stream on drop.
+#[allow(private_bounds)]
+pub struct AutoFinisher<T: AutoFinish>(Option<T>);
+
+impl<T: AutoFinish> Drop for AutoFinisher<T> {
+    fn drop(&mut self) {
+        if let Some(writer) = self.0.take() {
+            writer.finish_ignore_error();
+        }
+    }
+}
+
+impl<T: AutoFinish> Deref for AutoFinisher<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().unwrap()
+    }
+}
+
+impl<T: AutoFinish> DerefMut for AutoFinisher<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().unwrap()
     }
 }
