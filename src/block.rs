@@ -19,16 +19,12 @@ pub struct Block {
 }
 
 impl Block {
-    pub(crate) fn find_bind_pair_for_in_stream(&self, index: usize) -> Option<&BindPair> {
-        self.bind_pairs
-            .iter()
-            .find(|bp| bp.in_index == index as u64)
+    pub(crate) fn find_bind_pair_for_in_stream(&self, index: u64) -> Option<&BindPair> {
+        self.bind_pairs.iter().find(|bp| bp.in_index == index)
     }
 
-    pub(crate) fn find_bind_pair_for_out_stream(&self, index: usize) -> Option<&BindPair> {
-        self.bind_pairs
-            .iter()
-            .find(|bp| bp.out_index == index as u64)
+    pub(crate) fn find_bind_pair_for_out_stream(&self, index: u64) -> Option<&BindPair> {
+        self.bind_pairs.iter().find(|bp| bp.out_index == index)
     }
 
     /// Returns the total uncompressed size of data in this block.
@@ -37,7 +33,7 @@ impl Block {
             return 0;
         }
         for i in (0..self.total_output_streams).rev() {
-            if self.find_bind_pair_for_out_stream(i).is_none() {
+            if self.find_bind_pair_for_out_stream(i as u64).is_none() {
                 return self.unpack_sizes[i];
             }
         }
@@ -130,7 +126,7 @@ impl<'a> Iterator for OrderedCoderIter<'a> {
         let i = self.current?;
         self.current = self
             .block
-            .find_bind_pair_for_out_stream(i as usize)
+            .find_bind_pair_for_out_stream(i)
             .map(|bp| bp.in_index);
         self.block
             .coders

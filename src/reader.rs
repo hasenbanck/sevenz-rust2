@@ -954,7 +954,7 @@ impl Archive {
         if num_packed_streams == 1 {
             let mut index = u64::MAX;
             for i in 0..total_in_streams {
-                if block.find_bind_pair_for_in_stream(i).is_none() {
+                if block.find_bind_pair_for_in_stream(i as u64).is_none() {
                     index = i as u64;
                     break;
                 }
@@ -1344,7 +1344,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
 
         let bp = block
-            .find_bind_pair_for_in_stream(in_stream_index)
+            .find_bind_pair_for_in_stream(in_stream_index as u64)
             .ok_or_else(|| {
                 Error::other(format!(
                     "Couldn't find bind pair for stream {in_stream_index}"
