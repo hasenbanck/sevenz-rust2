@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Improved compatibility with third party utilities when creating 7z files (esp. Windows's Explorer and macOS's Finder).
 - Improve docs.rs feature compatibility @sorairolake (#56)
 
 ### Removed

@@ -57,11 +57,8 @@ impl UnpackInfo {
                 write_u64(header, size)?;
             }
         }
-        header.write_u8(K_CRC)?;
-        header.write_u8(1)?; //all defined
-        for block in self.blocks.iter() {
-            header.write_u32(block.crc)?;
-        }
+        // 7zip doesn't write CRC values in the folder section of the unpack info. Instead,
+        // it writes it only in the substreams info (even for non-solid archives).
         header.write_u8(K_END)?;
         Ok(())
     }
@@ -69,33 +66,58 @@ impl UnpackInfo {
     pub(crate) fn write_substreams<H: Write>(&self, header: &mut H) -> std::io::Result<()> {
         header.write_u8(K_SUB_STREAMS_INFO)?;
 
-        header.write_u8(K_NUM_UNPACK_STREAM)?;
-        for f in &self.blocks {
-            write_u64(header, f.num_sub_unpack_streams)?;
-        }
-        header.write_u8(K_SIZE)?;
-        for f in &self.blocks {
-            if f.sub_stream_sizes.len() <= 1 {
-                continue;
-            }
-            for i in 0..f.sub_stream_sizes.len() - 1 {
-                let size = f.sub_stream_sizes[i];
-                write_u64(header, size)?;
+        // Only write K_NUM_UNPACK_STREAM if any folder has != 1 substream.
+        let needs_num_unpack_stream = self.blocks.iter().any(|f| f.num_sub_unpack_streams != 1);
+
+        if needs_num_unpack_stream {
+            header.write_u8(K_NUM_UNPACK_STREAM)?;
+            for f in &self.blocks {
+                write_u64(header, f.num_sub_unpack_streams)?;
             }
         }
-        header.write_u8(K_CRC)?;
-        header.write_u8(1)?; // all crc defined
-        for f in &self.blocks {
-            if f.sub_stream_crcs.len() <= 1 && f.crc != 0 {
-                continue;
+
+        // Only write K_SIZE if there are folders with > 1 substream.
+        let needs_sizes = self.blocks.iter().any(|f| f.sub_stream_sizes.len() > 1);
+
+        if needs_sizes {
+            header.write_u8(K_SIZE)?;
+            for f in &self.blocks {
+                if f.sub_stream_sizes.len() > 1 {
+                    debug_assert_eq!(f.sub_stream_sizes.len(), f.num_sub_unpack_streams as usize);
+
+                    // Write N-1 sizes (last size is calculated).
+                    for i in 0..f.sub_stream_sizes.len() - 1 {
+                        let size = f.sub_stream_sizes[i];
+                        write_u64(header, size)?;
+                    }
+                }
             }
-            for i in 0..f.sub_stream_crcs.len() {
-                let crc = f.sub_stream_crcs[i];
+        }
+
+        // We always write the CRC values in the substreams info.
+        let mut crcs_to_write = Vec::new();
+        for f in &self.blocks {
+            if f.num_sub_unpack_streams > 1 {
+                // Multiple substreams - write all CRCs.
+                for &crc in &f.sub_stream_crcs {
+                    crcs_to_write.push(crc);
+                }
+            } else if f.num_sub_unpack_streams == 1 {
+                // Single substream - write CRC here and not in the folder section.
+                debug_assert!(f.sub_stream_crcs.is_empty());
+                crcs_to_write.push(f.crc);
+            }
+        }
+
+        if !crcs_to_write.is_empty() {
+            header.write_u8(K_CRC)?;
+            header.write_u8(1)?; // all CRCs defined.
+            for crc in crcs_to_write {
                 header.write_u32(crc)?;
             }
         }
-        header.write_u8(K_END)?;
 
+        header.write_u8(K_END)?;
         Ok(())
     }
 }
