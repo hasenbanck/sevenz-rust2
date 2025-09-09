@@ -1350,14 +1350,14 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     "Couldn't find bind pair for stream {in_stream_index}"
                 ))
             })?;
-        let in_stream_index = bp.out_index as usize;
+        let out_stream_index = bp.out_index as usize;
 
-        let coder = &block.coders[in_stream_index];
-        let start_index = coder_to_stream_map[in_stream_index];
+        let coder = &block.coders[out_stream_index];
+        let start_index = coder_to_stream_map[out_stream_index];
         if start_index == usize::MAX {
             return Err(Error::other("in_stream_index out of range"));
         }
-        let uncompressed_len = block.unpack_sizes[in_stream_index] as usize;
+        let uncompressed_len = block.unpack_sizes[out_stream_index] as usize;
         if coder.num_in_streams == 1 {
             let input = Self::get_in_stream(
                 block,
