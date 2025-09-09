@@ -1335,11 +1335,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
     where
         R: 'r,
     {
-        let index = block
+        if let Some(index) = block
             .packed_streams
             .iter()
-            .position(|&i| i == in_stream_index as u64);
-        if let Some(index) = index {
+            .position(|&i| i == in_stream_index as u64)
+        {
             return Ok(Box::new(sources[index].clone()));
         }
 
