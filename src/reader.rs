@@ -829,6 +829,7 @@ impl Archive {
                     "sum of unpack sizes of block exceeds total unpack size",
                 ));
             }
+            // Calculate the last size from the total minus the sum of N-1 sizes.
             sub_streams_info.unpack_sizes[next_unpack_stream] = block.get_unpack_size() - sum;
             next_unpack_stream += 1;
         }
@@ -1201,6 +1202,26 @@ impl<R: Read + Seek> ArchiveReader<R> {
             + archive.pack_pos
             + archive.stream_map.pack_stream_offsets[first_pack_stream_index];
 
+        let (mut has_crc, mut crc) = (block.has_crc, block.crc);
+
+        // Single stream blocks might have it's CRC stored in the single substream information.
+        if !has_crc
+            && block.num_unpack_sub_streams == 1
+            && let Some(sub_streams_info) = archive.sub_streams_info.as_ref()
+        {
+            let mut substream_index = 0;
+            for i in 0..block_index {
+                substream_index += archive.blocks[i].num_unpack_sub_streams;
+            }
+
+            // Only when there is a single stream, we can use it's CRC to verify the compressed block data.
+            // Multiple streams would contain the CRC of the compressed data for each file in the block.
+            if sub_streams_info.has_crc.contains(substream_index) {
+                has_crc = true;
+                crc = sub_streams_info.crcs[substream_index];
+            }
+        }
+
         source.seek(SeekFrom::Start(block_offset))?;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
 
@@ -1209,7 +1230,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         for (index, coder) in block.ordered_coder_iter() {
             if coder.num_in_streams != 1 || coder.num_out_streams != 1 {
                 return Err(Error::unsupported(
-                    "Multi input/output stream coders are not yet supported",
+                    "Multi input/output stream coders are not supported",
                 ));
             }
             let next = add_decoder(
@@ -1222,11 +1243,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
             )?;
             decoder = Box::new(next);
         }
-        if block.has_crc {
+        if has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
                 block.get_unpack_size() as usize,
-                block.crc,
+                crc,
             ));
         }
 

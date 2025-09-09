@@ -130,7 +130,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         self.encrypt_header = enabled;
     }
 
-    /// Adds an archive `entry` with data from `reader`.
+    /// Non-solid compression - Adds an archive `entry` with data from `reader`.
     ///
     /// # Example
     /// ```no_run
@@ -363,7 +363,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             hhw.write_all(SEVEN_Z_SIGNATURE)?;
             //version
             hhw.write_u8(0)?;
-            hhw.write_u8(2)?;
+            hhw.write_u8(4)?;
             //placeholder for crc: index = 8
             hhw.write_u32(0)?;
 
