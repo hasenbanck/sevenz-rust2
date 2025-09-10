@@ -10,30 +10,26 @@ fn main() {
     let my_file_name = "7zFormat.txt";
 
     for block_index in 0..block_count {
-        let forder_dec = BlockDecoder::new(1, block_index, &archive, &password, &mut file);
+        let block_decoder = BlockDecoder::new(1, block_index, &archive, &password, &mut file);
 
-        if !forder_dec
+        if !block_decoder
             .entries()
             .iter()
             .any(|entry| entry.name() == my_file_name)
         {
-            // skip the folder if it does not contain the file we want
+            // skip the block if it does not contain the file we want
             continue;
         }
         let dest = PathBuf::from("examples/data/sample_mt/");
 
-        forder_dec
-            .for_each_entries(&mut |entry, reader| {
-                if entry.name() == my_file_name {
-                    //only extract the file we want
-                    let dest = dest.join(entry.name());
-                    sevenz_rust2::default_entry_extract_fn(entry, reader, &dest)?;
-                } else {
-                    //skip other files
-                    std::io::copy(reader, &mut std::io::sink())?;
-                }
-                Ok(true)
-            })
-            .expect("ok");
+        let mut entries_iter = block_decoder.entries_iter().expect("create entries iter");
+        while let Some(Ok(entry)) = entries_iter.next_entry() {
+            if entry.name() == my_file_name {
+                // only extract the file we want
+                let dest = dest.join(entry.name());
+                sevenz_rust2::default_entry_extract_fn(&entry, &mut entries_iter, &dest)
+                    .expect("extract ok");
+            }
+        }
     }
 }

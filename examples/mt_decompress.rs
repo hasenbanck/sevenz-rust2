@@ -37,13 +37,12 @@ fn main() {
             let block_decoder = BlockDecoder::new(4, block_index, &archive, &password, &mut source);
 
             let dest = PathBuf::from("examples/data/sample_mt/");
-            block_decoder
-                .for_each_entries(&mut |entry, reader| {
-                    let dest = dest.join(entry.name());
-                    sevenz_rust2::default_entry_extract_fn(entry, reader, &dest)?;
-                    Ok(true)
-                })
-                .expect("ok");
+            let mut entries_iter = block_decoder.entries_iter().expect("create entries iter");
+            while let Some(Ok(entry)) = entries_iter.next_entry() {
+                let dest = dest.join(entry.name());
+                sevenz_rust2::default_entry_extract_fn(&entry, &mut entries_iter, &dest)
+                    .expect("extract ok");
+            }
         });
         threads.push(handle);
     }

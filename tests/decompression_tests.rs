@@ -242,12 +242,11 @@ fn test_bcj2() {
         let password = Password::empty();
         let fd = BlockDecoder::new(1, i, &archive, &password, &mut file);
         println!("entry_count:{}", fd.entry_count());
-        fd.for_each_entries(&mut |entry, reader| {
+        let mut entries_iter = fd.entries_iter().unwrap();
+        while let Some(Ok(entry)) = entries_iter.next_entry() {
             println!("{}=>{:?}", entry.has_stream, entry.name());
-            std::io::copy(reader, &mut std::io::sink())?;
-            Ok(true)
-        })
-        .unwrap();
+            std::io::copy(&mut entries_iter, &mut std::io::sink()).unwrap();
+        }
     }
 }
 
@@ -294,8 +293,27 @@ fn test_get_file_by_path() {
         .collect();
 
     for path in paths.iter() {
-        let data0 = non_solid_reader.read_file(path.as_str()).unwrap();
-        let data1 = solid_reader.read_file(path.as_str()).unwrap();
+        let decoder0 = non_solid_reader
+            .block_decoder_for_file(path.as_str())
+            .unwrap();
+        let mut entries_iter0 = decoder0.entries_iter().unwrap();
+        let mut data0 = Vec::new();
+        while let Some(Ok(entry)) = entries_iter0.next_entry() {
+            if entry.name() == path.as_str() {
+                std::io::copy(&mut entries_iter0, &mut data0).unwrap();
+                break;
+            }
+        }
+
+        let decoder1 = solid_reader.block_decoder_for_file(path.as_str()).unwrap();
+        let mut entries_iter1 = decoder1.entries_iter().unwrap();
+        let mut data1 = Vec::new();
+        while let Some(Ok(entry)) = entries_iter1.next_entry() {
+            if entry.name() == path.as_str() {
+                std::io::copy(&mut entries_iter1, &mut data1).unwrap();
+                break;
+            }
+        }
 
         assert!(!data0.is_empty());
         assert!(!data1.is_empty());

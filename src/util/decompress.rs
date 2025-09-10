@@ -136,10 +136,25 @@ fn decompress_impl<R: Read + Seek>(
     if !dest.exists() {
         std::fs::create_dir_all(&dest)?;
     }
-    seven.for_each_entries(|entry, reader| {
+
+    // Process empty entries first (directories and empty files).
+    // This ensures directories exist with proper attributes before files are created inside them.
+    let mut empty_iter = seven.empty_entries_iter();
+    while let Some(entry) = empty_iter.next_entry() {
         let dest_path = dest.join(entry.name());
-        extract_fn(entry, reader, &dest_path)
-    })?;
+        let mut dummy_reader: &[u8] = &[];
+        extract_fn(entry, &mut dummy_reader, &dest_path)?;
+    }
+
+    // Then process entries with content.
+    let mut file_iter = seven.block_iter();
+    while let Some(decoder) = file_iter.next_block_decoder() {
+        let mut entries_iter = decoder.entries_iter()?;
+        while let Some(Ok(entry)) = entries_iter.next_entry() {
+            let dest_path = dest.join(entry.name());
+            extract_fn(&entry, &mut entries_iter, &dest_path)?;
+        }
+    }
 
     Ok(())
 }
