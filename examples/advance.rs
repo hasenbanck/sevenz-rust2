@@ -32,42 +32,51 @@ fn main() {
     let time = Instant::now();
 
     // start to compress
-    let mut sz = ArchiveWriter::create(&dest).expect("create writer ok");
-    sz.set_encrypt_header(true);
+    let mut archive_writer = ArchiveWriter::create(&dest).expect("create writer ok");
+    archive_writer.set_encrypt_header(true);
 
     #[cfg(feature = "aes256")]
     {
-        sz.set_content_methods(vec![
+        archive_writer.set_content_methods(vec![
             AesEncoderOptions::new(Password::new("sevenz-rust")).into(),
             // We configure LZMA2 to use multiple threads to encode the data.
             Lzma2Options::from_level_mt(9, 4, 1 << 18).into(),
         ]);
     }
 
-    sz.push_source_path(&src, |_| true).expect("pack ok");
+    archive_writer
+        .push_source_path(&src, |_| true)
+        .expect("pack ok");
     println!("finish");
-    sz.finish().expect("compress ok");
+    archive_writer.finish().expect("compress ok");
     println!("compress took {:?}/{:?}", time.elapsed(), dest);
     if src.exists() {
         let _ = std::fs::remove_dir_all(&src);
     }
     assert!(dest.exists());
     let dest_file = std::fs::File::open(&dest).unwrap();
-    let m = dest_file.metadata().unwrap();
+    let metadata = dest_file.metadata().unwrap();
     println!("src  file len:{unpack_size:?}");
-    println!("dest file len:{:?}", m.len());
-    println!("ratio:{:?}", m.len() as f64 / unpack_size as f64);
+    println!("dest file len:{:?}", metadata.len());
+    println!("ratio:{:?}", metadata.len() as f64 / unpack_size as f64);
 
     // start to decompress
-    let mut sz = ArchiveReader::open(&dest, "sevenz-rust".into()).expect("create reader ok");
-    assert_eq!(contents.len(), sz.archive().files.len());
-    assert_eq!(1, sz.archive().blocks.len());
-    sz.for_each_entries(|entry, reader| {
-        let content = std::io::read_to_string(reader)?;
-        assert_eq!(content, contents[entry.name()]);
-        Ok(true)
-    })
-    .expect("decompress ok");
+    let mut archive_reader =
+        ArchiveReader::open(&dest, "sevenz-rust".into()).expect("create reader ok");
+    assert_eq!(contents.len(), archive_reader.archive().files.len());
+    assert_eq!(1, archive_reader.archive().blocks.len());
+
+    let mut block_iter = archive_reader.block_iter();
+    while let Some(block_decoder) = block_iter.next_block_decoder() {
+        let mut entries_iter = block_decoder.entries_iter().expect("create entries iter");
+        while let Some(Ok(entry)) = entries_iter.next_entry() {
+            if entry.has_stream() {
+                let content = std::io::read_to_string(&mut entries_iter).expect("read content");
+                assert_eq!(content, contents[entry.name()]);
+            }
+        }
+    }
+
     let _ = std::fs::remove_file(dest);
 }
 

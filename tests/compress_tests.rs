@@ -229,7 +229,17 @@ fn test_compression_method(methods: &[EncoderConfiguration]) {
             .any(|file| file.name() == "data/decompress_x86.exe")
     );
 
-    let data = reader.read_file("data/decompress_x86.exe").unwrap();
+    let decoder = reader
+        .block_decoder_for_file("data/decompress_x86.exe")
+        .unwrap();
+    let mut entries_iter = decoder.entries_iter().unwrap();
+    let mut data = Vec::new();
+    while let Some(Ok(entry)) = entries_iter.next_entry() {
+        if entry.name() == "data/decompress_x86.exe" {
+            std::io::copy(&mut entries_iter, &mut data).unwrap();
+            break;
+        }
+    }
 
     fn hash(data: &[u8]) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
