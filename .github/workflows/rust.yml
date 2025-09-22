@@ -87,7 +87,7 @@ jobs:
           toolchain: stable
           components: rustfmt
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.8.0
+        uses: Swatinem/rust-cache@v2.8.1
       - name: Check code formatted
         run: cargo fmt --all -- --check
 
@@ -103,7 +103,7 @@ jobs:
           toolchain: stable
           components: clippy
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.8.0
+        uses: Swatinem/rust-cache@v2.8.1
 
       - name: Check no lint warnings
         run: cargo clippy --workspace -- -D warnings
@@ -123,7 +123,7 @@ jobs:
           toolchain: stable
           components: clippy
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.8.0
+        uses: Swatinem/rust-cache@v2.8.1
 
       - name: Create solid archive
         shell: bash
