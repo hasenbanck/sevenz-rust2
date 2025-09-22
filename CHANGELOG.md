@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Breaking change: Rename identifiers to follow Rust API Guidelines @sorairolake (#59)
+- Marked the closure based reader API as deprecated.
+
+### Added
+
+- `ArchiveReader::block_iter()`, `ArchiveReader::block_decoder()` , `ArchiveReader::block_entries_iter()` and
+  `ArchiveReader::block_decoder_for_file()` functions added, that will replace the old closure based approach in the
+  future. They instead use a lending iterator based approach. This allows user to better control the decompression
+  IO.
 
 ### Updated
 

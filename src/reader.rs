@@ -8,7 +8,6 @@ use std::{
     rc::Rc,
 };
 
-use crc32fast::Hasher;
 use lzma_rust2::filter::bcj2::Bcj2Reader;
 
 use crate::{
@@ -106,7 +105,7 @@ impl<'a, R: Read + Seek> SharedBoundedReader<'a, R> {
 
 struct Crc32VerifyingReader<R> {
     inner: R,
-    crc_digest: Hasher,
+    crc_digest: crc32fast::Hasher,
     expected_value: u64,
     remaining: i64,
 }
@@ -115,7 +114,7 @@ impl<R: Read> Crc32VerifyingReader<R> {
     fn new(inner: R, remaining: usize, expected_value: u64) -> Self {
         Self {
             inner,
-            crc_digest: Hasher::new(),
+            crc_digest: crc32fast::Hasher::new(),
             expected_value,
             remaining: remaining as i64,
         }
@@ -133,9 +132,13 @@ impl<R: Read> Read for Crc32VerifyingReader<R> {
             self.crc_digest.update(&buf[..size]);
         }
         if self.remaining <= 0 {
-            let d = std::mem::replace(&mut self.crc_digest, Hasher::new()).finalize();
-            if d as u64 != self.expected_value {
-                return Err(std::io::Error::other(Error::ChecksumVerificationFailed));
+            let computed_crc =
+                std::mem::replace(&mut self.crc_digest, crc32fast::Hasher::new()).finalize();
+            if computed_crc as u64 != self.expected_value {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    Error::ChecksumVerificationFailed,
+                ));
             }
         }
         Ok(size)
@@ -166,7 +169,7 @@ impl Archive {
     /// Read 7z file archive info use the specified `reader`.
     ///
     /// # Parameters
-    /// - `reader`   - the reader of the 7z filr archive
+    /// - `reader`   - the reader of the 7z file archive
     /// - `password` - archive password encoded in utf16 little endian
     ///
     /// # Example
@@ -233,8 +236,8 @@ impl Archive {
     ) -> Result<StartHeader, Error> {
         let mut buf = [0; 20];
         reader.read_exact(&mut buf)?;
-        let crc32 = crc32fast::hash(&buf);
-        if crc32 != start_header_crc {
+        let computed_crc = crc32fast::hash(&buf);
+        if computed_crc != start_header_crc {
             return Err(Error::ChecksumVerificationFailed);
         }
         let mut buf_read = buf.as_slice();
@@ -372,7 +375,7 @@ impl Archive {
         } else {
             buf_reader
         };
-        let mut header = std::io::Cursor::new(&mut header);
+        let mut header = io::Cursor::new(&mut header);
         if nid == K_HEADER {
             Self::read_header(&mut header, &mut archive)?;
         } else {
@@ -1429,22 +1432,42 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// Attention about solid archive:
     /// When decoding a solid archive, the data to be decompressed depends on the data in front of it,
     /// you cannot simply skip the previous data and only decompress the data in the back.
+    #[deprecated(
+        since = "0.19.0",
+        note = "Use `block_iter` instead for a lending iterator approach"
+    )]
     pub fn for_each_entries<F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>>(
         &mut self,
         mut each: F,
     ) -> Result<(), Error> {
         let block_count = self.archive.blocks.len();
+        let is_encrypted = !self.password.is_empty();
+
         for block_index in 0..block_count {
-            let forder_dec = BlockDecoder::new(
+            let block_decoder = BlockDecoder::new(
                 self.thread_count,
                 block_index,
                 &self.archive,
                 &self.password,
                 &mut self.source,
             );
-            forder_dec.for_each_entries(&mut each)?;
+
+            let mut iter = block_decoder.entries_iter()?;
+
+            while let Some(Ok(entry)) = iter.next_entry() {
+                if entry.has_stream && entry.size > 0 {
+                    if !each(&entry, &mut iter).map_err(|e| e.maybe_bad_password(is_encrypted))? {
+                        return Ok(());
+                    }
+                } else {
+                    let empty_reader: &mut dyn Read = &mut ([0u8; 0].as_slice());
+                    if !each(&entry, empty_reader)? {
+                        return Ok(());
+                    }
+                }
+            }
         }
-        // decode empty files
+
         for file_index in 0..self.archive.files.len() {
             let block_index = self.archive.stream_map.file_block_index[file_index];
             if block_index.is_none() {
@@ -1463,76 +1486,151 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// # Notice
     /// This function is very inefficient when used with solid archives, since
     /// it needs to decode all data before the actual file.
+    #[deprecated(
+        since = "0.19.0",
+        note = "Use `block_decoder_for_file` instead for explicit handling of solid archives"
+    )]
     pub fn read_file(&mut self, name: &str) -> Result<Vec<u8>, Error> {
+        let decoder = self.block_decoder_for_file(name)?;
+        let mut iter = decoder.entries_iter()?;
+
+        while let Some(Ok(entry)) = iter.next_entry() {
+            if entry.name == name {
+                if !entry.has_stream {
+                    return Ok(Vec::new());
+                }
+
+                let mut data = Vec::with_capacity(entry.size as usize);
+                iter.read_to_end(&mut data)?;
+                return Ok(data);
+            }
+        }
+
+        Err(Error::FileNotFound)
+    }
+
+    /// Returns an iterator over empty entries (directories and zero-size files).
+    ///
+    /// Empty entries are files that don't have associated data blocks, including:
+    /// - Directories
+    /// - Empty files
+    ///
+    /// This iterator is useful for processing directory structures and empty files
+    /// before extracting file content with [`file_block_iter()`]. This allows for
+    /// proper directory creation with permissions and attributes.
+    ///
+    /// # Example
+    /// ```
+    /// use sevenz_rust2::{ArchiveReader, Password};
+    ///
+    /// let mut reader = ArchiveReader::open("tests/resources/solid.7z", Password::empty()).unwrap();
+    ///
+    /// // First, process empty entries (directories, zero-size files).
+    /// let mut empty_iter = reader.empty_entries_iter();
+    /// while let Some(entry) = empty_iter.next_entry() {
+    ///     if entry.is_directory() {
+    ///         // Create directory with proper permissions.
+    ///     } else {
+    ///         // Create empty file.
+    ///     }
+    /// }
+    ///
+    /// // Then, process files with content.
+    /// let mut block_iter = reader.block_iter();
+    /// while let Some(decoder) = block_iter.next_block_decoder() {
+    ///     // Process files with content...
+    /// }
+    /// ```
+    pub fn empty_entries_iter(&self) -> EmptyEntriesIterator<'_> {
+        EmptyEntriesIterator::new(&self.archive)
+    }
+
+    /// Returns a [`BlockIterator`] that iterates over all blocks in the archive.
+    ///
+    /// The iterator provides block decoder for all blocks, which then can in turn be used
+    /// to extract all files inside a block.
+    ///
+    /// Use [`empty_entries_iter()`] to create directories and empty file beforehand.
+    ///
+    /// # Returns
+    /// A [`BlockIterator`] for all blocks containing files with content in the archive.
+    ///
+    /// # Performance Note
+    /// For solid archives, reading files may require decompressing all preceding
+    /// files in the same block. The iterator handles this automatically but the
+    /// cost is inherent to solid compression.
+    pub fn block_iter(&mut self) -> BlockIterator<'_, R> {
+        BlockIterator::new(self)
+    }
+
+    /// Creates a [`BlockDecoder`] for reading entries from a specific block.
+    ///
+    /// # Arguments
+    /// * `block_index` - Index of the block to decode.
+    ///
+    /// # Returns
+    /// A [`BlockDecoder`] if the block index is valid, or `None` if the index is out of bounds.
+    pub fn block_decoder(&mut self, block_index: usize) -> Option<BlockDecoder<'_, R>> {
+        if block_index >= self.archive.blocks.len() {
+            return None;
+        }
+
+        Some(BlockDecoder::new(
+            self.thread_count,
+            block_index,
+            &self.archive,
+            &self.password,
+            &mut self.source,
+        ))
+    }
+
+    /// Returns a [`BlockEntriesIterator`] for iterating over entries in a specific block.
+    ///
+    /// This is a convenience function that combines [`block_decoder`] and [`BlockDecoder::entries_iter`]
+    /// into a single call for easier iteration over block entries.
+    ///
+    /// # Arguments
+    /// * `block_index` - Index of the block to iterate over.
+    ///
+    /// # Returns
+    /// A [`BlockEntriesIterator`] for the block's entries.
+    pub fn block_entries_iter(
+        &mut self,
+        block_index: usize,
+    ) -> Result<BlockEntriesIterator<'_>, Error> {
+        let Some(decoder) = self.block_decoder(block_index) else {
+            return Err(Error::other("Invalid block index"));
+        };
+        decoder.entries_iter()
+    }
+
+    /// Returns a [`BlockDecoder`] for the block containing the specified file.
+    ///
+    /// # Arguments
+    /// * `name` - Path of the file within the archive.
+    ///
+    /// # Returns
+    /// A [`BlockDecoder`] positioned at the start of the block containing the file.
+    /// The caller must iterate through entries to find and read the target file.
+    ///
+    /// # Performance Note
+    /// For solid archives, reading a file may require decompressing all preceding
+    /// files in the same block. This is not a hidden cost - it's the nature of
+    /// solid compression.
+    pub fn block_decoder_for_file(&mut self, name: &str) -> Result<BlockDecoder<'_, R>, Error> {
         let index_entry = *self.index.get(name).ok_or(Error::FileNotFound)?;
         let file = &self.archive.files[index_entry.file_index];
 
         if !file.has_stream {
-            return Ok(Vec::new());
+            return Err(Error::other("File has no stream"));
         }
 
         let block_index = index_entry
             .block_index
             .ok_or_else(|| Error::other("File has no associated block"))?;
 
-        match self.archive.is_solid {
-            true => {
-                let mut result = None;
-                let target_file_ptr = file as *const _;
-
-                BlockDecoder::new(
-                    self.thread_count,
-                    block_index,
-                    &self.archive,
-                    &self.password,
-                    &mut self.source,
-                )
-                .for_each_entries(&mut |archive_entry, reader| {
-                    let mut data = Vec::with_capacity(archive_entry.size as usize);
-                    reader.read_to_end(&mut data)?;
-
-                    if std::ptr::eq(archive_entry, target_file_ptr) {
-                        result = Some(data);
-                        Ok(false)
-                    } else {
-                        Ok(true)
-                    }
-                })?;
-
-                result.ok_or(Error::FileNotFound)
-            }
-            false => {
-                let pack_index = self.archive.stream_map.block_first_pack_stream_index[block_index];
-                let pack_offset = self.archive.stream_map.pack_stream_offsets[pack_index];
-                let block_offset = SIGNATURE_HEADER_SIZE + self.archive.pack_pos + pack_offset;
-
-                self.source.seek(SeekFrom::Start(block_offset))?;
-
-                let (mut block_reader, _size) = Self::build_decode_stack(
-                    &mut self.source,
-                    &self.archive,
-                    block_index,
-                    &self.password,
-                    self.thread_count,
-                )?;
-
-                let mut data = Vec::with_capacity(file.size as usize);
-                let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
-
-                if file.has_crc {
-                    decoder = Box::new(Crc32VerifyingReader::new(
-                        decoder,
-                        file.size as usize,
-                        file.crc,
-                    ));
-                }
-
-                decoder.read_to_end(&mut data)?;
-
-                Ok(data)
-            }
-        }
+        self.block_decoder(block_index)
+            .ok_or_else(|| Error::other("Invalid block index"))
     }
 
     /// Get the compression method(s) used for a specific file in the archive.
@@ -1634,51 +1732,234 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     /// it, you cannot simply skip the previous data and only decompress the data in the back.
     ///
     /// Non-solid archives use one block per file and allow more effective decoding of single files.
+    #[deprecated(
+        since = "0.19.0",
+        note = "Use `entries_iter` instead for a lending iterator approach"
+    )]
     pub fn for_each_entries<F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>>(
         self,
         each: &mut F,
     ) -> Result<bool, Error> {
-        let Self {
-            thread_count,
-            block_index,
-            archive,
-            password,
-            source,
-        } = self;
-        let (mut block_reader, _size) = ArchiveReader::build_decode_stack(
-            source,
-            archive,
-            block_index,
-            password,
-            thread_count,
-        )?;
-        let start = archive.stream_map.block_first_file_index[block_index];
-        let file_count = archive.blocks[block_index].num_unpack_sub_streams;
+        let is_encrypted = !self.password.is_empty();
 
-        for file_index in start..(file_count + start) {
-            let file = &archive.files[file_index];
-            if file.has_stream && file.size > 0 {
-                let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
-                if file.has_crc {
-                    decoder = Box::new(Crc32VerifyingReader::new(
-                        decoder,
-                        file.size as usize,
-                        file.crc,
-                    ));
-                }
-                if !each(file, &mut decoder)
-                    .map_err(|e| e.maybe_bad_password(!self.password.is_empty()))?
+        let mut iter = self.entries_iter()?;
+
+        while let Some(Ok(entry)) = iter.next_entry() {
+            if entry.has_stream && entry.size > 0 {
+                if !each(&entry, &mut iter)
+                    .map_err(|error| error.maybe_bad_password(is_encrypted))?
                 {
                     return Ok(false);
                 }
             } else {
                 let empty_reader: &mut dyn Read = &mut ([0u8; 0].as_slice());
-                if !each(file, empty_reader)? {
+                if !each(&entry, empty_reader)? {
                     return Ok(false);
                 }
             }
         }
         Ok(true)
+    }
+
+    /// Returns an iterator over entries in this block with their streaming readers.
+    pub fn entries_iter(self) -> Result<BlockEntriesIterator<'a>, Error> {
+        let start_index = self.archive.stream_map.block_first_file_index[self.block_index];
+        let file_count = self.archive.blocks[self.block_index].num_unpack_sub_streams;
+        let end_index = start_index + file_count;
+        let entries = self.archive.files[start_index..end_index].to_vec();
+        let (block_reader, _size) = ArchiveReader::build_decode_stack(
+            self.source,
+            self.archive,
+            self.block_index,
+            self.password,
+            self.thread_count,
+        )?;
+
+        Ok(BlockEntriesIterator {
+            decoder: block_reader,
+            entries,
+            current_index: 0,
+            bytes_remaining: 0,
+            has_crc: false,
+            expected_crc: 0,
+            crc_hasher: None,
+        })
+    }
+}
+
+/// A block iterator for files in the archive.
+///
+/// This provides a way to iterate through all blocks in the archive that contain files.
+pub struct BlockIterator<'a, R: Read + Seek> {
+    reader: &'a mut ArchiveReader<R>,
+    current_block_index: usize,
+}
+
+impl<'a, R: Read + Seek> BlockIterator<'a, R> {
+    /// Creates a new [`BlockIterator`] for iterating over blocks.
+    pub fn new(reader: &'a mut ArchiveReader<R>) -> Self {
+        Self {
+            reader,
+            current_block_index: 0,
+        }
+    }
+
+    /// Returns the next block decoder, or None when all blocks have been processed.
+    pub fn next_block_decoder(&mut self) -> Option<BlockDecoder<'_, R>> {
+        if self.current_block_index < self.reader.archive.blocks.len() {
+            let block_index = self.current_block_index;
+            self.current_block_index += 1;
+            self.reader.block_decoder(block_index)
+        } else {
+            None
+        }
+    }
+}
+
+/// An iterator for empty entries in the archive (directories and empty files).
+///
+/// These entries don't have associated data blocks and typically include:
+/// - Directories
+/// - Empty files
+///
+/// This iterator allows users to process these entries first, which is useful for
+/// creating directory structures with proper permissions before extracting file content.
+pub struct EmptyEntriesIterator<'a> {
+    archive: &'a Archive,
+    file_indices: Vec<usize>,
+    current_index: usize,
+}
+
+impl<'a> EmptyEntriesIterator<'a> {
+    /// Creates a new [`EmptyEntriesIterator`] for the given archive.
+    pub fn new(archive: &'a Archive) -> Self {
+        let mut file_indices = Vec::new();
+
+        for file_index in 0..archive.files.len() {
+            let block_index = archive.stream_map.file_block_index[file_index];
+            if block_index.is_none() {
+                file_indices.push(file_index);
+            }
+        }
+
+        Self {
+            archive,
+            file_indices,
+            current_index: 0,
+        }
+    }
+
+    /// Returns the next empty entry, or `None` when all empty entries have been processed.
+    pub fn next_entry(&mut self) -> Option<&ArchiveEntry> {
+        if self.current_index < self.file_indices.len() {
+            let file_index = self.file_indices[self.current_index];
+            self.current_index += 1;
+            Some(&self.archive.files[file_index])
+        } else {
+            None
+        }
+    }
+}
+
+/// A lending iterator that yields entries from a specific block and allows reading their data.
+pub struct BlockEntriesIterator<'a> {
+    decoder: Box<dyn Read + 'a>,
+    entries: Vec<ArchiveEntry>,
+    current_index: usize,
+    bytes_remaining: usize,
+    has_crc: bool,
+    expected_crc: u32,
+    crc_hasher: Option<crc32fast::Hasher>,
+}
+
+impl<'a> BlockEntriesIterator<'a> {
+    /// Moves to the next entry in the iterator and returns it.
+    pub fn next_entry(&mut self) -> Option<Result<ArchiveEntry, Error>> {
+        if let Err(error) = self.finish_current_entry() {
+            return Some(Err(error));
+        }
+
+        if self.current_index >= self.entries.len() {
+            return None;
+        }
+
+        let entry = self.entries[self.current_index].clone();
+        self.current_index += 1;
+
+        if entry.has_stream && entry.size > 0 {
+            self.bytes_remaining = entry.size as usize;
+            self.has_crc = entry.has_crc;
+            self.expected_crc = entry.crc as u32;
+            self.crc_hasher = entry.has_crc.then_some(crc32fast::Hasher::new());
+        } else {
+            self.bytes_remaining = 0;
+            self.has_crc = false;
+            self.expected_crc = 0;
+            self.crc_hasher = None;
+        }
+
+        Some(Ok(entry))
+    }
+
+    /// Drains any remaining bytes from the current entry and verifies CRC if needed.
+    fn finish_current_entry(&mut self) -> Result<(), Error> {
+        if self.bytes_remaining > 0 {
+            let mut buffer = vec![0u8; 8192.min(self.bytes_remaining)];
+            while self.bytes_remaining > 0 {
+                let to_read = buffer.len().min(self.bytes_remaining);
+                match self.decoder.read(&mut buffer[..to_read]) {
+                    Ok(0) => break,
+                    Ok(bytes_read) => {
+                        if let Some(ref mut hasher) = self.crc_hasher {
+                            hasher.update(&buffer[..bytes_read]);
+                        }
+                        self.bytes_remaining = self.bytes_remaining.saturating_sub(bytes_read);
+                    }
+                    Err(error) => return Err(Error::io_msg(error, "Failed to drain entry bytes")),
+                }
+            }
+        }
+
+        if self.bytes_remaining == 0 && self.has_crc {
+            self.verify_crc()?;
+        }
+
+        Ok(())
+    }
+
+    fn verify_crc(&mut self) -> io::Result<()> {
+        if let Some(hasher) = self.crc_hasher.take() {
+            let computed_crc = hasher.finalize();
+            if computed_crc != self.expected_crc {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    Error::ChecksumVerificationFailed,
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Read for BlockEntriesIterator<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.bytes_remaining == 0 {
+            return Ok(0);
+        }
+
+        let to_read = buf.len().min(self.bytes_remaining);
+        let bytes_read = self.decoder.read(&mut buf[..to_read])?;
+
+        if let Some(ref mut hasher) = self.crc_hasher {
+            hasher.update(&buf[..bytes_read]);
+        }
+
+        self.bytes_remaining = self.bytes_remaining.saturating_sub(bytes_read);
+
+        if self.bytes_remaining == 0 && self.has_crc {
+            self.verify_crc()?;
+        }
+
+        Ok(bytes_read)
     }
 }
