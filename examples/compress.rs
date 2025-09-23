@@ -1,6 +1,6 @@
 use std::{env, fs::File, time::Instant};
 
-use sevenz_rust2::{ArchiveEntry, ArchiveReader, ArchiveWriter, NtTime, Password, SourceReader};
+use sevenz_rust2::{ArchiveReader, ArchiveWriter, Password};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -57,40 +57,18 @@ fn main() {
         .unwrap_or_else(|error| panic!("Failed to create archive '{output_path}': {error}"));
 
     if solid {
-        let mut entries = Vec::new();
-        let mut readers = Vec::new();
-
         for file_path in &file_paths {
-            let file = File::open(file_path)
-                .unwrap_or_else(|error| panic!("Failed to open file '{file_path}': {error}"));
-
-            let modification_time = file.metadata().unwrap().modified().unwrap();
-
-            let mut entry = ArchiveEntry::new_file(file_path);
-            entry.has_last_modified_date = true;
-            entry.last_modified_date = NtTime::try_from(modification_time).unwrap();
-            entries.push(entry);
-            readers.push(SourceReader::new(file));
-
-            println!("Added file: {file_path}");
+            writer
+                .push_source_path(file_path, |_| true)
+                .expect("Failed to push source path");
+            println!("Added path: {file_path}");
         }
-
-        writer
-            .push_archive_entries(entries, readers)
-            .expect("Failed to add files to solid archive");
     } else {
         for file_path in &file_paths {
-            let file = File::open(file_path)
-                .unwrap_or_else(|error| panic!("Failed to open file '{file_path}': {error}"));
-
-            let entry = ArchiveEntry::new_file(file_path);
-            let reader = SourceReader::new(file);
-
             writer
-                .push_archive_entry(entry, Some(reader))
-                .expect("Failed to add file to archive");
-
-            println!("Added file: {file_path}");
+                .push_source_path_non_solid(file_path, |_| true)
+                .expect("Failed to push source path");
+            println!("Added path: {file_path}");
         }
     }
 

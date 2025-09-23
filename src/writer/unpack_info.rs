@@ -104,8 +104,14 @@ impl UnpackInfo {
                 }
             } else if f.num_sub_unpack_streams == 1 {
                 // Single substream - write CRC here and not in the folder section.
-                debug_assert!(f.sub_stream_crcs.is_empty());
-                crcs_to_write.push(f.crc);
+                match f.sub_stream_crcs.first() {
+                    None => {
+                        crcs_to_write.push(f.crc);
+                    }
+                    Some(crc) => {
+                        crcs_to_write.push(*crc);
+                    }
+                };
             }
         }
 

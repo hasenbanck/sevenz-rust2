@@ -135,6 +135,16 @@ jobs:
         run: |
           cargo run --release --example compress -- -o non-solid.7z src/*.rs
 
+      - name: Create solid archive with single file
+        shell: bash
+        run: |
+          cargo run --release --example compress -- --solid -o solid-file.7z LICENSE
+
+      - name: Create non-solid archive with single file
+        shell: bash
+        run: |
+          cargo run --release --example compress -- -o non-solid-file.7z LICENSE
+
       - name: Test both archives with Explorer
         shell: pwsh
         run: |
@@ -201,6 +211,14 @@ jobs:
           }
           
           if (-not (Test-NativeWindowsCompat "non-solid.7z")) {
+              $failed = $true
+          }
+          
+          if (-not (Test-NativeWindowsCompat "solid-file.7z")) {
+              $failed = $true
+          }
+          
+          if (-not (Test-NativeWindowsCompat "non-solid-file.7z")) {
               $failed = $true
           }
           

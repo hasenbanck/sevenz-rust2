@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.19.1 - 2025-09-23
+
+### Fixed
+
+- Removed too strict debug_assert as reported in #81
+- Removed incompatibility issues when using the `ArchiveWriter::push_source_path()` with single files.
+  We now properly handle both cases were a file or a directory is given to the function.
+
 ## 0.19.0 - 2025-09-20
 
 ### Changed

@@ -217,13 +217,11 @@ fn encode_path<W: Write + Seek>(
             format!("Failed to collect entries from path:{:?}", src.as_ref()),
         )
     })?;
+
     if !solid {
         for ele in paths.into_iter() {
-            let name = ele
-                .strip_prefix(&src)
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
+            let name = extract_file_name(&src, &ele)?;
+
             zip.push_archive_entry(
                 ArchiveEntry::from_path(ele.as_path(), name),
                 Some(File::open(ele.as_path())?),
@@ -235,11 +233,8 @@ fn encode_path<W: Write + Seek>(
     let mut file_size = 0;
     for ele in paths.into_iter() {
         let size = ele.metadata()?.len();
-        let name = ele
-            .strip_prefix(&src)
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let name = extract_file_name(&src, &ele)?;
+
         if size >= MAX_BLOCK_SIZE {
             zip.push_archive_entry(
                 ArchiveEntry::from_path(ele.as_path(), name),
@@ -262,4 +257,23 @@ fn encode_path<W: Write + Seek>(
     }
 
     Ok(())
+}
+
+fn extract_file_name(src: &impl AsRef<Path>, ele: &PathBuf) -> Result<String, Error> {
+    if ele == src.as_ref() {
+        // Single file case: use just the filename.
+        Ok(ele
+            .file_name()
+            .ok_or_else(|| {
+                Error::io_msg(
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid filename"),
+                    format!("Failed to get filename from {ele:?}"),
+                )
+            })?
+            .to_string_lossy()
+            .to_string())
+    } else {
+        // Directory case: remove path.
+        Ok(ele.strip_prefix(src).unwrap().to_string_lossy().to_string())
+    }
 }
