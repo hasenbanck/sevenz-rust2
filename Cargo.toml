@@ -8,7 +8,7 @@ name = "sevenz-rust2"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/sevenz-rust"
 rust-version = "1.85"
-version = "0.19.1"
+version = "0.19.2"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -36,7 +36,7 @@ cbc = { version = "0.1", optional = true }
 crc32fast = "1"
 flate2 = { version = "1", optional = true, features = ["zlib-rs"] }
 getrandom = { version = "0.3", optional = true }
-lzma-rust2 = { version = "0.14", default-features = false, features = ["std", "optimization"] }
+lzma-rust2 = { version = "0.15", default-features = false, features = ["std", "optimization"] }
 ppmd-rust = { version = "1.2", optional = true }
 lz4_flex = { version = "0.11", optional = true }
 nt-time = { version = "0.12", optional = true }
