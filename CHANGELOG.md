@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.19.X - 2025-11-XX
+
+### Updated
+
+- Target ppmd-rust v1. Since ppmd-rust is stable and has a major version, we will target it directly to reduce
+  maintenance burden.
+
 ## 0.19.2 - 2025-10-29
 
 ### Updated
