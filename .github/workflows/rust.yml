@@ -29,13 +29,13 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install rust version
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{matrix.toolchain}}
           target: ${{matrix.target}}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build no default features
         run: cargo build --no-default-features --release
       - name: Build default features
@@ -63,13 +63,13 @@ jobs:
           - os: ubuntu-latest
             target: wasm32-unknown-unknown
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install rust version
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{matrix.toolchain}}
           target: ${{matrix.target}}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Build default features
         run: cargo build --target wasm32-unknown-unknown --release --no-default-features
       - name: Build no default features
@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -116,7 +116,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
