@@ -1,4 +1,7 @@
-use std::io::{Read, Seek, Write};
+use std::{
+    borrow::Cow,
+    io::{Read, Seek, Write},
+};
 
 #[cfg(feature = "compress")]
 use aes::cipher::BlockEncryptMut;
@@ -126,9 +129,20 @@ impl<R: Read + Seek> Seek for Aes256Sha256Decoder<R> {
 }
 
 fn get_aes_key(properties: &[u8], password: &[u8]) -> Result<([u8; 32], [u8; 16]), crate::Error> {
-    if properties.len() < 2 {
-        return Err(crate::Error::other("AES256 properties too short"));
-    }
+    let properties = match properties.len() {
+        0 => {
+            return Err(crate::Error::other("AES256 properties too short"));
+        }
+        1 => {
+            // It seems that there are encrypted files that include the K_END (0x00) symbol as a
+            // property byte.
+            let mut prop = vec![0u8; 2];
+            prop[0] = properties[0];
+            Cow::Owned(prop)
+        }
+        _ => Cow::Borrowed(properties),
+    };
+
     let b0 = properties[0];
     let num_cycles_power = b0 & 63;
     let b1 = properties[1];
