@@ -127,7 +127,7 @@ impl<R: Read + Seek> Seek for Aes256Sha256Decoder<R> {
 
 fn get_aes_key(properties: &[u8], password: &[u8]) -> Result<([u8; 32], [u8; 16]), crate::Error> {
     if properties.len() < 2 {
-        return Err(crate::Error::other("AES256 properties too shart"));
+        return Err(crate::Error::other("AES256 properties too short"));
     }
     let b0 = properties[0];
     let num_cycles_power = b0 & 63;
