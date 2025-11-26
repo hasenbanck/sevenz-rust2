@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 #[cfg(feature = "aes256")]
 #[test]
 fn test_decompress_file_with_password() {
@@ -19,4 +21,18 @@ fn test_decompress_file_with_password() {
             .unwrap()
             .starts_with("7z is the new archive format, providing high compression ratio.")
     )
+}
+
+#[cfg(feature = "aes256")]
+#[test]
+fn test_decompress_file_with_password_small() {
+    use sevenz_rust2::ArchiveReader;
+
+    let mut source_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    source_file.push("tests/resources/aes_small_test.7z");
+
+    let password = "iBlm8NTigvru0Jr0".into();
+    let mut seven =
+        ArchiveReader::new(std::fs::File::open(source_file).unwrap(), password).unwrap();
+    seven.for_each_entries(|_entry, _reader| Ok(true)).unwrap();
 }
