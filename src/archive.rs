@@ -44,11 +44,8 @@ pub(crate) const K_DUMMY: u8 = 0x19;
 #[derive(Debug, Default, Clone)]
 pub struct Archive {
     /// Offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
-    /// Used for calculating byte offsets when streaming uncompressed (COPY) content.
-    pub pack_pos: u64,
-    /// Sizes of each packed stream in bytes.
-    /// Used for calculating byte ranges when streaming.
-    pub pack_sizes: Vec<u64>,
+    pub(crate) pack_pos: u64,
+    pub(crate) pack_sizes: Vec<u64>,
     pub(crate) pack_crcs_defined: BitSet,
     pub(crate) pack_crcs: Vec<u64>,
     pub(crate) sub_streams_info: Option<SubStreamsInfo>,
@@ -60,6 +57,20 @@ pub struct Archive {
     pub stream_map: StreamMap,
     /// Whether this is a solid archive (better compression, slower random access).
     pub is_solid: bool,
+}
+
+impl Archive {
+    /// Returns the offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
+    /// Used for calculating byte offsets when streaming uncompressed (COPY) content.
+    pub fn pack_pos(&self) -> u64 {
+        self.pack_pos
+    }
+
+    /// Returns the sizes of each packed stream in bytes.
+    /// Used for calculating byte ranges when streaming.
+    pub fn pack_sizes(&self) -> &[u64] {
+        &self.pack_sizes
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -451,16 +462,26 @@ impl EncoderMethod {
 /// corresponding compression blocks and packed data streams.
 #[derive(Debug, Default, Clone)]
 pub struct StreamMap {
-    /// Index of the first pack stream for each block.
-    /// Used for mapping blocks to their packed data streams.
-    pub block_first_pack_stream_index: Vec<usize>,
-    /// Byte offsets of each pack stream within the packed data region.
-    /// Combined with pack_pos and SIGNATURE_HEADER_SIZE to get absolute offsets.
-    pub pack_stream_offsets: Vec<u64>,
+    pub(crate) block_first_pack_stream_index: Vec<usize>,
+    pub(crate) pack_stream_offsets: Vec<u64>,
     /// Index of first file for each block.
     pub block_first_file_index: Vec<usize>,
     /// Block index for each file (None if file has no data).
     pub file_block_index: Vec<Option<usize>>,
+}
+
+impl StreamMap {
+    /// Returns the index of the first pack stream for each block.
+    /// Used for mapping blocks to their packed data streams.
+    pub fn block_first_pack_stream_index(&self) -> &[usize] {
+        &self.block_first_pack_stream_index
+    }
+
+    /// Returns byte offsets of each pack stream within the packed data region.
+    /// Combined with pack_pos and SIGNATURE_HEADER_SIZE to get absolute offsets.
+    pub fn pack_stream_offsets(&self) -> &[u64] {
+        &self.pack_stream_offsets
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
