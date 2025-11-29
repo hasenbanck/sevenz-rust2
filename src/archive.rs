@@ -2,7 +2,9 @@
 use crate::encoder_options::EncoderOptions;
 use crate::{NtTime, bitset::BitSet, block::*};
 
-pub(crate) const SIGNATURE_HEADER_SIZE: u64 = 32;
+/// Size of the 7z signature header in bytes (32 bytes).
+/// This is needed for calculating absolute byte offsets within the archive.
+pub const SIGNATURE_HEADER_SIZE: u64 = 32;
 pub(crate) const SEVEN_Z_SIGNATURE: &[u8] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
 
 pub(crate) const K_END: u8 = 0x00;
@@ -42,8 +44,11 @@ pub(crate) const K_DUMMY: u8 = 0x19;
 #[derive(Debug, Default, Clone)]
 pub struct Archive {
     /// Offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
-    pub(crate) pack_pos: u64,
-    pub(crate) pack_sizes: Vec<u64>,
+    /// Used for calculating byte offsets when streaming uncompressed (COPY) content.
+    pub pack_pos: u64,
+    /// Sizes of each packed stream in bytes.
+    /// Used for calculating byte ranges when streaming.
+    pub pack_sizes: Vec<u64>,
     pub(crate) pack_crcs_defined: BitSet,
     pub(crate) pack_crcs: Vec<u64>,
     pub(crate) sub_streams_info: Option<SubStreamsInfo>,
@@ -446,8 +451,12 @@ impl EncoderMethod {
 /// corresponding compression blocks and packed data streams.
 #[derive(Debug, Default, Clone)]
 pub struct StreamMap {
-    pub(crate) block_first_pack_stream_index: Vec<usize>,
-    pub(crate) pack_stream_offsets: Vec<u64>,
+    /// Index of the first pack stream for each block.
+    /// Used for mapping blocks to their packed data streams.
+    pub block_first_pack_stream_index: Vec<usize>,
+    /// Byte offsets of each pack stream within the packed data region.
+    /// Combined with pack_pos and SIGNATURE_HEADER_SIZE to get absolute offsets.
+    pub pack_stream_offsets: Vec<u64>,
     /// Index of first file for each block.
     pub block_first_file_index: Vec<usize>,
     /// Block index for each file (None if file has no data).
