@@ -1,6 +1,6 @@
 #[cfg(feature = "compress")]
-use std::io::{self, Write};
-use std::io::{Cursor, Read};
+use std::io::Write;
+use std::io::{self, Cursor, Read};
 
 use crate::{ByteReader, Error};
 
