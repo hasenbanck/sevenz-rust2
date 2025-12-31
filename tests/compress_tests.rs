@@ -403,3 +403,95 @@ fn compress_with_lz4_skippable_algorithm() {
 fn compress_with_zstd_algorithm() {
     test_compression_method(&[EncoderMethod::ZSTD.into()]);
 }
+
+/// Test that header encryption properly hides filenames in the archive.
+/// This is a security-critical test - filenames should NOT be visible in raw bytes
+/// when header encryption is enabled.
+#[cfg(all(feature = "compress", feature = "util", feature = "aes256"))]
+#[test]
+fn test_header_encryption_hides_filenames() {
+    use std::fs;
+    use std::io::BufReader;
+
+    let temp_dir = tempdir().unwrap();
+
+    // Create a file with a recognizable name (use UTF-16 searchable pattern)
+    let secret_filename = "SECRET_VISIBLE_NAME.txt";
+    let source = temp_dir.path().join(secret_filename);
+    fs::write(&source, "This is secret content").unwrap();
+
+    let dest = temp_dir.path().join("encrypted.7z");
+    let password = "test_password_123";
+
+    // Create encrypted archive with header encryption enabled
+    {
+        let mut writer = ArchiveWriter::create(&dest).expect("create writer");
+
+        // Enable header encryption (should be default, but be explicit)
+        writer.set_encrypt_header(true);
+
+        // Configure AES encryption + LZMA2 compression
+        writer.set_content_methods(vec![
+            AesEncoderOptions::new(password.into()).into(),
+            Lzma2Options::from_level(6).into(),
+        ]);
+
+        // Add the file
+        let entry = ArchiveEntry::from_path(&source, secret_filename.to_string());
+        let file = fs::File::open(&source).unwrap();
+        writer
+            .push_archive_entry(entry, Some(BufReader::new(file)))
+            .expect("add file");
+
+        writer.finish().expect("finish archive");
+    }
+
+    // Read raw archive bytes and verify filename is NOT visible
+    let data = fs::read(&dest).expect("read archive");
+
+    // Search for UTF-16 LE encoded "SECRET" (S.E.C.R.E.T with null bytes)
+    let mut found_utf16 = false;
+    for i in 0..data.len().saturating_sub(12) {
+        if data[i] == b'S'
+            && data.get(i + 1) == Some(&0)
+            && data.get(i + 2) == Some(&b'E')
+            && data.get(i + 3) == Some(&0)
+            && data.get(i + 4) == Some(&b'C')
+            && data.get(i + 5) == Some(&0)
+            && data.get(i + 6) == Some(&b'R')
+            && data.get(i + 7) == Some(&0)
+        {
+            found_utf16 = true;
+            eprintln!("FAIL: Found UTF-16 filename at offset 0x{:x}", i);
+            break;
+        }
+    }
+
+    // Also check for ASCII filename
+    let data_str = String::from_utf8_lossy(&data);
+    let found_ascii = data_str.contains("SECRET");
+
+    assert!(
+        !found_utf16 && !found_ascii,
+        "Header encryption FAILED - filename '{}' is visible in raw archive bytes! \
+         This is a security vulnerability. Archive size: {} bytes",
+        secret_filename,
+        data.len()
+    );
+
+    // Verify the archive can still be extracted with correct password
+    let decompress_dest = temp_dir.path().join("extracted");
+    let archive_file = fs::File::open(&dest).expect("open archive");
+    decompress_with_password(BufReader::new(archive_file), &decompress_dest, password.into())
+        .expect("decompress");
+
+    let extracted_file = decompress_dest.join(secret_filename);
+    assert!(
+        extracted_file.exists(),
+        "Extracted file should exist after decryption"
+    );
+    assert_eq!(
+        fs::read_to_string(&extracted_file).unwrap(),
+        "This is secret content"
+    );
+}

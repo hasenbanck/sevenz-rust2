@@ -404,14 +404,20 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         let crc32 = crc32fast::hash(&raw_header);
         let mut methods = vec![];
 
-        if self.encrypt_header {
+        // Check if we have AES encryption configured for header encryption
+        let has_header_encryption = if self.encrypt_header {
+            let mut found_aes = false;
             for conf in self.content_methods.iter() {
                 if conf.method.id() == EncoderMethod::AES256_SHA256.id() {
                     methods.push(conf.clone());
+                    found_aes = true;
                     break;
                 }
             }
-        }
+            found_aes
+        } else {
+            false
+        };
 
         methods.push(EncoderConfiguration::new(EncoderMethod::LZMA));
 
@@ -431,8 +437,11 @@ impl<W: Write + Seek> ArchiveWriter<W> {
 
         let compress_crc = compressed.crc_value();
         let compress_size = *compressed.bytes_written;
-        if compress_size as u64 + 20 >= size {
-            // compression made it worse. Write raw data
+        // Only skip encoding if:
+        // 1. Compression made it worse (encoded size >= original size + overhead)
+        // 2. AND header encryption is NOT enabled (we must never skip encryption for security)
+        if !has_header_encryption && compress_size as u64 + 20 >= size {
+            // compression made it worse and no encryption needed. Write raw data
             header.write_all(&raw_header)?;
             return Ok(());
         }
