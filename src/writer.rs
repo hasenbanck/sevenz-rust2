@@ -404,10 +404,13 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         let crc32 = crc32fast::hash(&raw_header);
         let mut methods = vec![];
 
+        let mut must_encrypt_header = false;
+
         if self.encrypt_header {
             for conf in self.content_methods.iter() {
                 if conf.method.id() == EncoderMethod::AES256_SHA256.id() {
                     methods.push(conf.clone());
+                    must_encrypt_header = true;
                     break;
                 }
             }
@@ -431,8 +434,10 @@ impl<W: Write + Seek> ArchiveWriter<W> {
 
         let compress_crc = compressed.crc_value();
         let compress_size = *compressed.bytes_written;
-        if compress_size as u64 + 20 >= size {
-            // compression made it worse. Write raw data
+
+        if !must_encrypt_header && compress_size as u64 + 20 >= size {
+            // We have an unencrypted header and the compression made increased the data size,
+            // so we write the raw header data without compressing it to save space.
             header.write_all(&raw_header)?;
             return Ok(());
         }

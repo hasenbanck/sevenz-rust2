@@ -403,3 +403,30 @@ fn compress_with_lz4_skippable_algorithm() {
 fn compress_with_zstd_algorithm() {
     test_compression_method(&[EncoderMethod::ZSTD.into()]);
 }
+
+#[cfg(all(feature = "compress", feature = "aes256"))]
+#[test]
+fn encrypted_file_header_requires_password_to_read() {
+    let content = std::fs::read("tests/resources/apache2.txt").unwrap();
+
+    let mut bytes = Vec::new();
+
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        writer.set_content_methods(vec![
+            AesEncoderOptions::new(Password::new("test")).into(),
+            Lzma2Options::default().into(),
+        ]);
+        let entry = ArchiveEntry::new_file("apache2.txt");
+        writer
+            .push_archive_entry(entry, Some(content.as_slice()))
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let result = Archive::read(&mut Cursor::new(bytes.as_slice()), &Password::empty());
+    assert!(
+        result.is_err(),
+        "Reading an encrypted archive header without a password should not be possible"
+    );
+}
