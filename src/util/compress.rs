@@ -119,7 +119,9 @@ fn compress_path<W: Write + Seek, P: AsRef<Path>>(
     let entry = ArchiveEntry::from_path(src.as_ref(), entry_name);
     let path = src.as_ref();
     if path.is_dir() {
-        archive_writer.push_archive_entry::<&[u8]>(entry, None)?;
+        if path != root {
+            archive_writer.push_archive_entry::<&[u8]>(entry, None)?;
+        }
         for dir in path
             .read_dir()
             .map_err(|e| Error::io_msg(e, "error read dir"))?
