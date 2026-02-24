@@ -8,7 +8,7 @@ name = "sevenz-rust2"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/sevenz-rust"
 rust-version = "1.85"
-version = "0.20.1"
+version = "0.20.2"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -48,7 +48,7 @@ js-sys = "0.3"
 wasm-bindgen = "0.2"
 
 [dev-dependencies]
-rand = { version = "0.9" }
+rand = { version = "0.10" }
 tempfile = "3"
 
 [[example]]
