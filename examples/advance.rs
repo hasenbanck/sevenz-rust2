@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env::temp_dir, time::Instant};
 
-use rand::Rng;
+use rand::prelude::*;
 use sevenz_rust2::{
     encoder_options::{AesEncoderOptions, Lzma2Options},
     *,

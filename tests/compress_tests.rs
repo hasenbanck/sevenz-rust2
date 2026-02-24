@@ -144,7 +144,7 @@ fn compress_folder_with_nested_folder() {
 #[cfg(all(feature = "compress", feature = "util", feature = "aes256"))]
 #[test]
 fn compress_one_file_with_random_content_encrypted() {
-    use rand::Rng;
+    use rand::prelude::*;
     for _ in 0..10 {
         let temp_dir = tempdir().unwrap();
         let source = temp_dir.path().join("file1.txt");
