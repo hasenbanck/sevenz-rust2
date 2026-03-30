@@ -40,7 +40,7 @@ lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "o
 ppmd-rust = { version = "1", optional = true }
 lz4_flex = { version = "0.13", optional = true }
 nt-time = { version = "0.13", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 zstd = { version = "0.13", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
