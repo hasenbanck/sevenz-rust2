@@ -4,11 +4,9 @@ use std::{io, io::Read};
 use bzip2::read::BzDecoder;
 #[cfg(feature = "deflate")]
 use flate2::bufread::DeflateDecoder;
-use lzma_rust2::{
-    Lzma2Reader, Lzma2ReaderMt, LzmaReader,
-    filter::{bcj::BcjReader, delta::DeltaReader},
-    lzma2_get_memory_usage,
-};
+use lzma_rust2::filter::{bcj::BcjReader, delta::DeltaReader};
+
+use crate::lzma::{Lzma2Reader, Lzma2ReaderMt, LzmaReader, lzma2_get_memory_usage};
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{
     PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER, Ppmd7Decoder,

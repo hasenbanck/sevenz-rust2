@@ -11,11 +11,11 @@ use crate::Password;
 #[cfg(feature = "compress")]
 #[derive(Debug, Clone)]
 /// Options for LZMA compression.
-pub struct LzmaOptions(pub(crate) lzma_rust2::LzmaOptions);
+pub struct LzmaOptions(pub(crate) crate::lzma::options::LzmaOptions);
 
 impl Default for LzmaOptions {
     fn default() -> Self {
-        Self(lzma_rust2::LzmaOptions::with_preset(6))
+        Self(crate::lzma::options::LzmaOptions::with_preset(6))
     }
 }
 
@@ -26,7 +26,7 @@ impl LzmaOptions {
     /// # Arguments
     /// * `level` - Compression level (0-9, clamped to this range)
     pub fn from_level(level: u32) -> Self {
-        Self(lzma_rust2::LzmaOptions::with_preset(level))
+        Self(crate::lzma::options::LzmaOptions::with_preset(level))
     }
 }
 
@@ -34,14 +34,14 @@ impl LzmaOptions {
 #[derive(Debug, Clone)]
 /// Options for LZMA2 compression.
 pub struct Lzma2Options {
-    pub(crate) options: lzma_rust2::Lzma2Options,
+    pub(crate) options: crate::lzma::options::Lzma2Options,
     pub(crate) threads: u32,
 }
 
 impl Default for Lzma2Options {
     fn default() -> Self {
         Self {
-            options: lzma_rust2::Lzma2Options::with_preset(6),
+            options: crate::lzma::options::Lzma2Options::with_preset(6),
             threads: 1,
         }
     }
@@ -56,7 +56,7 @@ impl Lzma2Options {
     /// * `level` - Compression level (0-9, clamped to this range)
     pub fn from_level(level: u32) -> Self {
         Self {
-            options: lzma_rust2::Lzma2Options::with_preset(level),
+            options: crate::lzma::options::Lzma2Options::with_preset(level),
             threads: 1,
         }
     }
@@ -72,10 +72,9 @@ impl Lzma2Options {
     ///   the multi threading, but the worse the compression ratio
     ///   will be (value will be clamped to have at least the size of the dictionary).
     pub fn from_level_mt(level: u32, threads: u32, chunk_size: u64) -> Self {
-        let mut options = lzma_rust2::Lzma2Options::with_preset(level);
-        options.set_chunk_size(NonZeroU64::new(
-            chunk_size.max(options.lzma_options.dict_size as u64),
-        ));
+        let mut options = crate::lzma::options::Lzma2Options::with_preset(level);
+        let dict_size = options.dict_size();
+        options.set_chunk_size(NonZeroU64::new(chunk_size.max(dict_size as u64)));
         Self { options, threads }
     }
 
@@ -83,8 +82,8 @@ impl Lzma2Options {
     ///
     /// Will be clamped between 4096..=4294967280.
     pub fn set_dictionary_size(&mut self, dict_size: u32) {
-        self.options.lzma_options.dict_size =
-            dict_size.clamp(lzma_rust2::DICT_SIZE_MIN, lzma_rust2::DICT_SIZE_MAX);
+        self.options
+            .set_dict_size(dict_size.clamp(crate::lzma::DICT_SIZE_MIN, crate::lzma::DICT_SIZE_MAX));
     }
 }
 
@@ -557,9 +556,9 @@ impl EncoderOptions {
     pub fn get_lzma_dict_size(&self) -> u32 {
         match self {
             #[cfg(feature = "compress")]
-            EncoderOptions::Lzma(o) => o.0.dict_size,
+            EncoderOptions::Lzma(o) => o.0.dict_size(),
             #[cfg(feature = "compress")]
-            EncoderOptions::Lzma2(o) => o.options.lzma_options.dict_size,
+            EncoderOptions::Lzma2(o) => o.options.dict_size(),
             #[allow(unused)]
             _ => 0,
         }

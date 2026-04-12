@@ -1,9 +1,8 @@
 use std::io::Write;
 
-use lzma_rust2::{
-    Lzma2Writer, Lzma2WriterMt, LzmaWriter,
-    filter::{bcj::BcjWriter, delta::DeltaWriter},
-};
+use lzma_rust2::filter::{bcj::BcjWriter, delta::DeltaWriter};
+
+use crate::lzma::{Lzma2Writer, Lzma2WriterMt, LzmaWriter};
 
 #[cfg(feature = "brotli")]
 use crate::codec::brotli::BrotliEncoder;
@@ -216,6 +215,7 @@ pub(crate) fn add_encoder<W: Write>(
                 _ => LzmaOptions::default(),
             };
             let lz = LzmaWriter::new_no_header(input, &options.0, false)?;
+
             Ok(Encoder::Lzma(Some(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
@@ -346,7 +346,7 @@ pub(crate) fn get_options_as_properties<'a>(
                 Some(EncoderOptions::Lzma2(options)) => options,
                 _ => &Lzma2Options::default(),
             };
-            let dict_size = options.options.lzma_options.dict_size;
+            let dict_size = options.options.dict_size();
             let lead = dict_size.leading_zeros();
             let second_bit = (dict_size >> (30u32.wrapping_sub(lead))).wrapping_sub(2);
             let prop = (19u32.wrapping_sub(lead) * 2 + second_bit) as u8;
@@ -358,7 +358,7 @@ pub(crate) fn get_options_as_properties<'a>(
                 Some(EncoderOptions::Lzma(options)) => options,
                 _ => &LzmaOptions::default(),
             };
-            let dict_size = options.0.dict_size;
+            let dict_size = options.0.dict_size();
             out[0] = options.0.get_props();
             out[1..5].copy_from_slice(dict_size.to_le_bytes().as_ref());
             &out[0..5]
