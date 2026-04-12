@@ -179,12 +179,18 @@ pub fn default_entry_extract_fn(
             std::io::copy(reader, &mut writer)?;
 
             let file = writer.get_mut();
-            let file_times = FileTimes::new()
-                .set_accessed(entry.access_date().into())
-                .set_modified(entry.last_modified_date().into());
+            let mut file_times = FileTimes::new();
+            if entry.has_access_date {
+                file_times = file_times.set_accessed(entry.access_date().into());
+            }
+            if entry.has_last_modified_date {
+                file_times = file_times.set_modified(entry.last_modified_date().into());
+            }
 
             #[cfg(any(windows, target_os = "macos"))]
-            let file_times = file_times.set_created(entry.creation_date().into());
+            if entry.has_creation_date {
+                file_times = file_times.set_created(entry.creation_date().into());
+            }
 
             let _ = file.set_times(file_times);
         }

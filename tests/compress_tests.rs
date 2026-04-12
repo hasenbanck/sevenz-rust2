@@ -430,3 +430,58 @@ fn encrypted_file_header_requires_password_to_read() {
         "Reading an encrypted archive header without a password should not be possible"
     );
 }
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn archive_roundtrip_preserves_structure() {
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("root.txt"),
+                Some(b"root content".as_slice()),
+            )
+            .unwrap();
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("dir/file1.txt"),
+                Some(b"file1 content".as_slice()),
+            )
+            .unwrap();
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("dir/sub/file2.txt"),
+                Some(b"file2 content".as_slice()),
+            )
+            .unwrap();
+        writer
+            .push_archive_entry::<&[u8]>(ArchiveEntry::new_directory("dir"), None)
+            .unwrap();
+        writer
+            .push_archive_entry::<&[u8]>(ArchiveEntry::new_directory("dir/sub"), None)
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let reader = ArchiveReader::new(Cursor::new(bytes.as_slice()), Password::empty()).unwrap();
+    let files = &reader.archive().files;
+
+    assert_eq!(files.len(), 5);
+
+    let dirs: Vec<_> = files.iter().filter(|f| f.is_directory).collect();
+    let regular: Vec<_> = files.iter().filter(|f| !f.is_directory).collect();
+
+    assert_eq!(dirs.len(), 2, "expected 2 directories");
+    assert_eq!(regular.len(), 3, "expected 3 files");
+
+    for f in files {
+        assert!(!f.is_anti_item, "entry '{}' should not be an anti-item", f.name());
+    }
+
+    assert!(dirs.iter().any(|f| f.name() == "dir"));
+    assert!(dirs.iter().any(|f| f.name() == "dir/sub"));
+    assert!(regular.iter().any(|f| f.name() == "root.txt"));
+    assert!(regular.iter().any(|f| f.name() == "dir/file1.txt"));
+    assert!(regular.iter().any(|f| f.name() == "dir/sub/file2.txt"));
+}
