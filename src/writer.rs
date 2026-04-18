@@ -544,8 +544,8 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         for entry in self.files.iter() {
             if !entry.has_stream {
                 let is_anti = entry.is_anti_item();
-                has_anti |= !is_anti;
-                if !is_anti {
+                has_anti |= is_anti;
+                if is_anti {
                     bitset.insert(counter);
                 }
                 counter += 1;

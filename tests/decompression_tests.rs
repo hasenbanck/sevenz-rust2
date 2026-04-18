@@ -302,3 +302,41 @@ fn test_get_file_by_path() {
         assert_eq!(&data0, &data1);
     }
 }
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn anti_item_deletes_file_on_extract() {
+    use sevenz_rust2::{decompress_with_extract_fn_and_password, ArchiveEntry, ArchiveWriter};
+    use std::io::Cursor;
+
+    let temp_dir = tempdir().unwrap();
+    let target = temp_dir.path().join("to_delete.txt");
+    std::fs::write(&target, "will be deleted").unwrap();
+    assert!(target.exists());
+
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        let mut entry = ArchiveEntry::new_file("to_delete.txt");
+        entry.is_anti_item = true;
+        writer.push_archive_entry::<&[u8]>(entry, None).unwrap();
+        writer.finish().unwrap();
+    }
+
+    let dest = temp_dir.path().to_path_buf();
+    decompress_with_extract_fn_and_password(
+        Cursor::new(bytes.as_slice()),
+        &dest,
+        Password::empty(),
+        |entry, reader, dest_path| {
+            if entry.is_anti_item() {
+                std::fs::remove_file(dest_path).ok();
+                return Ok(true);
+            }
+            sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path)
+        },
+    )
+    .unwrap();
+
+    assert!(!target.exists(), "anti-item should have been deleted");
+}

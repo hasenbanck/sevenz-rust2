@@ -404,6 +404,27 @@ fn compress_with_zstd_algorithm() {
     test_compression_method(&[EncoderMethod::ZSTD.into()]);
 }
 
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn anti_item_roundtrip() {
+    use std::io::Cursor;
+
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        let mut entry = ArchiveEntry::new_file("deleted.txt");
+        entry.is_anti_item = true;
+        writer.push_archive_entry::<&[u8]>(entry, None).unwrap();
+        writer.finish().unwrap();
+    }
+
+    let reader = ArchiveReader::new(Cursor::new(bytes.as_slice()), Password::empty()).unwrap();
+    assert_eq!(reader.archive().files.len(), 1);
+    let entry = &reader.archive().files[0];
+    assert_eq!(entry.name(), "deleted.txt");
+    assert!(entry.is_anti_item(), "entry should be an anti-item");
+}
+
 #[cfg(all(feature = "compress", feature = "aes256"))]
 #[test]
 fn encrypted_file_header_requires_password_to_read() {
