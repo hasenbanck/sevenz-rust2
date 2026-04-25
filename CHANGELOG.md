@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `K_ANTI` property block was not written for archives containing only anti-items, so anti-items
   were extracted as 0-byte files instead of acting as deletion markers (#112, thanks @uraf)
+- `compress_path` no longer emits a spurious entry for the root directory itself when compressing
+  a directory tree (#79, thanks @super1207)
 
 ## 0.20.2 - 2026-02-24
 

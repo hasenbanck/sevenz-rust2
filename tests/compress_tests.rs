@@ -449,3 +449,33 @@ fn encrypted_file_header_requires_password_to_read() {
         "Reading an encrypted archive header without a password should not be possible"
     );
 }
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn compress_path_does_not_emit_root_dir_entry() {
+    let temp_dir = tempdir().unwrap();
+    let folder = temp_dir.path().join("folder");
+    std::fs::create_dir(&folder).unwrap();
+    std::fs::write(folder.join("file1.txt"), "hello").unwrap();
+    std::fs::create_dir(folder.join("sub")).unwrap();
+    std::fs::write(folder.join("sub").join("file2.txt"), "world").unwrap();
+
+    let dest = temp_dir.path().join("folder.7z");
+    compress_to_path(&folder, &dest).expect("compress ok");
+
+    let reader = ArchiveReader::new(File::open(&dest).unwrap(), Password::empty()).unwrap();
+    let names: Vec<String> = reader
+        .archive()
+        .files
+        .iter()
+        .map(|f| f.name().replace('\\', "/"))
+        .collect();
+
+    assert!(
+        !names.iter().any(|n| n.is_empty() || n == "folder"),
+        "root directory should not appear as an entry, got: {names:?}"
+    );
+    assert!(names.iter().any(|n| n == "file1.txt"));
+    assert!(names.iter().any(|n| n == "sub"));
+    assert!(names.iter().any(|n| n == "sub/file2.txt"));
+}
