@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.21.0 - 2026-04-25
 
+### Changed
+
+- Bumped MSRV to 1.93 (required by `nt-time` 0.15)
+
 ### Updated
 
+- Bumped `nt-time` to 0.15 (#105)
 - Bumped `aes` to 0.9 and `cbc` to 0.2 (cipher 0.5) (#111, #110)
 
 ### Fixed

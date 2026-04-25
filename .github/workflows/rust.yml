@@ -20,7 +20,7 @@ jobs:
           - windows-latest
         toolchain:
           - stable
-          - 1.85.0 # MSRV
+          - 1.93.0 # MSRV
         include:
           - os: macos-latest
             target: x86_64-apple-darwin
@@ -58,7 +58,7 @@ jobs:
           - ubuntu-latest
         toolchain:
           - stable
-          - 1.85.0 # MSRV
+          - 1.93.0 # MSRV
         include:
           - os: ubuntu-latest
             target: wasm32-unknown-unknown

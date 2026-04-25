@@ -7,7 +7,7 @@ license = "Apache-2.0"
 name = "sevenz-rust2"
 readme = "README.md"
 repository = "https://github.com/hasenbanck/sevenz-rust"
-rust-version = "1.85"
+rust-version = "1.93"
 version = "0.20.2"
 
 [lib]
@@ -39,7 +39,7 @@ getrandom = { version = "0.4", optional = true }
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "optimization"] }
 ppmd-rust = { version = "1", optional = true }
 lz4_flex = { version = "0.13", optional = true }
-nt-time = { version = "0.13", optional = true }
+nt-time = { version = "0.15", optional = true }
 sha2 = { version = "0.11", optional = true }
 zstd = { version = "0.13", optional = true }
 
