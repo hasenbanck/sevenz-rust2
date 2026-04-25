@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.21.0 - 2026-04-25
+
+### Fixed
+
+- `K_ANTI` property block was not written for archives containing only anti-items, so anti-items
+  were extracted as 0-byte files instead of acting as deletion markers (#112, thanks @uraf)
+
 ## 0.20.2 - 2026-02-24
 
 ### Fixed
