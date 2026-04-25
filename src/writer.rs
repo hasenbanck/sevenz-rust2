@@ -154,68 +154,62 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         mut entry: ArchiveEntry,
         reader: Option<R>,
     ) -> Result<&ArchiveEntry> {
-        if !entry.is_directory {
-            if let Some(mut r) = reader {
-                let mut compressed_len = 0;
-                let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
+        if !entry.is_directory
+            && let Some(mut r) = reader
+        {
+            let mut compressed_len = 0;
+            let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
 
-                let mut more_sizes: Vec<Rc<Cell<usize>>> =
-                    Vec::with_capacity(self.content_methods.len() - 1);
+            let mut more_sizes: Vec<Rc<Cell<usize>>> =
+                Vec::with_capacity(self.content_methods.len() - 1);
 
-                let (crc, size) = {
-                    let mut w = Self::create_writer(
-                        &self.content_methods,
-                        &mut compressed,
-                        &mut more_sizes,
-                    )?;
-                    let mut write_len = 0;
-                    let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
-                    let mut buf = [0u8; 4096];
-                    loop {
-                        match r.read(&mut buf) {
-                            Ok(n) => {
-                                if n == 0 {
-                                    break;
-                                }
-                                w.write_all(&buf[..n]).map_err(|e| {
-                                    Error::io_msg(e, format!("Encode entry:{}", entry.name()))
-                                })?;
+            let (crc, size) = {
+                let mut w =
+                    Self::create_writer(&self.content_methods, &mut compressed, &mut more_sizes)?;
+                let mut write_len = 0;
+                let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
+                let mut buf = [0u8; 4096];
+                loop {
+                    match r.read(&mut buf) {
+                        Ok(n) => {
+                            if n == 0 {
+                                break;
                             }
-                            Err(e) => {
-                                return Err(Error::io_msg(
-                                    e,
-                                    format!("Encode entry:{}", entry.name()),
-                                ));
-                            }
+                            w.write_all(&buf[..n]).map_err(|e| {
+                                Error::io_msg(e, format!("Encode entry:{}", entry.name()))
+                            })?;
+                        }
+                        Err(e) => {
+                            return Err(Error::io_msg(e, format!("Encode entry:{}", entry.name())));
                         }
                     }
-                    w.flush()
-                        .map_err(|e| Error::io_msg(e, format!("Encode entry:{}", entry.name())))?;
-                    w.write(&[])
-                        .map_err(|e| Error::io_msg(e, format!("Encode entry:{}", entry.name())))?;
+                }
+                w.flush()
+                    .map_err(|e| Error::io_msg(e, format!("Encode entry:{}", entry.name())))?;
+                w.write(&[])
+                    .map_err(|e| Error::io_msg(e, format!("Encode entry:{}", entry.name())))?;
 
-                    (w.crc_value(), write_len)
-                };
-                let compressed_crc = compressed.crc_value();
-                entry.has_stream = true;
-                entry.size = size as u64;
-                entry.crc = crc as u64;
-                entry.has_crc = true;
-                entry.compressed_crc = compressed_crc as u64;
-                entry.compressed_size = compressed_len as u64;
-                self.pack_info
-                    .add_stream(compressed_len as u64, compressed_crc);
+                (w.crc_value(), write_len)
+            };
+            let compressed_crc = compressed.crc_value();
+            entry.has_stream = true;
+            entry.size = size as u64;
+            entry.crc = crc as u64;
+            entry.has_crc = true;
+            entry.compressed_crc = compressed_crc as u64;
+            entry.compressed_size = compressed_len as u64;
+            self.pack_info
+                .add_stream(compressed_len as u64, compressed_crc);
 
-                let mut sizes = Vec::with_capacity(more_sizes.len() + 1);
-                sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
-                sizes.push(size as u64);
+            let mut sizes = Vec::with_capacity(more_sizes.len() + 1);
+            sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
+            sizes.push(size as u64);
 
-                self.unpack_info
-                    .add(self.content_methods.clone(), sizes, crc);
+            self.unpack_info
+                .add(self.content_methods.clone(), sizes, crc);
 
-                self.files.push(entry);
-                return Ok(self.files.last().unwrap());
-            }
+            self.files.push(entry);
+            return Ok(self.files.last().unwrap());
         }
         entry.has_stream = false;
         entry.size = 0;

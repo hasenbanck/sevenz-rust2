@@ -182,23 +182,23 @@ impl ArchiveEntry {
         };
 
         if let Ok(meta) = path.metadata() {
-            if let Ok(modified) = meta.modified() {
-                if let Ok(date) = NtTime::try_from(modified) {
-                    entry.last_modified_date = date;
-                    entry.has_last_modified_date = entry.last_modified_date.0 > 0;
-                }
+            if let Ok(modified) = meta.modified()
+                && let Ok(date) = NtTime::try_from(modified)
+            {
+                entry.last_modified_date = date;
+                entry.has_last_modified_date = entry.last_modified_date.0 > 0;
             }
-            if let Ok(date) = meta.created() {
-                if let Ok(date) = NtTime::try_from(date) {
-                    entry.creation_date = date;
-                    entry.has_creation_date = entry.creation_date.0 > 0;
-                }
+            if let Ok(date) = meta.created()
+                && let Ok(date) = NtTime::try_from(date)
+            {
+                entry.creation_date = date;
+                entry.has_creation_date = entry.creation_date.0 > 0;
             }
-            if let Ok(date) = meta.accessed() {
-                if let Ok(date) = NtTime::try_from(date) {
-                    entry.access_date = date;
-                    entry.has_access_date = entry.access_date.0 > 0;
-                }
+            if let Ok(date) = meta.accessed()
+                && let Ok(date) = NtTime::try_from(date)
+            {
+                entry.access_date = date;
+                entry.has_access_date = entry.access_date.0 > 0;
             }
         }
         entry

@@ -62,11 +62,11 @@ pub fn compress_encrypted<W: Write + Seek>(
 /// * `src` - Path to the source file or directory to compress
 /// * `dest` - Path where the compressed archive will be created
 pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
-    if let Some(path) = dest.as_ref().parent() {
-        if !path.exists() {
-            std::fs::create_dir_all(path)
-                .map_err(|e| Error::io_msg(e, format!("Create dir failed:{:?}", dest.as_ref())))?;
-        }
+    if let Some(path) = dest.as_ref().parent()
+        && !path.exists()
+    {
+        std::fs::create_dir_all(path)
+            .map_err(|e| Error::io_msg(e, format!("Create dir failed:{:?}", dest.as_ref())))?;
     }
     compress(
         src,
@@ -90,11 +90,11 @@ pub fn compress_to_path_encrypted(
     dest: impl AsRef<Path>,
     password: Password,
 ) -> Result<(), Error> {
-    if let Some(path) = dest.as_ref().parent() {
-        if !path.exists() {
-            std::fs::create_dir_all(path)
-                .map_err(|e| Error::io_msg(e, format!("Create dir failed:{:?}", dest.as_ref())))?;
-        }
+    if let Some(path) = dest.as_ref().parent()
+        && !path.exists()
+    {
+        std::fs::create_dir_all(path)
+            .map_err(|e| Error::io_msg(e, format!("Create dir failed:{:?}", dest.as_ref())))?;
     }
     compress_encrypted(
         src,

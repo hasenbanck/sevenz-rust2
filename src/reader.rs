@@ -1205,19 +1205,20 @@ impl<R: Read + Seek> ArchiveReader<R> {
         let (mut has_crc, mut crc) = (block.has_crc, block.crc);
 
         // Single stream blocks might have it's CRC stored in the single substream information.
-        if !has_crc && block.num_unpack_sub_streams == 1 {
-            if let Some(sub_streams_info) = archive.sub_streams_info.as_ref() {
-                let mut substream_index = 0;
-                for i in 0..block_index {
-                    substream_index += archive.blocks[i].num_unpack_sub_streams;
-                }
+        if !has_crc
+            && block.num_unpack_sub_streams == 1
+            && let Some(sub_streams_info) = archive.sub_streams_info.as_ref()
+        {
+            let mut substream_index = 0;
+            for i in 0..block_index {
+                substream_index += archive.blocks[i].num_unpack_sub_streams;
+            }
 
-                // Only when there is a single stream, we can use it's CRC to verify the compressed block data.
-                // Multiple streams would contain the CRC of the compressed data for each file in the block.
-                if sub_streams_info.has_crc.contains(substream_index) {
-                    has_crc = true;
-                    crc = sub_streams_info.crcs[substream_index];
-                }
+            // Only when there is a single stream, we can use it's CRC to verify the compressed block data.
+            // Multiple streams would contain the CRC of the compressed data for each file in the block.
+            if sub_streams_info.has_crc.contains(substream_index) {
+                has_crc = true;
+                crc = sub_streams_info.crcs[substream_index];
             }
         }
 
