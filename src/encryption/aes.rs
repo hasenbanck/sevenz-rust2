@@ -4,10 +4,10 @@ use std::{
 };
 
 #[cfg(feature = "compress")]
-use aes::cipher::BlockEncryptMut;
+use aes::cipher::BlockModeEncrypt;
 use aes::{
     Aes256,
-    cipher::{BlockDecryptMut, KeyIvInit, generic_array::GenericArray},
+    cipher::{BlockModeDecrypt, KeyIvInit, array::Array},
 };
 use sha2::Digest;
 
@@ -192,7 +192,7 @@ impl Cipher {
     fn from_properties(properties: &[u8], password: &[u8]) -> Result<Self, crate::Error> {
         let (aes_key, iv) = get_aes_key(properties, password)?;
         Ok(Self {
-            dec: Aes256CbcDec::new(&GenericArray::from(aes_key), &iv.into()),
+            dec: Aes256CbcDec::new(&Array::from(aes_key), &iv.into()),
             buf: Default::default(),
         })
     }
@@ -204,8 +204,8 @@ impl Cipher {
             let end = 16 - self.buf.len();
             self.buf.extend_from_slice(&data[..end]);
             data = &mut data[end..];
-            let block = GenericArray::from_mut_slice(&mut self.buf);
-            self.dec.decrypt_block_mut(block);
+            let block: &mut Array<u8, _> = self.buf.as_mut_slice().try_into().unwrap();
+            self.dec.decrypt_block(block);
             let out = block.as_slice();
             output.write_all(out)?;
             n += out.len();
@@ -217,8 +217,8 @@ impl Cipher {
                 self.buf.extend_from_slice(a);
                 break;
             }
-            let block = GenericArray::from_mut_slice(a);
-            self.dec.decrypt_block_mut(block);
+            let block: &mut Array<u8, _> = a.try_into().unwrap();
+            self.dec.decrypt_block(block);
             let out = block.as_slice();
             output.write_all(out)?;
             n += out.len();
@@ -258,7 +258,7 @@ impl<W> Aes256Sha256Encoder<W> {
 
         Ok(Self {
             output,
-            enc: Aes256CbcEnc::new(&GenericArray::from(key), &iv.into()),
+            enc: Aes256CbcEnc::new(&Array::from(key), &iv.into()),
             buffer: Default::default(),
             finished: false,
             write_size: 0,
@@ -270,8 +270,8 @@ impl<W> Aes256Sha256Encoder<W> {
     where
         W: Write,
     {
-        let block2 = GenericArray::from_mut_slice(block);
-        self.enc.encrypt_block_mut(block2);
+        let block2: &mut Array<u8, _> = (&mut *block).try_into().unwrap();
+        self.enc.encrypt_block(block2);
         self.output.write_all(block)?;
         self.write_size += block.len() as u32;
         Ok(())

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.21.0 - 2026-04-25
 
+### Updated
+
+- Bumped `aes` to 0.9 and `cbc` to 0.2 (cipher 0.5) (#111, #110)
+
 ### Fixed
 
 - `K_ANTI` property block was not written for archives containing only anti-items, so anti-items
