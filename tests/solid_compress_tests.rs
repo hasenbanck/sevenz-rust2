@@ -1,4 +1,7 @@
 #[cfg(feature = "compress")]
+use std::sync::{Arc, atomic::AtomicBool};
+
+#[cfg(feature = "compress")]
 use sevenz_rust2::*;
 #[cfg(feature = "compress")]
 use tempfile::*;
@@ -6,6 +9,7 @@ use tempfile::*;
 #[cfg(feature = "compress")]
 #[test]
 fn compress_multi_files_solid() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let temp_dir = tempdir().unwrap();
     let folder = temp_dir.path().join("folder");
     std::fs::create_dir(&folder).unwrap();
@@ -20,7 +24,7 @@ fn compress_multi_files_solid() {
     }
     let dest = temp_dir.path().join("folder.7z");
 
-    let mut sz = ArchiveWriter::create(&dest).unwrap();
+    let mut sz = ArchiveWriter::create(&dest, continue_flag).unwrap();
     sz.push_source_path(&folder, |_| true).unwrap();
     sz.finish().expect("compress ok");
 
@@ -40,6 +44,7 @@ fn compress_multi_files_solid() {
 #[test]
 fn compress_multi_files_mix_solid_and_non_solid() {
     use std::fs::File;
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
 
     let temp_dir = tempdir().unwrap();
     let folder = temp_dir.path().join("folder");
@@ -55,7 +60,7 @@ fn compress_multi_files_mix_solid_and_non_solid() {
     }
     let dest = temp_dir.path().join("folder.7z");
 
-    let mut sz = ArchiveWriter::create(&dest).unwrap();
+    let mut sz = ArchiveWriter::create(&dest, continue_flag).unwrap();
 
     // solid compression
     sz.push_source_path(&folder, |_| true).unwrap();

@@ -83,6 +83,7 @@ impl<R: Read> Read for LzmaReader<R> {
         }
 
         loop {
+            //TODO Место для continue флага
             if self.input_pos >= self.input_len {
                 let n = self.inner.read(&mut self.input_buf)?;
                 if n == 0 {

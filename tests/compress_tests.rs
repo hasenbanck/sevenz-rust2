@@ -3,6 +3,7 @@ use std::{
     fs::File,
     hash::{Hash, Hasher},
     io::{Cursor, Read},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[cfg(all(feature = "compress", feature = "util"))]
@@ -15,11 +16,12 @@ use tempfile::*;
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_empty_file() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let temp_dir = tempdir().unwrap();
     let source = temp_dir.path().join("empty.txt");
     File::create(&source).unwrap();
     let dest = temp_dir.path().join("empty.7z");
-    compress_to_path(source, &dest).expect("compress ok");
+    compress_to_path(source, &dest, continue_flag).expect("compress ok");
 
     let decompress_dest = temp_dir.path().join("decompress");
     decompress_file(dest, &decompress_dest).expect("decompress ok");
@@ -33,11 +35,13 @@ fn compress_empty_file() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_one_file_with_content() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+
     let temp_dir = tempdir().unwrap();
     let source = temp_dir.path().join("file1.txt");
     std::fs::write(&source, "file1 with content").unwrap();
     let dest = temp_dir.path().join("file1.7z");
-    compress_to_path(source, &dest).expect("compress ok");
+    compress_to_path(source, &dest, continue_flag).expect("compress ok");
 
     let decompress_dest = temp_dir.path().join("decompress");
     decompress_file(dest, &decompress_dest).expect("decompress ok");
@@ -54,11 +58,13 @@ fn compress_one_file_with_content() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_empty_folder() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+
     let temp_dir = tempdir().unwrap();
     let folder = temp_dir.path().join("folder");
     std::fs::create_dir(&folder).unwrap();
     let dest = temp_dir.path().join("folder.7z");
-    compress_to_path(&folder, &dest).expect("compress ok");
+    compress_to_path(&folder, &dest, continue_flag).expect("compress ok");
 
     let decompress_dest = temp_dir.path().join("decompress");
     decompress_file(dest, &decompress_dest).expect("decompress ok");
@@ -69,12 +75,14 @@ fn compress_empty_folder() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_folder_with_one_file() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+
     let temp_dir = tempdir().unwrap();
     let folder = temp_dir.path().join("folder");
     std::fs::create_dir(&folder).unwrap();
     std::fs::write(folder.join("file1.txt"), "file1 with content").unwrap();
     let dest = temp_dir.path().join("folder.7z");
-    compress_to_path(&folder, &dest).expect("compress ok");
+    compress_to_path(&folder, &dest, continue_flag).expect("compress ok");
 
     let decompress_dest = temp_dir.path().join("decompress");
     decompress_file(dest, &decompress_dest).expect("decompress ok");
@@ -91,6 +99,8 @@ fn compress_folder_with_one_file() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_folder_with_multi_file() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+
     let temp_dir = tempdir().unwrap();
     let folder = temp_dir.path().join("folder");
     std::fs::create_dir(&folder).unwrap();
@@ -104,7 +114,7 @@ fn compress_folder_with_multi_file() {
         contents.push(content);
     }
     let dest = temp_dir.path().join("folder.7z");
-    compress_to_path(&folder, &dest).expect("compress ok");
+    compress_to_path(&folder, &dest, continue_flag).expect("compress ok");
 
     let decompress_dest = temp_dir.path().join("decompress");
     decompress_file(dest, &decompress_dest).expect("decompress ok");
@@ -121,13 +131,14 @@ fn compress_folder_with_multi_file() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_folder_with_nested_folder() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let temp_dir = tempdir().unwrap();
     let folder = temp_dir.path().join("folder");
     let inner = folder.join("a/b/c");
     std::fs::create_dir_all(&inner).unwrap();
     std::fs::write(inner.join("file1.txt"), "file1 with content").unwrap();
     let dest = temp_dir.path().join("folder.7z");
-    compress_to_path(&folder, &dest).expect("compress ok");
+    compress_to_path(&folder, &dest, continue_flag).expect("compress ok");
 
     let decompress_dest = temp_dir.path().join("decompress");
     decompress_file(dest, &decompress_dest).expect("decompress ok");
@@ -144,6 +155,7 @@ fn compress_folder_with_nested_folder() {
 #[cfg(all(feature = "compress", feature = "util", feature = "aes256"))]
 #[test]
 fn compress_one_file_with_random_content_encrypted() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     use rand::prelude::*;
     for _ in 0..10 {
         let temp_dir = tempdir().unwrap();
@@ -158,7 +170,8 @@ fn compress_one_file_with_random_content_encrypted() {
         std::fs::write(&source, &content).unwrap();
         let dest = temp_dir.path().join("file1.7z");
 
-        compress_to_path_encrypted(source, &dest, "rust".into()).expect("compress ok");
+        compress_to_path_encrypted(source, &dest, "rust".into(), continue_flag.clone())
+            .expect("compress ok");
 
         let decompress_dest = temp_dir.path().join("decompress");
         decompress_file_with_password(dest, &decompress_dest, "rust".into())
@@ -173,6 +186,7 @@ fn compress_one_file_with_random_content_encrypted() {
 
 #[cfg(all(feature = "compress", feature = "util"))]
 fn test_compression_method(methods: &[EncoderConfiguration]) {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let mut content = Vec::new();
     File::open("tests/resources/decompress_x86.exe")
         .unwrap()
@@ -182,7 +196,7 @@ fn test_compression_method(methods: &[EncoderConfiguration]) {
     let mut bytes = Vec::new();
 
     {
-        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes), continue_flag).unwrap();
         let file = ArchiveEntry::new_file("data/decompress_x86.exe");
         let directory = ArchiveEntry::new_directory("data");
 
@@ -407,12 +421,13 @@ fn compress_with_zstd_algorithm() {
 #[cfg(all(feature = "compress", feature = "aes256"))]
 #[test]
 fn encrypted_file_header_requires_password_to_read() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let content = std::fs::read("tests/resources/apache2.txt").unwrap();
 
     let mut bytes = Vec::new();
 
     {
-        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes), continue_flag).unwrap();
         writer.set_content_methods(vec![
             AesEncoderOptions::new(Password::new("test")).into(),
             Lzma2Options::default().into(),
@@ -434,9 +449,10 @@ fn encrypted_file_header_requires_password_to_read() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn archive_roundtrip_preserves_structure() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let mut bytes = Vec::new();
     {
-        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes), continue_flag).unwrap();
         writer
             .push_archive_entry(
                 ArchiveEntry::new_file("root.txt"),
@@ -476,7 +492,11 @@ fn archive_roundtrip_preserves_structure() {
     assert_eq!(regular.len(), 3, "expected 3 files");
 
     for f in files {
-        assert!(!f.is_anti_item, "entry '{}' should not be an anti-item", f.name());
+        assert!(
+            !f.is_anti_item,
+            "entry '{}' should not be an anti-item",
+            f.name()
+        );
     }
 
     assert!(dirs.iter().any(|f| f.name() == "dir"));

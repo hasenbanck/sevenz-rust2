@@ -4,6 +4,7 @@ use std::{
     fs::File,
     io::{Seek, Write},
     path::{Path, PathBuf},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[cfg(feature = "aes256")]
@@ -15,8 +16,12 @@ use crate::{ArchiveEntry, ArchiveWriter, EncoderMethod, Error, Password, writer:
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
 /// * `dest` - Writer that implements `Write + Seek` to write the compressed archive to
-pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Error> {
-    let mut archive_writer = ArchiveWriter::new(dest)?;
+pub fn compress<W: Write + Seek>(
+    src: impl AsRef<Path>,
+    dest: W,
+    continue_flag: Arc<AtomicBool>,
+) -> Result<W, Error> {
+    let mut archive_writer = ArchiveWriter::new(dest, continue_flag)?;
     let parent = if src.as_ref().is_dir() {
         src.as_ref()
     } else {
@@ -37,8 +42,9 @@ pub fn compress_encrypted<W: Write + Seek>(
     src: impl AsRef<Path>,
     dest: W,
     password: Password,
+    continue_flag: Arc<AtomicBool>,
 ) -> Result<W, Error> {
-    let mut archive_writer = ArchiveWriter::new(dest)?;
+    let mut archive_writer = ArchiveWriter::new(dest, continue_flag)?;
     if !password.is_empty() {
         archive_writer.set_content_methods(vec![
             AesEncoderOptions::new(password).into(),
@@ -61,7 +67,11 @@ pub fn compress_encrypted<W: Write + Seek>(
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
 /// * `dest` - Path where the compressed archive will be created
-pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result<(), Error> {
+pub fn compress_to_path(
+    src: impl AsRef<Path>,
+    dest: impl AsRef<Path>,
+    continue_flag: Arc<AtomicBool>,
+) -> Result<(), Error> {
     if let Some(path) = dest.as_ref().parent() {
         if !path.exists() {
             std::fs::create_dir_all(path)
@@ -72,6 +82,7 @@ pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result
         src,
         File::create(dest.as_ref())
             .map_err(|e| Error::file_open(e, dest.as_ref().to_string_lossy().to_string()))?,
+        continue_flag,
     )?;
     Ok(())
 }
@@ -89,6 +100,7 @@ pub fn compress_to_path_encrypted(
     src: impl AsRef<Path>,
     dest: impl AsRef<Path>,
     password: Password,
+    continue_flag: Arc<AtomicBool>,
 ) -> Result<(), Error> {
     if let Some(path) = dest.as_ref().parent() {
         if !path.exists() {
@@ -101,6 +113,7 @@ pub fn compress_to_path_encrypted(
         File::create(dest.as_ref())
             .map_err(|e| Error::file_open(e, dest.as_ref().to_string_lossy().to_string()))?,
         password,
+        continue_flag,
     )?;
     Ok(())
 }

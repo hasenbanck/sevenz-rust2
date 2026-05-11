@@ -10,7 +10,7 @@ use std::{
     cell::Cell,
     io::{Read, Seek, Write},
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, atomic::AtomicBool},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::File, path::Path};
@@ -84,21 +84,22 @@ pub struct ArchiveWriter<W: Write> {
     pack_info: PackInfo,
     unpack_info: UnpackInfo,
     encrypt_header: bool,
+    continue_flag: Arc<AtomicBool>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl ArchiveWriter<File> {
     /// Creates a file to write a 7z archive to.
-    pub fn create(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn create(path: impl AsRef<Path>, continue_flag: Arc<AtomicBool>) -> Result<Self> {
         let file = File::create(path.as_ref())
             .map_err(|e| Error::file_open(e, path.as_ref().to_string_lossy().to_string()))?;
-        Self::new(file)
+        Self::new(file, continue_flag)
     }
 }
 
 impl<W: Write + Seek> ArchiveWriter<W> {
     /// Prepares writer to write a 7z archive to.
-    pub fn new(mut writer: W) -> Result<Self> {
+    pub fn new(mut writer: W, continue_flag: Arc<AtomicBool>) -> Result<Self> {
         writer.seek(std::io::SeekFrom::Start(SIGNATURE_HEADER_SIZE))?;
 
         Ok(Self {
@@ -108,6 +109,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             pack_info: Default::default(),
             unpack_info: Default::default(),
             encrypt_header: true,
+            continue_flag,
         })
     }
 
@@ -172,6 +174,12 @@ impl<W: Write + Seek> ArchiveWriter<W> {
                     let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
                     let mut buf = [0u8; 4096];
                     loop {
+                        if !self
+                            .continue_flag
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            return Err(Error::Other("ArchiveWriter stopped".into()));
+                        }
                         match r.read(&mut buf) {
                             Ok(n) => {
                                 if n == 0 {
@@ -261,6 +269,12 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             }
 
             loop {
+                if !self
+                    .continue_flag
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    return Err(Error::Other("ArchiveWriter stopped".into()));
+                }
                 match r.read(&mut buf) {
                     Ok(n) => {
                         if n == 0 {
