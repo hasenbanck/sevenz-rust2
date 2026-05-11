@@ -159,7 +159,11 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         if !entry.is_directory {
             if let Some(mut r) = reader {
                 let mut compressed_len = 0;
-                let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
+                let mut compressed = CompressWrapWriter::new(
+                    &mut self.output,
+                    &mut compressed_len,
+                    self.continue_flag.clone(),
+                );
 
                 let mut more_sizes: Vec<Rc<Cell<usize>>> =
                     Vec::with_capacity(self.content_methods.len() - 1);
@@ -171,7 +175,8 @@ impl<W: Write + Seek> ArchiveWriter<W> {
                         &mut more_sizes,
                     )?;
                     let mut write_len = 0;
-                    let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
+                    let mut w =
+                        CompressWrapWriter::new(&mut w, &mut write_len, self.continue_flag.clone());
                     let mut buf = [0u8; 4096];
                     loop {
                         if !self
@@ -246,14 +251,18 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         let mut r = SeqReader::new(reader);
         assert_eq!(r.reader_len(), entries.len());
         let mut compressed_len = 0;
-        let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
+        let mut compressed = CompressWrapWriter::new(
+            &mut self.output,
+            &mut compressed_len,
+            self.continue_flag.clone(),
+        );
         let content_methods = &self.content_methods;
         let mut more_sizes: Vec<Rc<Cell<usize>>> = Vec::with_capacity(content_methods.len() - 1);
 
         let (crc, size) = {
             let mut w = Self::create_writer(content_methods, &mut compressed, &mut more_sizes)?;
             let mut write_len = 0;
-            let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
+            let mut w = CompressWrapWriter::new(&mut w, &mut write_len, self.continue_flag.clone());
             let mut buf = [0u8; 4096];
 
             fn entries_names(entries: &[ArchiveEntry]) -> String {
@@ -437,7 +446,11 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         let mut encoded_data = Vec::with_capacity(size as usize / 2);
 
         let mut compress_size = 0;
-        let mut compressed = CompressWrapWriter::new(&mut encoded_data, &mut compress_size);
+        let mut compressed = CompressWrapWriter::new(
+            &mut encoded_data,
+            &mut compress_size,
+            self.continue_flag.clone(),
+        );
         {
             let mut encoder = Self::create_writer(&methods, &mut compressed, &mut more_sizes)
                 .map_err(std::io::Error::other)?;
@@ -648,15 +661,17 @@ struct CompressWrapWriter<'a, W> {
     crc: Hasher,
     cache: Vec<u8>,
     bytes_written: &'a mut usize,
+    continue_flag: Arc<AtomicBool>,
 }
 
 impl<'a, W: Write> CompressWrapWriter<'a, W> {
-    pub fn new(writer: W, bytes_written: &'a mut usize) -> Self {
+    pub fn new(writer: W, bytes_written: &'a mut usize, continue_flag: Arc<AtomicBool>) -> Self {
         Self {
             writer,
             crc: Hasher::new(),
             cache: Vec::with_capacity(8192),
             bytes_written,
+            continue_flag,
         }
     }
 
@@ -668,6 +683,15 @@ impl<'a, W: Write> CompressWrapWriter<'a, W> {
 
 impl<W: Write> Write for CompressWrapWriter<'_, W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if !self
+            .continue_flag
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "Compression stopped",
+            ));
+        }
         self.cache.resize(buf.len(), Default::default());
         let len = self.writer.write(buf)?;
         self.crc.update(&buf[..len]);
