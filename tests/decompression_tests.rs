@@ -344,3 +344,112 @@ fn anti_item_deletes_file_on_extract() {
 
     assert!(!target.exists(), "anti-item should have been deleted");
 }
+
+#[cfg(all(feature = "compress", feature = "util"))]
+fn build_archive_with_entry_name(name: &str) -> Vec<u8> {
+    use std::io::Cursor;
+
+    use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
+
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        let entry = ArchiveEntry::new_file(name);
+        let content = b"pwned" as &[u8];
+        writer.push_archive_entry(entry, Some(content)).unwrap();
+        writer.finish().unwrap();
+    }
+    bytes
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn path_traversal_relative_entry_is_rejected() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::decompress;
+
+    let temp_dir = tempdir().unwrap();
+    let dest = temp_dir.path().join("out");
+    // Escapes `dest` up into the tempdir root, where we can detect a stray write
+    // without touching anything outside the test sandbox.
+    let escaped = temp_dir.path().join("sevenz_pwned_relative");
+    assert!(!escaped.exists());
+
+    // `dest/../sevenz_pwned_relative` resolves to `escaped` above.
+    let bytes = build_archive_with_entry_name("../sevenz_pwned_relative");
+    let result = decompress(Cursor::new(bytes.as_slice()), &dest);
+
+    assert!(result.is_err(), "traversal entry must be rejected");
+    assert!(
+        !escaped.exists(),
+        "file must not be written outside the destination"
+    );
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn path_traversal_absolute_entry_is_rejected() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::decompress;
+
+    let temp_dir = tempdir().unwrap();
+    let dest = temp_dir.path().join("out");
+    // Absolute path inside the tempdir: `dest.join(abs)` would discard `dest`.
+    let escaped = temp_dir.path().join("sevenz_pwned_abs");
+    let abs_name = escaped.to_string_lossy().to_string();
+    assert!(escaped.is_absolute());
+    assert!(!escaped.exists());
+
+    let bytes = build_archive_with_entry_name(&abs_name);
+    let result = decompress(Cursor::new(bytes.as_slice()), &dest);
+
+    assert!(result.is_err(), "absolute entry must be rejected");
+    assert!(
+        !escaped.exists(),
+        "file must not be written outside the destination"
+    );
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn path_traversal_normal_nested_entry_still_extracts() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::decompress;
+
+    let temp_dir = tempdir().unwrap();
+    let dest = temp_dir.path().join("out");
+
+    let bytes = build_archive_with_entry_name("a/b/c.txt");
+    decompress(Cursor::new(bytes.as_slice()), &dest).unwrap();
+
+    let extracted = dest.join("a").join("b").join("c.txt");
+    assert_eq!(std::fs::read(&extracted).unwrap(), b"pwned");
+}
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn default_entry_extract_fn_rejects_parent_dir_component() {
+    use sevenz_rust2::{ArchiveEntry, default_entry_extract_fn};
+
+    // Defense-in-depth: a caller that bypasses `decompress_impl` and hands an
+    // already-joined path containing `..` directly to the default extractor must
+    // still be rejected.
+    let temp_dir = tempdir().unwrap();
+    let escaped = temp_dir.path().join("sevenz_pwned_direct");
+    let traversed = temp_dir
+        .path()
+        .join("out")
+        .join("..")
+        .join("sevenz_pwned_direct");
+    assert!(!escaped.exists());
+
+    let entry = ArchiveEntry::new_file("sevenz_pwned_direct");
+    let mut data = b"pwned" as &[u8];
+    let result = default_entry_extract_fn(&entry, &mut data, &traversed);
+
+    assert!(result.is_err(), "parent-dir path must be rejected");
+    assert!(!escaped.exists(), "no file may be written via a `..` path");
+}
