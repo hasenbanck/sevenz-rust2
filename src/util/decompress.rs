@@ -137,11 +137,38 @@ fn decompress_impl<R: Read + Seek>(
         std::fs::create_dir_all(&dest)?;
     }
     seven.for_each_entries(|entry, reader| {
-        let dest_path = dest.join(entry.name());
+        let dest_path = safe_join(&dest, entry.name())?;
         extract_fn(entry, reader, &dest_path)
     })?;
 
     Ok(())
+}
+
+/// Joins an untrusted archive entry name onto `dest`, rejecting any path that would
+/// escape the destination directory (Zip-Slip / CWE-22).
+///
+/// Both `/` and `\` are treated as separators so Windows-style names are validated on
+/// every platform, and any `..`, root, or drive-prefix component causes rejection.
+#[cfg(not(target_arch = "wasm32"))]
+fn safe_join(dest: &Path, entry_name: &str) -> Result<PathBuf, Error> {
+    use std::path::Component;
+
+    // Treat backslashes as separators too, so `..\..\x` from a Windows-authored
+    // archive is caught when extracting on Unix.
+    let normalized = entry_name.replace('\\', "/");
+    let mut result = dest.to_path_buf();
+    for component in Path::new(&normalized).components() {
+        match component {
+            Component::Normal(part) => result.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(Error::other(format!(
+                    "unsafe entry path escapes destination: {entry_name}"
+                )));
+            }
+        }
+    }
+    Ok(result)
 }
 
 /// Default extraction function that handles standard file and directory extraction.
@@ -156,7 +183,16 @@ pub fn default_entry_extract_fn(
     reader: &mut dyn Read,
     dest: &PathBuf,
 ) -> Result<bool, Error> {
-    use std::{fs::File, io::BufWriter};
+    use std::{fs::File, io::BufWriter, path::Component};
+
+    // Reject any `..` component so a relative-traversal path can never reach a write.
+    // (An absolute escape cannot be detected here, as the destination root is unknown.)
+    if dest.components().any(|c| c == Component::ParentDir) {
+        return Err(Error::other(format!(
+            "unsafe entry path contains a parent-directory component: {}",
+            dest.to_string_lossy()
+        )));
+    }
 
     if entry.is_directory() {
         let dir = dest;
