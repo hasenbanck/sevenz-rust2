@@ -252,6 +252,41 @@ fn test_bcj2() {
 }
 
 #[test]
+fn test_delta_bcj2() {
+    // Regression test for a multi-coder folder that chains a Delta filter on top of a
+    // BCJ2 coder (`Method = Delta BCJ2`). Such folders used to fail to decode with
+    // `Unsupported method` because the decoder required the folder's main (final
+    // output) coder to be BCJ2 itself and could not handle a single-input filter
+    // layered on top of it. The fixture was produced by 7-Zip and contains three
+    // entries; every entry has a stored CRC that is verified during decoding, so a
+    // successful read of every entry also asserts byte correctness.
+    let mut file = File::open("tests/resources/delta_bcj2.7z").unwrap();
+    let archive = Archive::read(&mut file, &Password::empty()).unwrap();
+
+    let mut decoded = Vec::new();
+    for i in 0..archive.blocks.len() {
+        let password = Password::empty();
+        let fd = BlockDecoder::new(1, i, &archive, &password, &mut file);
+        fd.for_each_entries(&mut |entry, reader| {
+            let mut data = Vec::new();
+            std::io::copy(reader, &mut data)?;
+            decoded.push((entry.name().to_string(), data.len()));
+            Ok(true)
+        })
+        .unwrap();
+    }
+
+    assert_eq!(
+        decoded,
+        vec![
+            ("c/code1.bin".to_string(), 9000),
+            ("c/code2.bin".to_string(), 7000),
+            ("c/wave.bin".to_string(), 16000),
+        ]
+    );
+}
+
+#[test]
 fn test_entry_compressed_size() {
     let dir = std::fs::read_dir("tests/resources").unwrap();
     for entry in dir {
