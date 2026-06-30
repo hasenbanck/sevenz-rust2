@@ -1313,25 +1313,18 @@ impl<R: Read + Seek> ArchiveReader<R> {
             mci
         };
 
-        let id = block.coders[main_coder_index].encoder_method_id();
-        if id != EncoderMethod::ID_BCJ2 {
-            return Err(Error::unsupported(format!("Unsupported method: {id:?}")));
-        }
-
-        let num_in_streams = block.coders[main_coder_index].num_in_streams as usize;
-        let mut inputs: Vec<Box<dyn Read>> = Vec::with_capacity(num_in_streams);
-        let start_i = coder_to_stream_map[main_coder_index];
-        for i in start_i..num_in_streams + start_i {
-            inputs.push(Self::get_in_stream(
-                block,
-                &sources,
-                &coder_to_stream_map,
-                password,
-                i,
-                thread_count,
-            )?);
-        }
-        let mut decoder: Box<dyn Read> = Box::new(Bcj2Reader::new(inputs, block.get_unpack_size()));
+        // Build the decoder for the folder's final output by resolving the main coder's
+        // output stream. `get_in_stream2` recursively wires up the whole coder graph,
+        // so this also handles single-input filters (e.g. Delta) layered on top of a
+        // BCJ2 coder's output, not just a bare BCJ2 main coder.
+        let mut decoder = Self::get_in_stream2(
+            block,
+            &sources,
+            &coder_to_stream_map,
+            password,
+            main_coder_index,
+            thread_count,
+        )?;
         if block.has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
@@ -1420,9 +1413,29 @@ impl<R: Read + Seek> ArchiveReader<R> {
             )?;
             return Ok(Box::new(decoder));
         }
-        Err(Error::unsupported(
-            "Multi input stream coders are not yet supported",
-        ))
+
+        // BCJ2 is the only multi-input coder we support. It takes four input streams
+        // (main, call, jump and range-coder) and produces a single output stream.
+        if coder.encoder_method_id() == EncoderMethod::ID_BCJ2 {
+            let num_in_streams = coder.num_in_streams as usize;
+            let mut inputs: Vec<Box<dyn Read>> = Vec::with_capacity(num_in_streams);
+            for i in start_index..start_index + num_in_streams {
+                inputs.push(Self::get_in_stream(
+                    block,
+                    sources,
+                    coder_to_stream_map,
+                    password,
+                    i,
+                    thread_count,
+                )?);
+            }
+            return Ok(Box::new(Bcj2Reader::new(inputs, uncompressed_len as u64)));
+        }
+
+        Err(Error::unsupported(format!(
+            "Unsupported multi-input coder: {:?}",
+            coder.encoder_method_id()
+        )))
     }
 
     /// Takes a closure to decode each files in the archive.
