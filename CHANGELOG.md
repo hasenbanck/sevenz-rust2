@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.21.2 - 2026-07-01
+
 ### Fixed
 
 - Decode 7z folders that layer a single-input filter (e.g. Delta) on top of a BCJ2 coder
   (`Method = Delta BCJ2`). These folders previously failed to decode with an
   `Unsupported method` error because the decoder required the folder's final output coder
-  to be BCJ2 itself.
+  to be BCJ2 itself. (#117, thanks @trevorWieland)
 
 ## 0.21.1 - 2026-06-23
 
