@@ -170,7 +170,6 @@ fn get_aes_key(properties: &[u8], password: &[u8]) -> Result<([u8; 32], [u8; 16]
     Ok((aes_key, iv))
 }
 
-/// Cache last AES key to reduce redundant key derivation.
 fn derive_key(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
     let mut sha = sha2::Sha256::default();
     let mut extra = [0u8; 8];
@@ -188,7 +187,7 @@ fn derive_key(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
     sha.finalize().into()
 }
 
-/// Cache last AES key to reduce redundant key derivation.
+/// Cache last derived key.
 fn derive_key_cached(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
     static KEY_CACHE: std::sync::Mutex<Option<([u8; 32], [u8; 32])>> = std::sync::Mutex::new(None);
 
