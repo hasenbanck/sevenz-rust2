@@ -9,8 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Cache the most recent AES-256 key derivation. Extracting a 3,000-file encrypted archive
-  drops from 4.0s to 0.1s. 7-Zip itself caches the derived key the same way.
+- Cache most recent AES key derivation to improve performance (#118, thanks @jdlien)
 
 ## 0.21.2 - 2026-07-01
 

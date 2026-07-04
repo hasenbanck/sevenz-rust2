@@ -170,16 +170,25 @@ fn get_aes_key(properties: &[u8], password: &[u8]) -> Result<([u8; 32], [u8; 16]
     Ok((aes_key, iv))
 }
 
-/// Derive the AES key, caching the most recent derivation.
-///
-/// 7-Zip uses one salt for the whole archive, but non-solid archives store
-/// a salt per block, so re-deriving the key for every block is redundant
-/// work. On a 3,000-file archive, caching drops extraction from 4.0s to
-/// 0.1s. 7-Zip itself caches the key the same way.
-///
-/// The cache is keyed by a fingerprint, not the raw password, and the lock
-/// isn't held during derivation, so concurrent misses recompute in parallel
-/// rather than serializing.
+/// Cache last AES key to reduce redundant key derivation.
+fn derive_key(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
+    let mut sha = sha2::Sha256::default();
+    let mut extra = [0u8; 8];
+    for _ in 0..(1u32 << num_cycles_power) {
+        sha.update(salt);
+        sha.update(password);
+        sha.update(extra);
+        for item in &mut extra {
+            *item = item.wrapping_add(1);
+            if *item != 0 {
+                break;
+            }
+        }
+    }
+    sha.finalize().into()
+}
+
+/// Cache last AES key to reduce redundant key derivation.
 fn derive_key_cached(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
     static KEY_CACHE: std::sync::Mutex<Option<([u8; 32], [u8; 32])>> = std::sync::Mutex::new(None);
 
@@ -199,20 +208,7 @@ fn derive_key_cached(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8;
         return key;
     }
 
-    let mut sha = sha2::Sha256::default();
-    let mut extra = [0u8; 8];
-    for _ in 0..(1u32 << num_cycles_power) {
-        sha.update(salt);
-        sha.update(password);
-        sha.update(extra);
-        for item in &mut extra {
-            *item = item.wrapping_add(1);
-            if *item != 0 {
-                break;
-            }
-        }
-    }
-    let key: [u8; 32] = sha.finalize().into();
+    let key = derive_key(num_cycles_power, salt, password);
     *KEY_CACHE.lock().unwrap() = Some((fingerprint, key));
     key
 }
@@ -371,33 +367,12 @@ impl<W: Write> Write for Aes256Sha256Encoder<W> {
 mod key_derivation_tests {
     use super::*;
 
-    // Low cycle count so the reference derivations stay instant in tests.
     const CYCLES: u8 = 4;
-
-    /// The uncached reference derivation (the algorithm as it was inline
-    /// before the cache existed).
-    fn derive_reference(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
-        let mut sha = sha2::Sha256::default();
-        let mut extra = [0u8; 8];
-        for _ in 0..(1u32 << num_cycles_power) {
-            sha.update(salt);
-            sha.update(password);
-            sha.update(extra);
-            for item in &mut extra {
-                *item = item.wrapping_add(1);
-                if *item != 0 {
-                    break;
-                }
-            }
-        }
-        sha.finalize().into()
-    }
 
     #[test]
     fn cached_derivation_matches_reference() {
         let (salt, password) = (b"salt".as_slice(), b"p\0a\0s\0s\0".as_slice());
-        let expected = derive_reference(CYCLES, salt, password);
-        // First call misses the cache, second hits it — both must match.
+        let expected = derive_key(CYCLES, salt, password);
         assert_eq!(derive_key_cached(CYCLES, salt, password), expected);
         assert_eq!(derive_key_cached(CYCLES, salt, password), expected);
     }
@@ -405,13 +380,11 @@ mod key_derivation_tests {
     #[test]
     fn cache_never_crosses_inputs() {
         let a = (b"salt-a".as_slice(), b"pw-a".as_slice());
-        let b = (b"salt-a".as_slice(), b"pw-b".as_slice()); // same salt, other password
-        let c = (b"salt-c".as_slice(), b"pw-a".as_slice()); // other salt, same password
-        let ka = derive_reference(CYCLES, a.0, a.1);
-        let kb = derive_reference(CYCLES, b.0, b.1);
-        let kc = derive_reference(CYCLES, c.0, c.1);
-        // Interleave so every call after the first evicts the single-slot cache;
-        // each must still return its own key, never the cached neighbour's.
+        let b = (b"salt-a".as_slice(), b"pw-b".as_slice());
+        let c = (b"salt-c".as_slice(), b"pw-a".as_slice());
+        let ka = derive_key(CYCLES, a.0, a.1);
+        let kb = derive_key(CYCLES, b.0, b.1);
+        let kc = derive_key(CYCLES, c.0, c.1);
         assert_eq!(derive_key_cached(CYCLES, a.0, a.1), ka);
         assert_eq!(derive_key_cached(CYCLES, b.0, b.1), kb);
         assert_eq!(derive_key_cached(CYCLES, a.0, a.1), ka);
