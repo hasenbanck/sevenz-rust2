@@ -159,21 +159,38 @@ fn get_aes_key(properties: &[u8], password: &[u8]) -> Result<([u8; 32], [u8; 16]
         return Err(crate::Error::PasswordRequired);
     }
     let aes_key = if num_cycles_power == 0x3F {
+        // "Raw key" mode: the 32-byte key is `salt` followed by the password (both
+        // truncated to fit). `salt_size` is at most 16, so copy only that prefix.
+        // `aes_key.copy_from_slice(&salt)` would panic on the 32-vs-<=16 length mismatch.
         let mut aes_key = [0u8; 32];
-        aes_key.copy_from_slice(&salt[..salt_size]);
+        aes_key[..salt_size].copy_from_slice(&salt[..salt_size]);
         let n = password.len().min(aes_key.len() - salt_size);
         aes_key[salt_size..n + salt_size].copy_from_slice(&password[0..n]);
         aes_key
     } else {
+        // Cap the work factor: `derive_key` runs `2^num_cycles_power` SHA-256 rounds, so
+        // a crafted large power is a CPU-exhaustion DoS (and `1 << power` also overflows
+        // the shift for power >= 32). No real archive uses a power above this bound.
+        if num_cycles_power > MAX_AES_CYCLES_POWER {
+            return Err(crate::Error::other(
+                "AES num_cycles_power exceeds the supported maximum",
+            ));
+        }
         derive_key_cached(num_cycles_power, &salt, password)
     };
     Ok((aes_key, iv))
 }
 
+/// Maximum accepted AES-256 key-derivation work factor. `derive_key` runs
+/// `2^num_cycles_power` SHA-256 rounds; 7-Zip's own encoder never exceeds this, so a
+/// larger value only ever comes from a malicious archive trying to burn CPU. Keeping it
+/// below 32 also makes the `1 << num_cycles_power` shift safe.
+const MAX_AES_CYCLES_POWER: u8 = 24;
+
 fn derive_key(num_cycles_power: u8, salt: &[u8], password: &[u8]) -> [u8; 32] {
     let mut sha = sha2::Sha256::default();
     let mut extra = [0u8; 8];
-    for _ in 0..(1u32 << num_cycles_power) {
+    for _ in 0..(1u64 << num_cycles_power) {
         sha.update(salt);
         sha.update(password);
         sha.update(extra);
@@ -231,6 +248,14 @@ impl Cipher {
         if !self.buf.is_empty() {
             assert!(self.buf.len() < 16);
             let end = 16 - self.buf.len();
+            if data.len() < end {
+                // A short read (e.g. AES layered on top of another coder, whose reader can
+                // return fewer than 16 bytes) delivered less than what is needed to complete
+                // the pending block. Buffer what we have and wait for more; slicing
+                // `data[..end]` here would panic.
+                self.buf.extend_from_slice(data);
+                return Ok(n);
+            }
             self.buf.extend_from_slice(&data[..end]);
             data = &mut data[end..];
             let block: &mut Array<u8, _> = self.buf.as_mut_slice().try_into().unwrap();

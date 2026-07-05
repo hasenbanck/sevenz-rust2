@@ -26,7 +26,8 @@ pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String
     seven
         .for_each_entries(|entry, reader| {
             if !entry.is_directory() {
-                let path = entry.name();
+                let path =
+                    sanitize_entry_name(entry.name()).map_err(|e| std::io::Error::other(e))?;
 
                 if entry.size() > 0 {
                     let mut writer = Vec::new();
@@ -42,6 +43,30 @@ pub fn decompress(src: Uint8Array, pwd: &str, f: &Function) -> Result<(), String
         })
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Validates an untrusted archive entry name and returns a safe *relative* path.
+///
+/// Both `/` and `\` are treated as separators, and any `..`, root, or drive-prefix
+/// component is rejected so the host cannot be tricked into writing outside its
+/// destination directory.
+fn sanitize_entry_name(entry_name: &str) -> Result<String, String> {
+    use std::path::{Component, Path, PathBuf};
+
+    let normalized = entry_name.replace('\\', "/");
+    let mut result = PathBuf::new();
+    for component in Path::new(&normalized).components() {
+        match component {
+            Component::Normal(part) => result.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "unsafe entry path escapes destination: {entry_name}"
+                ));
+            }
+        }
+    }
+    Ok(result.to_string_lossy().into_owned())
 }
 
 /// Compresses multiple entries into a 7z archive in WebAssembly environment.

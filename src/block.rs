@@ -110,12 +110,17 @@ pub(crate) struct BindPair {
 pub struct OrderedCoderIter<'a> {
     block: &'a Block,
     current: Option<u64>,
+    remaining: usize,
 }
 
 impl<'a> OrderedCoderIter<'a> {
     fn new(block: &'a Block) -> Self {
         let current = block.packed_streams.first().copied();
-        Self { block, current }
+        Self {
+            block,
+            current,
+            remaining: block.coders.len(),
+        }
     }
 }
 
@@ -123,14 +128,26 @@ impl<'a> Iterator for OrderedCoderIter<'a> {
     type Item = (usize, &'a Coder);
 
     fn next(&mut self) -> Option<Self::Item> {
+        // An acyclic coder chain visits each coder at most once, so more than
+        // `coders.len()` yields means the bind pairs form a cycle. Stop instead of
+        // yielding forever (which would nest decoders until memory is exhausted); the
+        // caller then fails cleanly when the truncated decode stack produces bad data.
+        if self.remaining == 0 {
+            return None;
+        }
         let i = self.current?;
         self.current = self
             .block
             .find_bind_pair_for_out_stream(i)
             .map(|bp| bp.in_index);
-        self.block
+        let item = self
+            .block
             .coders
             .get(i as usize)
-            .map(|item| (i as usize, item))
+            .map(|item| (i as usize, item));
+        if item.is_some() {
+            self.remaining -= 1;
+        }
+        item
     }
 }

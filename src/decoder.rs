@@ -92,10 +92,12 @@ pub fn add_decoder<I: Read>(
     match method.id() {
         EncoderMethod::ID_COPY => Ok(Decoder::Copy(input)),
         EncoderMethod::ID_LZMA => {
-            let dict_size = get_lzma_dic_size(coder)?;
-            if coder.properties.is_empty() {
+            // Validate the length before touching the properties: `get_lzma_dic_size`
+            // slices `[1..5]`, which would panic on an attacker-supplied short field.
+            if coder.properties.len() < 5 {
                 return Err(Error::Other("LZMA properties too short".into()));
             }
+            let dict_size = get_lzma_dic_size(coder)?;
             let props = coder.properties[0];
             let lz =
                 LzmaReader::new_with_props(input, uncompressed_len as _, props, dict_size, None)
@@ -186,12 +188,11 @@ pub fn add_decoder<I: Read>(
             Ok(Decoder::Bcj(de))
         }
         EncoderMethod::ID_DELTA => {
-            let d = if coder.properties.is_empty() {
-                1
-            } else {
-                coder.properties[0].wrapping_add(1)
-            };
-            let de = DeltaReader::new(input, d as usize);
+            // The distance is `properties[0] + 1` in the range 1..=256. Widen to `usize`
+            // before the `+1` so a property byte of `0xFF` yields 256, not 0 (a `u8`
+            // `wrapping_add` would wrap to a zero distance and mis-decode / divide by zero).
+            let d = coder.properties.first().map_or(1, |b| *b as usize + 1);
+            let de = DeltaReader::new(input, d);
             Ok(Decoder::Delta(de))
         }
         #[cfg(feature = "aes256")]

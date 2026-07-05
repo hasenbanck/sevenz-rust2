@@ -1,6 +1,30 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Component, Path, PathBuf},
+    sync::Arc,
+};
 
 use sevenz_rust2::{Archive, BlockDecoder, Password};
+
+/// Joins an untrusted archive entry name onto `dest`, rejecting any path that would escape
+/// the destination directory (Zip-Slip / CWE-22). Always route `entry.name()` through a
+/// check like this instead of using `dest.join(entry.name())`.
+fn safe_join(dest: &Path, entry_name: &str) -> std::io::Result<PathBuf> {
+    let normalized = entry_name.replace('\\', "/");
+    let mut result = dest.to_path_buf();
+    for component in Path::new(&normalized).components() {
+        match component {
+            Component::Normal(part) => result.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("unsafe entry path escapes destination: {entry_name}"),
+                ));
+            }
+        }
+    }
+    Ok(result)
+}
 
 // 0. The simplest way to use multi threading is to use simply the ArchiveReader.
 //    If the compression of the archive blocks supports multi threading, which is supported
@@ -39,7 +63,8 @@ fn main() {
             let dest = PathBuf::from("examples/data/sample_mt/");
             block_decoder
                 .for_each_entries(&mut |entry, reader| {
-                    let dest = dest.join(entry.name());
+                    // `safe_join` rejects any entry name that would escape `dest`.
+                    let dest = safe_join(&dest, entry.name())?;
                     sevenz_rust2::default_entry_extract_fn(entry, reader, &dest)?;
                     Ok(true)
                 })

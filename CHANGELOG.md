@@ -5,11 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.21.3 - 2026-07-05
 
 ### Changed
 
 - Cache most recent AES key derivation to improve performance (#118, thanks @jdlien)
+
+### Fixed
+
+- Hardened the library against malicious or malformed archives that could otherwise cause a
+  panic, an infinite loop, or an unbounded allocation while parsing or decoding.
 
 ## 0.21.2 - 2026-07-01
 

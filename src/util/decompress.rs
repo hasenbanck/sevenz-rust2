@@ -173,10 +173,18 @@ fn safe_join(dest: &Path, entry_name: &str) -> Result<PathBuf, Error> {
 
 /// Default extraction function that handles standard file and directory extraction.
 ///
+/// # Security
+/// `dest` must already be a path you have validated as staying inside your destination
+/// directory. This function only rejects `..` components as a last line of defense;
+/// because it receives the already-joined path it cannot detect an absolute entry name
+/// that discarded the destination root (`root.join("/etc/x")` == `/etc/x`), so do not
+/// build `dest` with `root.join(entry.name())`. Prefer the higher-level [`decompress`]
+/// helpers, which perform the full traversal check for you.
+///
 /// # Arguments
 /// * `entry` - Archive entry being processed
 /// * `reader` - Reader for the entry's data
-/// * `dest` - Destination path for the entry
+/// * `dest` - Destination path for the entry (already validated by the caller)
 #[cfg(not(target_arch = "wasm32"))]
 pub fn default_entry_extract_fn(
     entry: &ArchiveEntry,
