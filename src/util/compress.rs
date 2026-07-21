@@ -8,7 +8,9 @@ use std::{
 
 #[cfg(feature = "aes256")]
 use crate::encoder_options::AesEncoderOptions;
-use crate::{ArchiveEntry, ArchiveWriter, EncoderMethod, Error, Password, writer::LazyFileReader};
+#[cfg(feature = "aes256")]
+use crate::{EncoderMethod, Password};
+use crate::{ArchiveEntry, ArchiveWriter, Error, writer::LazyFileReader};
 
 /// Compresses a source file or directory to a destination writer.
 ///

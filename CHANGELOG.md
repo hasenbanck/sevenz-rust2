@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `ArchiveWriter::push_packed_entry` — write already-compressed pack bytes and folder
+  metadata without re-encoding (enables non-solid archive update / pack-stream copy).
+- Public accessors on `Block` / `Coder` for pack-copy clients:
+  `num_unpack_sub_streams`, `packed_streams_count`, `unpack_sizes`, `properties`,
+  `num_in_streams`, `num_out_streams`.
+
 ## 0.21.3 - 2026-07-05
 
 ### Changed

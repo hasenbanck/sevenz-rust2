@@ -68,6 +68,21 @@ impl Block {
     pub fn ordered_coder_iter(&self) -> OrderedCoderIter<'_> {
         OrderedCoderIter::new(self)
     }
+
+    /// Number of unpack sub-streams in this block (>1 means solid multi-file block).
+    pub fn num_unpack_sub_streams(&self) -> usize {
+        self.num_unpack_sub_streams
+    }
+
+    /// Number of packed input streams this block consumes from the pack region.
+    pub fn packed_streams_count(&self) -> usize {
+        self.packed_streams.len()
+    }
+
+    /// Per-coder unpack sizes (folder `CodersUnpackSize` values).
+    pub fn unpack_sizes(&self) -> &[u64] {
+        &self.unpack_sizes
+    }
 }
 
 /// Represents a single coder within a compression block.
@@ -90,6 +105,24 @@ impl Coder {
     /// method used by this coder.
     pub fn encoder_method_id(&self) -> &[u8] {
         &self.encoder_method_id[0..self.id_size]
+    }
+
+    /// Returns the coder property bytes stored in the archive header.
+    ///
+    /// Used by pack-stream copy paths that re-emit the same folder metadata without
+    /// re-encoding.
+    pub fn properties(&self) -> &[u8] {
+        &self.properties
+    }
+
+    /// Number of input streams this coder consumes.
+    pub fn num_in_streams(&self) -> u64 {
+        self.num_in_streams
+    }
+
+    /// Number of output streams this coder produces.
+    pub fn num_out_streams(&self) -> u64 {
+        self.num_out_streams
     }
 
     pub(crate) fn decompression_method_id_mut(&mut self) -> &mut [u8] {

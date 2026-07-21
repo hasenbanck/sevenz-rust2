@@ -22,7 +22,10 @@ use crc32fast::Hasher;
 pub(crate) use self::lazy_file_reader::LazyFileReader;
 pub(crate) use self::seq_reader::SeqReader;
 pub use self::source_reader::SourceReader;
-use self::{pack_info::PackInfo, unpack_info::UnpackInfo};
+use self::{
+    pack_info::PackInfo,
+    unpack_info::{RawCoderSpec, UnpackInfo},
+};
 use crate::{
     ArchiveEntry, AutoFinish, AutoFinisher, ByteWriter, Error,
     archive::*,
@@ -215,6 +218,84 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         entry.size = 0;
         entry.compressed_size = 0;
         entry.has_crc = false;
+        self.files.push(entry);
+        Ok(self.files.last().unwrap())
+    }
+
+    /// Non-solid pack-stream copy: write already-compressed pack bytes and folder
+    /// metadata without re-encoding.
+    ///
+    /// `coders` is the ordered folder coder chain (same order as source block coders).
+    /// `coder_unpack_sizes` is the folder `CodersUnpackSize` vector (one size per coder
+    /// output stream; for a single LZMA2 folder this is `[uncompressed_size]`).
+    ///
+    /// `entry.size` / `entry.crc` / `entry.has_crc` must describe the uncompressed data.
+    /// Pack CRC is computed while copying.
+    pub fn push_packed_entry<R: Read>(
+        &mut self,
+        mut entry: ArchiveEntry,
+        mut pack_reader: R,
+        coders: &[(EncoderMethod, &[u8])],
+        coder_unpack_sizes: Vec<u64>,
+    ) -> Result<&ArchiveEntry> {
+        if entry.is_directory || !entry.has_stream {
+            return Err(Error::other(
+                "push_packed_entry requires a non-directory streamed entry",
+            ));
+        }
+        if coders.is_empty() {
+            return Err(Error::other("push_packed_entry requires at least one coder"));
+        }
+        if coder_unpack_sizes.len() != coders.len() {
+            return Err(Error::other(
+                "push_packed_entry: coder_unpack_sizes length must match coders",
+            ));
+        }
+
+        let mut compressed_len = 0usize;
+        let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            match pack_reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    compressed.write_all(&buf[..n]).map_err(|e| {
+                        Error::io_msg(e, format!("Copy packed entry:{}", entry.name()))
+                    })?;
+                }
+                Err(e) => {
+                    return Err(Error::io_msg(
+                        e,
+                        format!("Copy packed entry:{}", entry.name()),
+                    ));
+                }
+            }
+        }
+        compressed
+            .flush()
+            .map_err(|e| Error::io_msg(e, format!("Copy packed entry:{}", entry.name())))?;
+        let compressed_crc = compressed.crc_value();
+
+        entry.has_stream = true;
+        entry.has_crc = true;
+        entry.compressed_crc = compressed_crc as u64;
+        entry.compressed_size = compressed_len as u64;
+
+        self.pack_info
+            .add_stream(compressed_len as u64, compressed_crc);
+
+        let raw_coders = coders
+            .iter()
+            .map(|(method, props)| RawCoderSpec {
+                method_id: method.id().to_vec(),
+                properties: props.to_vec(),
+            })
+            .collect();
+
+        // CRC written into substreams; entry.crc is the uncompressed CRC.
+        self.unpack_info
+            .add_raw(raw_coders, coder_unpack_sizes, entry.crc as u32);
+
         self.files.push(entry);
         Ok(self.files.last().unwrap())
     }

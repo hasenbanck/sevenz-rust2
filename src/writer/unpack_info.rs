@@ -2,6 +2,14 @@ use std::{io::Write, sync::Arc};
 
 use super::*;
 use crate::EncoderConfiguration;
+
+/// Raw method-id + property bytes for re-emitting a folder without re-encoding.
+#[derive(Debug, Clone)]
+pub(crate) struct RawCoderSpec {
+    pub(crate) method_id: Vec<u8>,
+    pub(crate) properties: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct UnpackInfo {
     pub(crate) blocks: Vec<BlockInfo>,
@@ -16,6 +24,24 @@ impl UnpackInfo {
     ) {
         self.blocks.push(BlockInfo {
             methods,
+            raw_coders: None,
+            sizes,
+            crc,
+            num_sub_unpack_streams: 1,
+            ..Default::default()
+        })
+    }
+
+    /// Add a folder described by raw coder ids/properties (pack-stream copy path).
+    pub(crate) fn add_raw(
+        &mut self,
+        raw_coders: Vec<RawCoderSpec>,
+        sizes: Vec<u64>,
+        crc: u32,
+    ) {
+        self.blocks.push(BlockInfo {
+            methods: Arc::new(Vec::new()),
+            raw_coders: Some(raw_coders),
             sizes,
             crc,
             num_sub_unpack_streams: 1,
@@ -34,6 +60,7 @@ impl UnpackInfo {
     ) {
         self.blocks.push(BlockInfo {
             methods,
+            raw_coders: None,
             sizes,
             crc,
             num_sub_unpack_streams,
@@ -131,6 +158,9 @@ impl UnpackInfo {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct BlockInfo {
     pub(crate) methods: Arc<Vec<EncoderConfiguration>>,
+    /// When set, folder coders are written from raw method-id/properties instead of
+    /// recomputing properties from [`EncoderConfiguration`].
+    pub(crate) raw_coders: Option<Vec<RawCoderSpec>>,
     pub(crate) sizes: Vec<u64>,
     pub(crate) crc: u32,
     pub(crate) num_sub_unpack_streams: u64,
@@ -145,16 +175,44 @@ impl BlockInfo {
         cache: &mut Vec<u8>,
     ) -> std::io::Result<()> {
         cache.clear();
-        let mut num_coders = 0;
-        for mc in self.methods.iter() {
-            num_coders += 1;
-            self.write_single_codec(mc, cache)?;
+        let num_coders = if let Some(raw) = self.raw_coders.as_ref() {
+            for coder in raw {
+                Self::write_raw_codec(coder, cache)?;
+            }
+            raw.len()
+        } else {
+            for mc in self.methods.iter() {
+                self.write_single_codec(mc, cache)?;
+            }
+            self.methods.len()
+        };
+        if num_coders == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "block has no coders",
+            ));
         }
         write_u64(header, num_coders as u64)?;
         header.write_all(cache)?;
         for i in 0..num_coders - 1 {
             write_u64(header, i as u64 + 1)?;
             write_u64(header, i as u64)?;
+        }
+        Ok(())
+    }
+
+    fn write_raw_codec(coder: &RawCoderSpec, out: &mut Vec<u8>) -> std::io::Result<()> {
+        let id = &coder.method_id;
+        let props = &coder.properties;
+        let mut codec_flags = id.len() as u8;
+        if !props.is_empty() {
+            codec_flags |= 0x20;
+        }
+        out.write_u8(codec_flags)?;
+        out.write_all(id)?;
+        if !props.is_empty() {
+            out.write_u8(props.len() as u8)?;
+            out.write_all(props)?;
         }
         Ok(())
     }
