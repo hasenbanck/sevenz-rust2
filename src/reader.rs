@@ -1629,6 +1629,9 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
     /// Takes a closure to decode each files in the archive.
     ///
+    /// Returning `Ok(false)` from the closure stops the iteration: no further block is
+    /// decoded and no further entry is visited.
+    ///
     /// Attention about solid archive:
     /// When decoding a solid archive, the data to be decompressed depends on the data in front of it,
     /// you cannot simply skip the previous data and only decompress the data in the back.
@@ -1645,7 +1648,13 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 &self.password,
                 &mut self.source,
             );
-            forder_dec.for_each_entries(&mut each)?;
+            // Stop as soon as the closure asks to. `BlockDecoder::for_each_entries`
+            // already reports this, and the empty-file loop below already honors it;
+            // without this the outer loop kept building a decode stack and seeking for
+            // every remaining block after the caller was done.
+            if !forder_dec.for_each_entries(&mut each)? {
+                return Ok(());
+            }
         }
         // decode empty files
         for file_index in 0..self.archive.files.len() {

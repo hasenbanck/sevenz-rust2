@@ -7,7 +7,7 @@ use std::{
 
 #[cfg(feature = "util")]
 use sevenz_rust2::decompress_file;
-use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password};
+use sevenz_rust2::{Archive, ArchiveEntry, ArchiveReader, BlockDecoder, Password};
 #[cfg(feature = "util")]
 use tempfile::tempdir;
 
@@ -249,6 +249,35 @@ fn test_bcj2() {
         })
         .unwrap();
     }
+}
+
+/// Returning `Ok(false)` from the closure must stop the WHOLE iteration, not just the
+/// current block. `ArchiveReader::for_each_entries` used to discard the result of
+/// `BlockDecoder::for_each_entries`, so after the caller asked to stop it still built a
+/// decode stack and seeked for every remaining block. That is wasted work on any normal
+/// early exit (e.g. "read the first entry and stop"), and an attacker-controlled amount
+/// of it on a crafted archive that declares a large number of blocks.
+#[test]
+fn for_each_entries_stops_on_first_false() {
+    let file = File::open("tests/resources/non_solid.7z").unwrap();
+    let mut reader = ArchiveReader::new(file, Password::empty()).unwrap();
+    assert!(
+        reader.archive().blocks.len() > 1,
+        "fixture needs several blocks for this test to be meaningful"
+    );
+
+    let mut visited = 0usize;
+    reader
+        .for_each_entries(|_entry: &ArchiveEntry, _reader: &mut dyn std::io::Read| {
+            visited += 1;
+            Ok(false)
+        })
+        .unwrap();
+
+    assert_eq!(
+        visited, 1,
+        "iteration must stop at the first `Ok(false)`, not continue into the next block"
+    );
 }
 
 #[test]
