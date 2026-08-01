@@ -488,3 +488,16 @@ fn default_entry_extract_fn_rejects_parent_dir_component() {
     assert!(result.is_err(), "parent-dir path must be rejected");
     assert!(!escaped.exists(), "no file may be written via a `..` path");
 }
+
+/// Regression test for <https://github.com/hasenbanck/sevenz-rust2/issues/127>.
+#[test]
+fn malformed_coder_stream_counts_are_rejected() {
+    let mut file = File::open("tests/resources/issue_127_coder_stream_overflow.bin").unwrap();
+
+    let result = Archive::read(&mut file, &Password::empty());
+
+    assert!(
+        result.is_err(),
+        "malformed archive must be rejected, got: {result:?}"
+    );
+}

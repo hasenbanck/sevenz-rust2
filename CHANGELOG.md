@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.21.4 - 2026-08-01
+
+### Fixed
+
+- Fixed an integer overflow when summing attacker-controlled coder stream counts while parsing a block header. Malformed
+  archives panicked in debug builds and bypassed the stream-count bound in release builds. They are now rejected with an
+  error. (#127, thanks @tyrex-vberthier)
+
 ## 0.21.3 - 2026-07-05
 
 ### Changed
@@ -13,24 +21,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Hardened the library against malicious or malformed archives that could otherwise cause a
-  panic, an infinite loop, or an unbounded allocation while parsing or decoding.
+- Hardened the library against malicious or malformed archives that could otherwise cause a panic, an infinite loop, or
+  an unbounded allocation while parsing or decoding.
 
 ## 0.21.2 - 2026-07-01
 
 ### Fixed
 
-- Decode 7z folders that layer a single-input filter (e.g. Delta) on top of a BCJ2 coder
-  (`Method = Delta BCJ2`). These folders previously failed to decode with an
-  `Unsupported method` error because the decoder required the folder's final output coder
-  to be BCJ2 itself. (#117, thanks @trevorWieland)
+- Decode 7z folders that layer a single-input filter (e.g. Delta) on top of a BCJ2 coder (`Method = Delta BCJ2`). These
+  folders previously failed to decode with an
+  `Unsupported method` error because the decoder required the folder's final output coder to be BCJ2 itself. (#117,
+  thanks @trevorWieland)
 
 ## 0.21.1 - 2026-06-23
 
 ### Fixed
 
-- Fix security issue were malicious 7z files could write files outside the destination directory.
-  Reported by @lintowe (#116)
+- Fix security issue were malicious 7z files could write files outside the destination directory. Reported by @lintowe
+  (#116)
 
 ## 0.21.0 - 2026-04-25
 
@@ -45,10 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `K_ANTI` property block was not written for archives containing only anti-items, so anti-items
-  were extracted as 0-byte files instead of acting as deletion markers (#112, thanks @uraf)
-- `compress_path` no longer emits a spurious entry for the root directory itself when compressing
-  a directory tree (#79, thanks @super1207)
+- `K_ANTI` property block was not written for archives containing only anti-items, so anti-items were extracted as
+  0-byte files instead of acting as deletion markers (#112, thanks @uraf)
+- `compress_path` no longer emits a spurious entry for the root directory itself when compressing a directory tree (#79,
+  thanks @super1207)
 
 ## 0.20.2 - 2026-02-24
 
@@ -96,8 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Removed too strict debug_assert as reported in #81
-- Removed incompatibility issues when using the `ArchiveWriter::push_source_path()` with single files.
-  We now properly handle both cases were a file or a directory is given to the function.
+- Removed incompatibility issues when using the `ArchiveWriter::push_source_path()` with single files. We now properly
+  handle both cases were a file or a directory is given to the function.
 
 ## 0.19.0 - 2025-09-20
 
@@ -146,8 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added muti-threading support for LZMA2 compression & decompression.
-- Added `ArchiveReader::set_thread_count()` to set the thread count when decoding with multiple threads.
-  Only LZMA2 is supported right now. `ArchiveReader` will set the thread_count with the help of
+- Added `ArchiveReader::set_thread_count()` to set the thread count when decoding with multiple threads. Only LZMA2 is
+  supported right now. `ArchiveReader` will set the thread_count with the help of
   `std::thread::available_parallelism` as default.
 - Added missing documentation for the public API.
 
@@ -182,15 +190,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `SevenZMethodConfiguration` -> `EncoderConfiguration`
     - `MethodOptions` -> `EncoderOptions`
     - `Folder` -> `Block`
-- Renamed all instances of "folder" in the API to "directory" instead to clearly distinct from the "folder" in
-  the 7z format specification and align with the std fs module.
+- Renamed all instances of "folder" in the API to "directory" instead to clearly distinct from the "folder" in the 7z
+  format specification and align with the std fs module.
 - Internal `Archive`, `SteamMap`, `Coder` and `Block` fields are removed from the public API.
 - What the 7z specification calls "folders" are a false friend and we instead call them "blocks".
-- Every API that takes a password now uses the `Password` struct instead. Added helper
-  functions to create password from strings and raw bytes.
+- Every API that takes a password now uses the `Password` struct instead. Added helper functions to create password from
+  strings and raw bytes.
 - The needed features for WASM changed. Please use the "default_wasm" feature.
-- Removed the hard dependency to `nt-time` by creating our own time struct `NtTime`.
-  The feature can be used to convert to and from `nt-time::FileTime`.
+- Removed the hard dependency to `nt-time` by creating our own time struct `NtTime`. The feature can be used to convert
+  to and from `nt-time::FileTime`.
 
 ### Removed
 
@@ -265,8 +273,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fix the bug where the optional compression methods did not finish properly
-  and created invalid entries when writing 7z archives.
+- Fix the bug where the optional compression methods did not finish properly and created invalid entries when writing 7z
+  archives.
 
 ### Changed
 
@@ -307,9 +315,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The Brotli codec now supports the skippable frame encoding found in zstdmt (used by 7zip ZS and NanaZip).
-  This is the default format, since it seems to be the default for user facing programs. The default data a frame
-  contains is 128 KiB.
+- The Brotli codec now supports the skippable frame encoding found in zstdmt (used by 7zip ZS and NanaZip). This is the
+  default format, since it seems to be the default for user facing programs. The default data a frame contains is 128
+  KiB.
 
 ## 0.9.0 - 2025-02-25
 
@@ -372,7 +380,7 @@ This release should be mostly compatible with the old 0.6.1. The breaking change
 
 ## 0.6.1 - 2024-07-17
 
-- Fixed 'unsafe precondition(s) violated'. Closed #63
+- Fixed 'unsafe precondition (s) violated'. Closed #63
 
 ## 0.6.0 - 2024-04-05
 
@@ -388,8 +396,7 @@ This release should be mostly compatible with the old 0.6.1. The breaking change
 
 ## 0.5.3
 
-Fixed 'Too many open files'
-Reduce unnecessary public items #37
+Fixed 'Too many open files' Reduce unnecessary public items #37
 
 ## 0.5.2 - 2023-08-24
 
@@ -414,7 +421,7 @@ Sub crate `lzma-rust` code optimization
 - Removed unsafe code
 - Changed `SevenZWriter.finish` method return inner writer
 - Added wasm compress function
-- Updates bzip dependency to the patch version of 0.4.4([#23](https://github.com/dyz1990/sevenz-rust/pull/23))
+- Updates bzip dependency to the patch version of 0.4.4 ([#23](https://github.com/dyz1990/sevenz-rust/pull/23))
 
 ## 0.4.1 - 2023-06-07
 
@@ -432,15 +439,15 @@ Sub crate `lzma-rust` code optimization
 
 ## 0.2.10 - 2023-04-18
 
-- Change to use nt-time crate([#20](https://github.com/dyz1990/sevenz-rust/pull/20))
-- Fix typo([#18](https://github.com/dyz1990/sevenz-rust/pull/18))
+- Change to use nt-time crate ([#20](https://github.com/dyz1990/sevenz-rust/pull/20))
+- Fix typo ([#18](https://github.com/dyz1990/sevenz-rust/pull/18))
 - make function generics less restrictive ([#17](https://github.com/dyz1990/sevenz-rust/pull/17))
 - Solve warnings ([#16](https://github.com/dyz1990/sevenz-rust/pull/16))
 - run rustfmt on code ([#15](https://github.com/dyz1990/sevenz-rust/pull/15))
 
 ## 0.2.9 - 2023-03-16
 
-- Added bzip2 support([#14](https://github.com/dyz1990/sevenz-rust/pull/14))
+- Added bzip2 support ([#14](https://github.com/dyz1990/sevenz-rust/pull/14))
 
 ## 0.2.8 - 2023-03-06
 
@@ -452,12 +459,12 @@ Sub crate `lzma-rust` code optimization
 
 ## 0.2.6 - 2023-02-23
 
-- Added zstd support and use enhanced filetime lib([#11](https://github.com/dyz1990/sevenz-rust/pull/11))
+- Added zstd support and use enhanced filetime lib ([#11](https://github.com/dyz1990/sevenz-rust/pull/11))
 - Fixed lzma encoder bugs
 
 ## 0.2.4 - 2023-02-16
 
-- Changed return entry ref when pushing to writer([#10](https://github.com/dyz1990/sevenz-rust/pull/10))
+- Changed return entry ref when pushing to writer ([#10](https://github.com/dyz1990/sevenz-rust/pull/10))
 
 ## 0.2.3 - 2023-02-07
 
@@ -476,7 +483,7 @@ Sub crate `lzma-rust` code optimization
 
 - Added aes256sha256 decode method
 - Added wasm support
-- Added new tests (for Delta and Copy) and GitHub Actions CI([#5](https://github.com/dyz1990/sevenz-rust/pull/5))
+- Added new tests (for Delta and Copy) and GitHub Actions CI ([#5](https://github.com/dyz1990/sevenz-rust/pull/5))
   by [bfrazho](https://github.com/bfrazho)
 
 ## 0.1.4 - 2022-09-20 - Replace lzma/lzma2 decoder

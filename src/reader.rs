@@ -1041,10 +1041,15 @@ impl Archive {
                 coder.num_out_streams = read_variable_u64(header)?;
             }
             // Each stream is referenced by a bind-pair/packed-stream entry that consumes
-            // header bytes, so the totals cannot legitimately exceed `limit`. Bounding
-            // here also prevents the sums below from overflowing.
-            total_in_streams += coder.num_in_streams;
-            total_out_streams += coder.num_out_streams;
+            // header bytes, so the totals cannot legitimately exceed `limit`. The counts are
+            // unbounded attacker-controlled varints, so the sums are checked: an overflowing
+            // addition must be rejected rather than wrap past the bound below.
+            total_in_streams = total_in_streams
+                .checked_add(coder.num_in_streams)
+                .ok_or_else(|| Error::other("coder stream counts exceed available input"))?;
+            total_out_streams = total_out_streams
+                .checked_add(coder.num_out_streams)
+                .ok_or_else(|| Error::other("coder stream counts exceed available input"))?;
             if total_in_streams > limit as u64 || total_out_streams > limit as u64 {
                 return Err(Error::other("coder stream counts exceed available input"));
             }
