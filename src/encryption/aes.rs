@@ -266,17 +266,14 @@ impl Cipher {
             self.buf.clear();
         }
 
-        for a in data.chunks_mut(16) {
-            if a.len() < 16 {
-                self.buf.extend_from_slice(a);
-                break;
-            }
-            let block: &mut Array<u8, _> = a.try_into().unwrap();
-            self.dec.decrypt_block(block);
-            let out = block.as_slice();
+        let (blocks, remainder) = Array::<u8, _>::slice_as_chunks_mut(data);
+        if !blocks.is_empty() {
+            self.dec.decrypt_blocks(blocks);
+            let out = Array::slice_as_flattened(blocks);
             output.write_all(out)?;
             n += out.len();
         }
+        self.buf.extend_from_slice(remainder);
         Ok(n)
     }
 
@@ -428,27 +425,77 @@ mod key_derivation_tests {
 
 #[cfg(all(test, feature = "compress"))]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{Cursor, Read};
 
     use super::*;
 
-    #[test]
-    fn test_aes_codec() {
+    struct FragmentedReader<R> {
+        inner: R,
+        read_sizes: &'static [usize],
+        next_read: usize,
+    }
+
+    impl<R> FragmentedReader<R> {
+        fn new(inner: R, read_sizes: &'static [usize]) -> Self {
+            Self {
+                inner,
+                read_sizes,
+                next_read: 0,
+            }
+        }
+    }
+
+    impl<R: Read> Read for FragmentedReader<R> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let read_size = self.read_sizes[self.next_read % self.read_sizes.len()];
+            self.next_read += 1;
+            let len = read_size.min(buf.len());
+            self.inner.read(&mut buf[..len])
+        }
+    }
+
+    fn encode(original: &[u8]) -> (Vec<u8>, AesEncoderOptions, Password) {
         let mut encoded = vec![];
         let writer = Cursor::new(&mut encoded);
         let password: Password = "1234".into();
         let options = AesEncoderOptions::new(password.clone());
         let mut enc = Aes256Sha256Encoder::new(writer, &options).unwrap();
-        let original = include_bytes!("aes.rs");
         enc.write_all(original).expect("encode data");
         let _ = enc.write(&[]).unwrap();
+        drop(enc);
+        (encoded, options, password)
+    }
 
-        let mut encoded_data = &encoded[..];
-        let mut dec =
-            Aes256Sha256Decoder::new(&mut encoded_data, &options.properties(), &password).unwrap();
+    fn assert_decodes<R: Read>(input: R, properties: &[u8], password: &Password, original: &[u8]) {
+        let mut dec = Aes256Sha256Decoder::new(input, properties, password).unwrap();
 
         let mut decoded = vec![];
         let _ = std::io::copy(&mut dec, &mut decoded).unwrap();
-        assert_eq!(&decoded[..original.len()], &original[..]);
+        assert_eq!(&decoded[..original.len()], original);
+    }
+
+    #[test]
+    fn test_aes_codec() {
+        let original = include_bytes!("aes.rs");
+        let (encoded, options, password) = encode(original);
+        let properties = options.properties();
+        assert_decodes(
+            Cursor::new(encoded.as_slice()),
+            &properties,
+            &password,
+            original,
+        );
+    }
+
+    #[test]
+    fn test_aes_codec_with_fragmented_input() {
+        let original = include_bytes!("aes.rs");
+        let (encoded, options, password) = encode(original);
+        let properties = options.properties();
+
+        for read_sizes in [&[1, 511][..], &[15, 17], &[7, 503, 31, 511]] {
+            let input = FragmentedReader::new(Cursor::new(encoded.as_slice()), read_sizes);
+            assert_decodes(input, &properties, &password, original);
+        }
     }
 }
