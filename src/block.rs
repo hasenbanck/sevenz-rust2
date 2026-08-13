@@ -92,6 +92,13 @@ impl Coder {
         &self.encoder_method_id[0..self.id_size]
     }
 
+    /// Returns this coder's properties: the method-specific parameters stored alongside the method
+    /// ID, empty for a method that takes none. How to interpret them depends on
+    /// [`encoder_method_id`](Self::encoder_method_id).
+    pub fn properties(&self) -> &[u8] {
+        &self.properties
+    }
+
     pub(crate) fn decompression_method_id_mut(&mut self) -> &mut [u8] {
         &mut self.encoder_method_id[0..self.id_size]
     }
