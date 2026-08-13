@@ -96,6 +96,20 @@ impl ArchiveWriter<File> {
     }
 }
 
+/// Names of the entries in a block, for an error message. Truncated at ~512 bytes, since a solid
+/// block can hold many thousands.
+fn entries_names(entries: &[ArchiveEntry]) -> String {
+    let mut names = String::with_capacity(512);
+    for ele in entries.iter() {
+        names.push_str(&ele.name);
+        names.push(';');
+        if names.len() > 512 {
+            break;
+        }
+    }
+    names
+}
+
 impl<W: Write + Seek> ArchiveWriter<W> {
     /// Prepares writer to write a 7z archive to.
     pub fn new(mut writer: W) -> Result<Self> {
@@ -219,6 +233,48 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         Ok(self.files.last().unwrap())
     }
 
+    /// Append a block compressed elsewhere by [`prepare_block`].
+    ///
+    /// Only the parts that must happen in output order: write the bytes, record the pack and block
+    /// metadata, take the entries. Everything expensive already happened on whatever thread built
+    /// the [`PreparedBlock`].
+    ///
+    /// A block holding no entries is dropped rather than written, so an empty batch does not put a
+    /// junk pack stream and a zero-substream block into the archive.
+    pub fn push_prepared_block(&mut self, block: PreparedBlock) -> Result<&mut Self> {
+        if block.is_empty() {
+            return Ok(self);
+        }
+
+        let PreparedBlock {
+            compressed,
+            compressed_crc,
+            entries,
+            methods,
+            sizes,
+            crc,
+            sub_stream_sizes,
+            sub_stream_crcs,
+        } = block;
+
+        let compressed_len = compressed.len() as u64;
+        self.output
+            .write_all(&compressed)
+            .map_err(|e| Error::io_msg(e, "push_prepared_block: write".to_string()))?;
+
+        self.pack_info.add_stream(compressed_len, compressed_crc);
+        self.unpack_info.add_multiple(
+            methods,
+            sizes,
+            crc,
+            entries.len() as u64,
+            sub_stream_sizes,
+            sub_stream_crcs,
+        );
+        self.files.extend(entries);
+        Ok(self)
+    }
+
     /// Solid compression - packs `entries` into one pack.
     ///
     /// # Panics
@@ -241,18 +297,6 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             let mut write_len = 0;
             let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
             let mut buf = [0u8; 4096];
-
-            fn entries_names(entries: &[ArchiveEntry]) -> String {
-                let mut names = String::with_capacity(512);
-                for ele in entries.iter() {
-                    names.push_str(&ele.name);
-                    names.push(';');
-                    if names.len() > 512 {
-                        break;
-                    }
-                }
-                names
-            }
 
             loop {
                 match r.read(&mut buf) {
@@ -658,4 +702,146 @@ impl<W: Write> Write for CompressWrapWriter<'_, W> {
     fn flush(&mut self) -> std::io::Result<()> {
         self.writer.flush()
     }
+}
+
+/// A solid block compressed away from any writer, ready to be appended by
+/// [`ArchiveWriter::push_prepared_block`].
+///
+/// **This holds the entire compressed block in memory** until it is pushed, where
+/// [`ArchiveWriter::push_archive_entries`] streams into the output as it encodes. That is inherent
+/// to preparing a block off-thread, and it is what a caller sizing its batches is signing up for:
+/// peak memory is roughly the compressed size of every block in flight at once.
+#[derive(Debug)]
+pub struct PreparedBlock {
+    compressed: Vec<u8>,
+    compressed_crc: u32,
+    entries: Vec<ArchiveEntry>,
+    methods: Arc<Vec<EncoderConfiguration>>,
+    sizes: Vec<u64>,
+    crc: u32,
+    sub_stream_sizes: Vec<u64>,
+    sub_stream_crcs: Vec<u32>,
+}
+
+impl PreparedBlock {
+    /// Compressed size in bytes, before it is appended.
+    pub fn compressed_len(&self) -> usize {
+        self.compressed.len()
+    }
+
+    /// Number of entries in the block.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the block holds no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+/// Compress `entries` into one solid block using `methods`, without a writer.
+///
+/// Mirrors the encoding half of [`ArchiveWriter::push_archive_entries`], writing into memory instead
+/// of the archive. Safe to call on a worker thread; the result is appended later with
+/// [`ArchiveWriter::push_prepared_block`], which is what fixes the order.
+///
+/// Returns an error if `methods` is empty, or if `entries` and `reader` differ in length.
+pub fn prepare_block<R: Read>(
+    methods: Arc<Vec<EncoderConfiguration>>,
+    entries: Vec<ArchiveEntry>,
+    reader: Vec<SourceReader<R>>,
+) -> Result<PreparedBlock> {
+    if methods.is_empty() {
+        return Err(Error::other("prepare_block: `methods` must not be empty"));
+    }
+
+    let mut entries = entries;
+    let mut r = SeqReader::new(reader);
+    if r.reader_len() != entries.len() {
+        return Err(Error::other(format!(
+            "prepare_block: {} entries against {} readers",
+            entries.len(),
+            r.reader_len()
+        )));
+    }
+
+    let mut out: Vec<u8> = Vec::new();
+    let mut more_sizes: Vec<Rc<Cell<usize>>> = Vec::with_capacity(methods.len() - 1);
+
+    let (crc, size, compressed_crc) = {
+        // Outer wrapper: the CRC of the compressed bytes, computed as they are produced on this
+        // thread. `push_prepared_block` would otherwise have to make a second pass over the whole
+        // buffer on the serialized side, which is the work this function exists to move off it.
+        let mut compressed_len = 0;
+        let mut compressed = CompressWrapWriter::new(&mut out, &mut compressed_len);
+        let (crc, size) = {
+            let mut w = ArchiveWriter::<std::io::Cursor<Vec<u8>>>::create_writer(
+                &methods,
+                &mut compressed,
+                &mut more_sizes,
+            )?;
+            let mut write_len = 0;
+            let mut w = CompressWrapWriter::new(&mut w, &mut write_len);
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = r.read(&mut buf).map_err(|e| {
+                    Error::io_msg(
+                        e,
+                        format!("prepare_block: read source:{}", entries_names(&entries)),
+                    )
+                })?;
+                if n == 0 {
+                    break;
+                }
+                w.write_all(&buf[..n]).map_err(|e| {
+                    Error::io_msg(
+                        e,
+                        format!("prepare_block: encode:{}", entries_names(&entries)),
+                    )
+                })?;
+            }
+            w.flush().map_err(|e| {
+                Error::io_msg(
+                    e,
+                    format!("prepare_block: flush:{}", entries_names(&entries)),
+                )
+            })?;
+            w.write(&[]).map_err(|e| {
+                Error::io_msg(
+                    e,
+                    format!("prepare_block: finish:{}", entries_names(&entries)),
+                )
+            })?;
+            (w.crc_value(), write_len)
+        };
+        (crc, size, compressed.crc_value())
+    };
+
+    let mut sub_stream_crcs = Vec::with_capacity(entries.len());
+    let mut sub_stream_sizes = Vec::with_capacity(entries.len());
+    for i in 0..entries.len() {
+        let entry = &mut entries[i];
+        let ri = &r[i];
+        entry.crc = ri.crc_value() as u64;
+        entry.size = ri.read_count() as u64;
+        sub_stream_crcs.push(entry.crc as u32);
+        sub_stream_sizes.push(entry.size);
+        entry.has_crc = true;
+    }
+
+    let mut sizes = Vec::with_capacity(more_sizes.len() + 1);
+    sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
+    sizes.push(size as u64);
+
+    Ok(PreparedBlock {
+        compressed: out,
+        compressed_crc,
+        entries,
+        methods,
+        sizes,
+        crc,
+        sub_stream_sizes,
+        sub_stream_crcs,
+    })
 }
