@@ -1,4 +1,9 @@
-use std::{collections::HashMap, env::temp_dir, time::Instant};
+use std::{
+    collections::HashMap,
+    env::temp_dir,
+    sync::{Arc, atomic::AtomicBool},
+    time::Instant,
+};
 
 use rand::prelude::*;
 use sevenz_rust2::{
@@ -32,7 +37,8 @@ fn main() {
     let time = Instant::now();
 
     // start to compress
-    let mut sz = ArchiveWriter::create(&dest).expect("create writer ok");
+    let mut sz =
+        ArchiveWriter::create(&dest, Arc::new(AtomicBool::new(true))).expect("create writer ok");
     sz.set_encrypt_header(true);
 
     #[cfg(feature = "aes256")]

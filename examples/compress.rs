@@ -1,4 +1,9 @@
-use std::{env, fs::File, time::Instant};
+use std::{
+    env,
+    fs::File,
+    sync::{Arc, atomic::AtomicBool},
+    time::Instant,
+};
 
 use sevenz_rust2::{ArchiveReader, ArchiveWriter, Password};
 
@@ -53,7 +58,7 @@ fn main() {
 
     let now = Instant::now();
 
-    let mut writer = ArchiveWriter::create(&output_path)
+    let mut writer = ArchiveWriter::create(&output_path, Arc::new(AtomicBool::new(true)))
         .unwrap_or_else(|error| panic!("Failed to create archive '{output_path}': {error}"));
 
     if solid {
