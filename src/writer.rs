@@ -80,6 +80,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct ArchiveWriter<W: Write> {
     output: W,
     files: Vec<ArchiveEntry>,
+    comment: Option<String>,
     content_methods: Arc<Vec<EncoderConfiguration>>,
     pack_info: PackInfo,
     unpack_info: UnpackInfo,
@@ -105,6 +106,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         Ok(Self {
             output: writer,
             files: Default::default(),
+            comment: None,
             content_methods: Arc::new(vec![EncoderConfiguration::new(EncoderMethod::LZMA2)]),
             pack_info: Default::default(),
             unpack_info: Default::default(),
@@ -124,6 +126,18 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             return self;
         }
         self.content_methods = Arc::new(content_methods);
+        self
+    }
+
+    /// Sets the archive comment written to the 7z header.
+    pub fn set_comment(&mut self, comment: impl Into<String>) -> &mut Self {
+        self.comment = Some(comment.into());
+        self
+    }
+
+    /// Removes a previously configured archive comment.
+    pub fn clear_comment(&mut self) -> &mut Self {
+        self.comment = None;
         self
     }
 
@@ -511,6 +525,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         self.write_file_atimes(header)?;
         self.write_file_mtimes(header)?;
         self.write_file_windows_attrs(header)?;
+        self.write_comment(header)?;
         header.write_u8(K_END)?;
         Ok(())
     }
@@ -626,6 +641,22 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         windows_attributes,
         write_u32
     );
+
+    fn write_comment<H: Write>(&self, header: &mut H) -> std::io::Result<()> {
+        let Some(comment) = &self.comment else {
+            return Ok(());
+        };
+
+        let mut data = Vec::with_capacity(1 + (comment.len() + 1) * 2);
+        data.write_u8(0)?; // inline data, not an external stream
+        for unit in comment.encode_utf16().chain(std::iter::once(0)) {
+            data.write_u16(unit)?;
+        }
+
+        header.write_u8(K_COMMENT)?;
+        write_u64(header, data.len() as u64)?;
+        header.write_all(&data)
+    }
 }
 
 impl<W: Write + Seek> AutoFinish for ArchiveWriter<W> {

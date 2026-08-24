@@ -505,3 +505,25 @@ fn archive_roundtrip_preserves_structure() {
     assert!(regular.iter().any(|f| f.name() == "dir/file1.txt"));
     assert!(regular.iter().any(|f| f.name() == "dir/sub/file2.txt"));
 }
+
+#[cfg(all(feature = "compress", feature = "util"))]
+#[test]
+fn archive_roundtrip_preserves_comment() {
+    let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes), continue_flag).unwrap();
+        writer.set_comment("Комментарий к архиву");
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("file.txt"),
+                Some(b"content".as_slice()),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let archive = Archive::read(&mut Cursor::new(bytes), &Password::empty()).unwrap();
+
+    assert_eq!(archive.comment.as_deref(), Some("Комментарий к архиву"));
+}

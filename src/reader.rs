@@ -252,7 +252,7 @@ impl Archive {
     fn read_header<R: Read + Seek>(header: &mut R, archive: &mut Archive) -> Result<(), Error> {
         let mut nid = header.read_u8()?;
         if nid == K_ARCHIVE_PROPERTIES {
-            Self::read_archive_properties(header)?;
+            Self::read_archive_properties(header, archive)?;
             nid = header.read_u8()?;
         }
 
@@ -274,11 +274,18 @@ impl Archive {
         Ok(())
     }
 
-    fn read_archive_properties<R: Read + Seek>(header: &mut R) -> Result<(), Error> {
+    fn read_archive_properties<R: Read + Seek>(
+        header: &mut R,
+        archive: &mut Archive,
+    ) -> Result<(), Error> {
         let mut nid = header.read_u8()?;
         while nid != K_END {
             let property_size = read_variable_usize(header, "propertySize")?;
-            header.seek(SeekFrom::Current(property_size as i64))?;
+            if nid == K_COMMENT {
+                archive.comment = Some(read_comment(header, property_size)?);
+            } else {
+                header.seek(SeekFrom::Current(property_size as i64))?;
+            }
             nid = header.read_u8()?;
         }
         Ok(())
@@ -583,6 +590,10 @@ impl Archive {
                             file.windows_attributes = header.read_u32()?;
                         }
                     }
+                }
+                K_COMMENT => {
+                    let size = assert_usize(size, "comment length")?;
+                    archive.comment = Some(read_comment(header, size)?);
                 }
                 K_START_POS => return Err(Error::other("kStartPos is unsupported, please report")),
                 K_DUMMY => {
@@ -1032,6 +1043,38 @@ fn read_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
         mask >>= 1;
     }
     Ok(bits)
+}
+
+fn read_comment<R: Read>(header: &mut R, size: usize) -> Result<String, Error> {
+    if size == 0 {
+        return Err(Error::other(
+            "comment property is missing the external flag",
+        ));
+    }
+
+    let external = header.read_u8()?;
+    if external != 0 {
+        return Err(Error::other(format!(
+            "kComment external data is unsupported: external={external}"
+        )));
+    }
+
+    let text_size = size - 1;
+    if text_size & 1 != 0 {
+        return Err(Error::other("comment UTF-16 length is invalid"));
+    }
+
+    let mut bytes = vec![0; text_size];
+    header.read_exact(&mut bytes)?;
+    let mut utf16: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .collect();
+    if utf16.last() == Some(&0) {
+        utf16.pop();
+    }
+
+    String::from_utf16(&utf16).map_err(|e| Error::other(format!("invalid comment UTF-16: {e}")))
 }
 
 struct NamesReader<'a, R: Read> {
