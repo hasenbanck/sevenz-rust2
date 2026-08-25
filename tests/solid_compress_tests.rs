@@ -1,9 +1,9 @@
 #[cfg(feature = "compress")]
 use sevenz_rust2::*;
-#[cfg(feature = "compress")]
+#[cfg(all(feature = "compress", feature = "util"))]
 use tempfile::*;
 
-#[cfg(feature = "compress")]
+#[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_multi_files_solid() {
     let temp_dir = tempdir().unwrap();
@@ -36,7 +36,7 @@ fn compress_multi_files_solid() {
     }
 }
 
-#[cfg(feature = "compress")]
+#[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn compress_multi_files_mix_solid_and_non_solid() {
     use std::fs::File;
@@ -90,7 +90,7 @@ fn compress_multi_files_mix_solid_and_non_solid() {
     }
 }
 
-#[cfg(feature = "compress")]
+#[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn prepare_block_round_trips_through_push_prepared_block() {
     use std::{io::Cursor, sync::Arc};

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.22.2 - 2026-08-25
+
+### Fixed
+
+- Fixed build process and tests for all cargo feature combinations (#126)
+
 ## 0.22.1 - 2026-08-25
 
 ### Fixed

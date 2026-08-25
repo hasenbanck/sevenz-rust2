@@ -426,6 +426,13 @@ fn anti_item_roundtrip() {
 #[cfg(all(feature = "compress", feature = "aes256"))]
 #[test]
 fn encrypted_file_header_requires_password_to_read() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::{
+        Archive, ArchiveEntry, ArchiveWriter, Password,
+        encoder_options::{AesEncoderOptions, Lzma2Options},
+    };
+
     let content = std::fs::read("tests/resources/apache2.txt").unwrap();
 
     let mut bytes = Vec::new();

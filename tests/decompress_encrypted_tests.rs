@@ -1,4 +1,4 @@
-#[cfg(feature = "aes256")]
+#[cfg(all(feature = "aes256", feature = "util"))]
 #[test]
 fn test_decompress_file_with_password() {
     use std::{fs::read_to_string, path::PathBuf};

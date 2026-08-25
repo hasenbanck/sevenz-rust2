@@ -2,9 +2,13 @@
 use std::io::Write;
 use std::io::{Cursor, Read};
 
-use lz4_flex::frame::{FrameDecoder, FrameEncoder, FrameInfo};
+use lz4_flex::frame::FrameDecoder;
+#[cfg(feature = "compress")]
+use lz4_flex::frame::{FrameEncoder, FrameInfo};
 
-use crate::{ByteReader, ByteWriter, Error};
+#[cfg(feature = "compress")]
+use crate::ByteWriter;
+use crate::{ByteReader, Error};
 
 /// Magic bytes of a skippable frame as used in LZ4 by zstdmt.
 const SKIPPABLE_FRAME_MAGIC: u32 = 0x184D2A50;

@@ -344,8 +344,7 @@ fn anti_item_deletes_file_on_extract() {
     use std::io::Cursor;
 
     use sevenz_rust2::{
-        ArchiveEntry, ArchiveWriter, decompress_with_extract_fn_and_password,
-        default_entry_extract_fn,
+        ArchiveEntry, ArchiveWriter, decompress_with_extract_fn, default_entry_extract_fn,
     };
 
     let temp_dir = tempdir().unwrap();
@@ -363,10 +362,9 @@ fn anti_item_deletes_file_on_extract() {
     }
 
     let dest = temp_dir.path().to_path_buf();
-    decompress_with_extract_fn_and_password(
+    decompress_with_extract_fn(
         Cursor::new(bytes.as_slice()),
         &dest,
-        Password::empty(),
         |entry, reader, dest_path| {
             if entry.is_anti_item() {
                 std::fs::remove_file(dest_path).ok();

@@ -75,6 +75,25 @@ jobs:
       - name: Build no default features
         run: RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build --target wasm32-unknown-unknown --release --no-default-features --features default_wasm
 
+  feature-combinations:
+    name: Feature combinations
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2.9.2
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Test every feature combination
+        run: cargo hack test --feature-powerset --depth 2 --exclude-features default,default_wasm,aes256_wasm
+
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-24.04
