@@ -242,10 +242,11 @@ fn get_ppmd_order_memory_size(coder: &Coder, max_mem_limit_kb: usize) -> Result<
         ));
     }
 
-    if memory_size as usize > max_mem_limit_kb {
+    let memory_size_kb = memory_size.div_ceil(1024) as usize;
+    if memory_size_kb > max_mem_limit_kb {
         return Err(Error::MaxMemLimited {
             max_kb: max_mem_limit_kb,
-            actaul_kb: memory_size as usize,
+            actaul_kb: memory_size_kb,
         });
     }
 
