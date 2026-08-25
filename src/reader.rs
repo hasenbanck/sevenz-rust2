@@ -1045,7 +1045,7 @@ fn read_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
     Ok(bits)
 }
 
-fn read_comment<R: Read>(header: &mut R, size: usize) -> Result<String, Error> {
+fn read_comment<R: Read>(header: &mut R, size: usize) -> Result<Vec<u8>, Error> {
     if size == 0 {
         return Err(Error::other(
             "comment property is missing the external flag",
@@ -1059,22 +1059,9 @@ fn read_comment<R: Read>(header: &mut R, size: usize) -> Result<String, Error> {
         )));
     }
 
-    let text_size = size - 1;
-    if text_size & 1 != 0 {
-        return Err(Error::other("comment UTF-16 length is invalid"));
-    }
-
-    let mut bytes = vec![0; text_size];
+    let mut bytes = vec![0; size - 1];
     header.read_exact(&mut bytes)?;
-    let mut utf16: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .collect();
-    if utf16.last() == Some(&0) {
-        utf16.pop();
-    }
-
-    String::from_utf16(&utf16).map_err(|e| Error::other(format!("invalid comment UTF-16: {e}")))
+    Ok(bytes)
 }
 
 struct NamesReader<'a, R: Read> {

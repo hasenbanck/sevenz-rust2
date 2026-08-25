@@ -509,11 +509,13 @@ fn archive_roundtrip_preserves_structure() {
 #[cfg(all(feature = "compress", feature = "util"))]
 #[test]
 fn archive_roundtrip_preserves_comment() {
+    // "Комментарий к архиву" encoded as Windows-1251.
+    let comment = b"\xCA\xEE\xEC\xEC\xE5\xED\xF2\xE0\xF0\xE8\xE9 \xEA \xE0\xF0\xF5\xE8\xE2\xF3";
     let continue_flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(true));
     let mut bytes = Vec::new();
     {
         let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes), continue_flag).unwrap();
-        writer.set_comment("Комментарий к архиву");
+        writer.set_comment(comment.as_slice());
         writer
             .push_archive_entry(
                 ArchiveEntry::new_file("file.txt"),
@@ -525,5 +527,5 @@ fn archive_roundtrip_preserves_comment() {
 
     let archive = Archive::read(&mut Cursor::new(bytes), &Password::empty()).unwrap();
 
-    assert_eq!(archive.comment.as_deref(), Some("Комментарий к архиву"));
+    assert_eq!(archive.comment.as_deref(), Some(comment.as_slice()));
 }

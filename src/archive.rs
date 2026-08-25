@@ -41,8 +41,11 @@ pub(crate) const K_DUMMY: u8 = 0x19;
 /// and internal structure information necessary for decompression.
 #[derive(Debug, Default, Clone)]
 pub struct Archive {
-    /// Optional archive comment stored in the 7z header.
-    pub comment: Option<String>,
+    /// Optional archive comment as stored in the 7z header.
+    ///
+    /// The bytes are not decoded because 7z does not prescribe a single
+    /// character encoding for comments.
+    pub comment: Option<Vec<u8>>,
     /// Offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
     pub(crate) pack_pos: u64,
     pub(crate) pack_sizes: Vec<u64>,

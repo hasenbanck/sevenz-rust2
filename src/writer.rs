@@ -80,7 +80,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct ArchiveWriter<W: Write> {
     output: W,
     files: Vec<ArchiveEntry>,
-    comment: Option<String>,
+    comment: Option<Vec<u8>>,
     content_methods: Arc<Vec<EncoderConfiguration>>,
     pack_info: PackInfo,
     unpack_info: UnpackInfo,
@@ -129,8 +129,11 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         self
     }
 
-    /// Sets the archive comment written to the 7z header.
-    pub fn set_comment(&mut self, comment: impl Into<String>) -> &mut Self {
+    /// Sets the archive comment bytes written to the 7z header.
+    ///
+    /// The bytes are stored unchanged, allowing callers to choose the
+    /// character encoding and whether to include a terminator.
+    pub fn set_comment(&mut self, comment: impl Into<Vec<u8>>) -> &mut Self {
         self.comment = Some(comment.into());
         self
     }
@@ -647,15 +650,10 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             return Ok(());
         };
 
-        let mut data = Vec::with_capacity(1 + (comment.len() + 1) * 2);
-        data.write_u8(0)?; // inline data, not an external stream
-        for unit in comment.encode_utf16().chain(std::iter::once(0)) {
-            data.write_u16(unit)?;
-        }
-
         header.write_u8(K_COMMENT)?;
-        write_u64(header, data.len() as u64)?;
-        header.write_all(&data)
+        write_u64(header, comment.len() as u64 + 1)?;
+        header.write_u8(0)?; // inline data, not an external stream
+        header.write_all(comment)
     }
 }
 

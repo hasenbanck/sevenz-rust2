@@ -11,13 +11,8 @@ use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password};
 #[cfg(feature = "util")]
 use tempfile::tempdir;
 
-fn archive_with_comment(comment: &str) -> Vec<u8> {
-    let mut comment_bytes = Vec::new();
-    for unit in comment.encode_utf16().chain(std::iter::once(0)) {
-        comment_bytes.extend_from_slice(&unit.to_le_bytes());
-    }
-
-    let property_size = 1 + comment_bytes.len();
+fn archive_with_comment(comment: &[u8]) -> Vec<u8> {
+    let property_size = 1 + comment.len();
     assert!(property_size < 0x80);
     let mut next_header = vec![
         0x01, // kHeader
@@ -27,7 +22,7 @@ fn archive_with_comment(comment: &str) -> Vec<u8> {
         property_size as u8,
         0x00, // inline (not external)
     ];
-    next_header.extend_from_slice(&comment_bytes);
+    next_header.extend_from_slice(comment);
     next_header.extend_from_slice(&[0x00, 0x00]); // FilesInfo end, Header end
 
     let next_header_crc = crc32fast::hash(&next_header);
@@ -46,10 +41,11 @@ fn archive_with_comment(comment: &str) -> Vec<u8> {
 
 #[test]
 fn reads_archive_comment() {
-    let bytes = archive_with_comment("Комментарий к архиву");
+    let comment = b"arbitrary encoding: \xFF\xFE\x80";
+    let bytes = archive_with_comment(comment);
     let archive = Archive::read(&mut std::io::Cursor::new(bytes), &Password::empty()).unwrap();
 
-    assert_eq!(archive.comment.as_deref(), Some("Комментарий к архиву"));
+    assert_eq!(archive.comment.as_deref(), Some(comment.as_slice()));
 }
 
 #[cfg(feature = "util")]
