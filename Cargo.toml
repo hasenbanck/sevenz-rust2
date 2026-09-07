@@ -30,7 +30,7 @@ zstd = ["dep:zstd"]
 
 [dependencies]
 aes = { version = "0.9", optional = true }
-brotli = { version = ">= 7, < 9", default-features = false, optional = true, features = ["std"] }
+brotli = { version = ">= 7, < 10", default-features = false, optional = true, features = ["std"] }
 bzip2 = { version = "0.6", optional = true }
 cbc = { version = "0.2", optional = true }
 crc32fast = "1"
