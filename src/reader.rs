@@ -732,6 +732,19 @@ impl Archive {
             }
         }
 
+        // `SubStreamsInfo` is indexed by the running sub-stream count over all
+        // blocks. Record each block's first index here so `build_decode_stack`
+        // does not re-sum the preceding blocks every time it opens one, which
+        // made extracting an archive of many non-solid blocks quadratic.
+        let mut next_sub_stream_index: usize = 0;
+        stream_map.block_first_sub_stream_index = vec![0; num_blocks];
+        for i in 0..num_blocks {
+            stream_map.block_first_sub_stream_index[i] = next_sub_stream_index;
+            next_sub_stream_index = next_sub_stream_index
+                .checked_add(archive.blocks[i].num_unpack_sub_streams)
+                .ok_or_else(|| Error::other("sub-stream index overflow"))?;
+        }
+
         let mut next_pack_stream_offset: u64 = 0;
         let num_pack_sizes = archive.pack_sizes.len();
         stream_map.pack_stream_offsets = vec![0; num_pack_sizes];
@@ -1364,10 +1377,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             && block.num_unpack_sub_streams == 1
             && let Some(sub_streams_info) = archive.sub_streams_info.as_ref()
         {
-            let mut substream_index = 0;
-            for i in 0..block_index {
-                substream_index += archive.blocks[i].num_unpack_sub_streams;
-            }
+            let substream_index = archive.stream_map.block_first_sub_stream_index[block_index];
 
             // Only when there is a single stream, we can use it's CRC to verify the compressed block data.
             // Multiple streams would contain the CRC of the compressed data for each file in the block.

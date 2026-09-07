@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Opening a block no longer re-sums the sub-stream counts of every preceding block to locate its CRC, which made reading an archive of many non-solid blocks quadratic in the block count.
+
 ## 0.22.2 - 2026-08-25
 
 ### Fixed

@@ -464,6 +464,10 @@ impl EncoderMethod {
 pub struct StreamMap {
     pub(crate) block_first_pack_stream_index: Vec<usize>,
     pub(crate) pack_stream_offsets: Vec<u64>,
+    /// Index of the first sub-stream of each block into `SubStreamsInfo`
+    /// (`unpack_sizes` / `has_crc` / `crcs`): the running sum of
+    /// `num_unpack_sub_streams` over the preceding blocks.
+    pub(crate) block_first_sub_stream_index: Vec<usize>,
     /// Index of first file for each block.
     pub block_first_file_index: Vec<usize>,
     /// Block index for each file (None if file has no data).
