@@ -168,8 +168,11 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::Lzma2Mt(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "brotli")]
             Encoder::Brotli(w) => w.flush(),
+            // A PPMd flush writes the range coder's five closing bytes, and `finish`
+            // writes them again, which leaves a stream 7-Zip refuses. Only the writer
+            // underneath is flushed here; the range coder closes in `finish`.
             #[cfg(feature = "ppmd")]
-            Encoder::Ppmd(w) => w.as_mut().unwrap().flush(),
+            Encoder::Ppmd(w) => w.as_mut().unwrap().get_mut().flush(),
             #[cfg(feature = "bzip2")]
             Encoder::Bzip2(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "deflate")]

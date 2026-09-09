@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PPMd streams were written with five extra bytes at the end (the range coder was flushed by
+  `flush` and again by `finish`), which 7-Zip rejects as a data error.
+
 - Improved decompression performance for non-solid 7z archives containing many files.
 
 ## 0.22.2 - 2026-08-25
