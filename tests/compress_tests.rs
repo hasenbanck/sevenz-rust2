@@ -486,3 +486,37 @@ fn compress_path_does_not_emit_root_dir_entry() {
     assert!(names.iter().any(|n| n == "sub"));
     assert!(names.iter().any(|n| n == "sub/file2.txt"));
 }
+
+/// The packed stream 7-Zip 24.03 writes for this input with `-m0=PPMd:o6:mem24`
+/// (order 6, a 16 MiB model): the range coder's bytes and its five closing
+/// bytes, once. A stream flushed twice carries five more, and 7-Zip refuses it.
+#[cfg(all(feature = "compress", feature = "ppmd"))]
+#[test]
+fn ppmd_streams_close_the_range_coder_once_as_seven_zip_does() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::{
+        Archive, ArchiveEntry, ArchiveWriter, Password, encoder_options::PpmdOptions,
+    };
+
+    const SEVEN_ZIP_PACKED: [u8; 13] = [
+        0x00, 0x67, 0xfb, 0x83, 0x7d, 0x70, 0x24, 0x5c, 0x2c, 0xce, 0x87, 0x58, 0x00,
+    ];
+
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        writer.set_content_methods(vec![
+            PpmdOptions::from_order_memory_size(6, 16 << 20).into(),
+        ]);
+        let entry = ArchiveEntry::new_file("tiny.txt");
+        writer
+            .push_archive_entry(entry, Some(&b"hello hello hello\n"[..]))
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let archive = Archive::read(&mut Cursor::new(bytes.as_slice()), &Password::empty()).unwrap();
+    assert_eq!(archive.pack_sizes(), &[SEVEN_ZIP_PACKED.len() as u64]);
+    assert_eq!(&bytes[32..32 + SEVEN_ZIP_PACKED.len()], &SEVEN_ZIP_PACKED);
+}
