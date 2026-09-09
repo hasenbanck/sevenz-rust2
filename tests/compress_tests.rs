@@ -486,3 +486,48 @@ fn compress_path_does_not_emit_root_dir_entry() {
     assert!(names.iter().any(|n| n == "sub"));
     assert!(names.iter().any(|n| n == "sub/file2.txt"));
 }
+
+#[cfg(feature = "compress")]
+#[test]
+fn nice_len_is_clamped_and_round_trips() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::{
+        Archive, ArchiveEntry, ArchiveWriter, BlockDecoder, Password,
+        encoder_options::{Lzma2Options, LzmaOptions},
+    };
+
+    let content = std::fs::read("tests/resources/apache2.txt").unwrap();
+
+    for nice_len in [0, 32, 1000] {
+        let mut lzma2 = Lzma2Options::from_level(6);
+        lzma2.set_nice_len(nice_len);
+        let mut lzma = LzmaOptions::from_level(6);
+        lzma.set_nice_len(nice_len);
+        lzma.set_dictionary_size(1 << 20);
+
+        for options in [lzma2.into(), lzma.into()] {
+            let mut bytes = Vec::new();
+            {
+                let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+                writer.set_content_methods(vec![options]);
+                let entry = ArchiveEntry::new_file("apache2.txt");
+                writer
+                    .push_archive_entry(entry, Some(content.as_slice()))
+                    .unwrap();
+                writer.finish().unwrap();
+            }
+
+            let mut cursor = Cursor::new(bytes.as_slice());
+            let archive = Archive::read(&mut cursor, &Password::empty()).unwrap();
+            let mut decoded = Vec::new();
+            BlockDecoder::new(1, 0, &archive, &Password::empty(), &mut cursor)
+                .for_each_entries(&mut |_, reader| {
+                    reader.read_to_end(&mut decoded)?;
+                    Ok(true)
+                })
+                .unwrap();
+            assert_eq!(decoded, content, "nice_len {nice_len}");
+        }
+    }
+}

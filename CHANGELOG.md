@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `LzmaOptions::set_nice_len` and `Lzma2Options::set_nice_len` set the nice length of a match
+  (7-Zip's word size), and `LzmaOptions::set_dictionary_size` sets the dictionary size as
+  `Lzma2Options::set_dictionary_size` does.
+- `EncoderConfiguration` can be built from `LzmaOptions` with `into()`, as it can from the other
+  option types.
+
 ### Fixed
 
 - Improved decompression performance for non-solid 7z archives containing many files.

@@ -28,6 +28,25 @@ impl LzmaOptions {
     pub fn from_level(level: u32) -> Self {
         Self(lzma_rust2::LzmaOptions::with_preset(level))
     }
+
+    /// Sets the dictionary size used when encoding.
+    ///
+    /// Will be clamped between 4096..=4294967280.
+    pub fn set_dictionary_size(&mut self, dict_size: u32) {
+        self.0.dict_size = dict_size.clamp(lzma_rust2::DICT_SIZE_MIN, lzma_rust2::DICT_SIZE_MAX);
+    }
+
+    /// Sets the nice length of a match (7-Zip's "word size"): the encoder stops looking for a
+    /// longer match once it finds one at least this long. Higher values compress slightly better
+    /// and slower.
+    ///
+    /// Will be clamped between 8..=273.
+    pub fn set_nice_len(&mut self, nice_len: u32) {
+        self.0.nice_len = nice_len.clamp(
+            lzma_rust2::LzmaOptions::NICE_LEN_MIN,
+            lzma_rust2::LzmaOptions::NICE_LEN_MAX,
+        );
+    }
 }
 
 #[cfg(feature = "compress")]
@@ -85,6 +104,18 @@ impl Lzma2Options {
     pub fn set_dictionary_size(&mut self, dict_size: u32) {
         self.options.lzma_options.dict_size =
             dict_size.clamp(lzma_rust2::DICT_SIZE_MIN, lzma_rust2::DICT_SIZE_MAX);
+    }
+
+    /// Sets the nice length of a match (7-Zip's "word size"): the encoder stops looking for a
+    /// longer match once it finds one at least this long. Higher values compress slightly better
+    /// and slower.
+    ///
+    /// Will be clamped between 8..=273.
+    pub fn set_nice_len(&mut self, nice_len: u32) {
+        self.options.lzma_options.nice_len = nice_len.clamp(
+            lzma_rust2::LzmaOptions::NICE_LEN_MIN,
+            lzma_rust2::LzmaOptions::NICE_LEN_MAX,
+        );
     }
 }
 
@@ -442,6 +473,13 @@ impl From<AesEncoderOptions> for EncoderConfiguration {
 impl From<DeltaOptions> for EncoderConfiguration {
     fn from(options: DeltaOptions) -> Self {
         Self::new(crate::EncoderMethod::DELTA_FILTER).with_options(EncoderOptions::Delta(options))
+    }
+}
+
+#[cfg(feature = "compress")]
+impl From<LzmaOptions> for EncoderConfiguration {
+    fn from(options: LzmaOptions) -> Self {
+        Self::new(crate::EncoderMethod::LZMA).with_options(EncoderOptions::Lzma(options))
     }
 }
 
