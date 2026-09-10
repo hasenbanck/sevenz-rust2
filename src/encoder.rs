@@ -184,6 +184,21 @@ impl<W: Write> Write for Encoder<W> {
     }
 }
 
+fn validate_lzma_dictionary_size(dict_size: u32) -> Result<(), Error> {
+    // Keep the binary tree's two indices per dictionary position within i32,
+    // and its Vec<i32> allocation within the platform's isize::MAX bytes.
+    // This also leaves room for the encoder's lookahead and reserve buffers.
+    let max_dict_size = ((1u64 << 30) - 1).min(isize::MAX as u64 / 8 - 1);
+    if !(u64::from(lzma_rust2::DICT_SIZE_MIN)..=max_dict_size).contains(&u64::from(dict_size)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("unsupported LZMA dictionary size: {dict_size} (maximum {max_dict_size})"),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 pub(crate) fn add_encoder<W: Write>(
     input: CountingWriter<W>,
     method_config: &EncoderConfiguration,
@@ -215,6 +230,7 @@ pub(crate) fn add_encoder<W: Write>(
                 Some(EncoderOptions::Lzma(options)) => options.clone(),
                 _ => LzmaOptions::default(),
             };
+            validate_lzma_dictionary_size(options.0.dict_size)?;
             let lz = LzmaWriter::new_no_header(input, &options.0, false)?;
             Ok(Encoder::Lzma(Some(lz)))
         }
@@ -224,6 +240,7 @@ pub(crate) fn add_encoder<W: Write>(
                 _ => Lzma2Options::default(),
             };
 
+            validate_lzma_dictionary_size(lzma2_options.options.lzma_options.dict_size)?;
             let encoder = match lzma2_options.threads {
                 0 | 1 => Encoder::Lzma2(Some(Lzma2Writer::new(input, lzma2_options.options))),
                 _ => {

@@ -5,10 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.23.0 - Unreleased
+
+### Added
+
+- `LzmaOptions::set_nice_len`, `LzmaOptions::set_dictionary_size` and `Lzma2Options::set_nice_len`.
+- `EncoderConfiguration` can be built from `LzmaOptions` with `into()`.
 
 ### Fixed
 
+- Reject unsupported LZMA and LZMA2 encoder dictionary sizes with an error before allocating the encoder or starting
+  compression workers, avoiding capacity-overflow panics.
 - Improved decompression performance for non-solid 7z archives containing many files.
 
 ## 0.22.2 - 2026-08-25
