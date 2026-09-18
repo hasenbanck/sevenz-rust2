@@ -358,6 +358,99 @@ fn compress_with_ppmd_algorithm() {
     test_compression_method(&[EncoderMethod::PPMD.into()]);
 }
 
+#[cfg(all(feature = "compress", feature = "ppmd"))]
+mod ppmd_regressions {
+    use std::io::Cursor;
+
+    use sevenz_rust2::{
+        Archive, ArchiveEntry, ArchiveWriter, Password, encoder_options::PpmdOptions,
+    };
+
+    #[test]
+    fn packed_stream_matches_7zip() {
+        let input = b"PPMd regression: one stream, one finish.\n".repeat(3);
+        // Independently generated with 7-Zip 26.03:
+        // 7z a reference.7z sample.txt -m0=PPMd:o6:mem24 -mhc=off
+        // sample.txt contains `input`; these are its packed bytes starting at offset 32.
+        let expected = [
+            0x00, 0x50, 0x01, 0xe2, 0xfb, 0xf5, 0x16, 0xdf, 0x8a, 0x30, 0xff, 0x0c, 0x45, 0x27,
+            0x9b, 0x64, 0x5d, 0x23, 0xea, 0x13, 0x96, 0x12, 0x93, 0x15, 0xa5, 0xdc, 0x12, 0xb6,
+            0x3b, 0xb5, 0x65, 0x3d, 0xce, 0x1e, 0x68, 0xa2, 0x14, 0x40, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let mut writer = ArchiveWriter::new(Cursor::new(Vec::new())).unwrap();
+        writer.set_content_methods(vec![PpmdOptions::from_order_memory_size(6, 1 << 24).into()]);
+        writer
+            .push_archive_entry(ArchiveEntry::new_file("sample.txt"), Some(input.as_slice()))
+            .unwrap();
+        let mut output = writer.finish().unwrap();
+        output.set_position(0);
+        let archive = Archive::read(&mut output, &Password::empty()).unwrap();
+        assert_eq!(archive.pack_sizes(), &[expected.len() as u64]);
+        let start = 32 + archive.pack_pos() as usize;
+        assert_eq!(&output.get_ref()[start..start + expected.len()], &expected);
+    }
+
+    #[cfg(feature = "aes256")]
+    #[test]
+    fn encrypted_final_block_preserves_output_error() {
+        use std::io::{self, Seek, SeekFrom, Write};
+
+        use sevenz_rust2::{Error, encoder_options::AesEncoderOptions};
+
+        #[derive(Default)]
+        struct RejectPayload {
+            storage: Cursor<Vec<u8>>,
+            rejected_lengths: Vec<usize>,
+        }
+
+        impl Write for RejectPayload {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.storage.position() >= 32 && !bytes.is_empty() {
+                    self.rejected_lengths.push(bytes.len());
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "payload rejected",
+                    ));
+                }
+                self.storage.write(bytes)
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl Seek for RejectPayload {
+            fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+                self.storage.seek(position)
+            }
+        }
+
+        let mut output = RejectPayload::default();
+        {
+            let mut writer = ArchiveWriter::new(&mut output).unwrap();
+            writer.set_content_methods(vec![
+                AesEncoderOptions::new(Password::new("ppmd-regression")).into(),
+                PpmdOptions::from_order_memory_size(6, 1 << 24).into(),
+            ]);
+            // A single symbol produces less than one AES block, so the output
+            // failure can only occur when the encryption buffer is finalized.
+            let error = writer
+                .push_archive_entry(ArchiveEntry::new_file("symbol.txt"), Some(&b"x"[..]))
+                .expect_err("the final encrypted block must reach the output");
+            match error {
+                Error::Io(source, _) => {
+                    assert_eq!(source.kind(), io::ErrorKind::PermissionDenied);
+                    assert_eq!(source.to_string(), "payload rejected");
+                }
+                other => panic!("expected the output error, got {other:?}"),
+            }
+        }
+        assert_eq!(output.rejected_lengths, [16]);
+    }
+}
+
 #[cfg(all(feature = "compress", feature = "util", feature = "brotli"))]
 #[test]
 fn compress_with_brotli_standard_algorithm() {
