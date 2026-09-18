@@ -105,8 +105,7 @@ impl<W: Write> Write for Encoder<W> {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish(false)?;
-                    let _ = inner.write(buf);
-                    Ok(0)
+                    inner.write(buf)
                 }
                 false => w.as_mut().unwrap().write(buf),
             },
@@ -169,7 +168,7 @@ impl<W: Write> Write for Encoder<W> {
             #[cfg(feature = "brotli")]
             Encoder::Brotli(w) => w.flush(),
             #[cfg(feature = "ppmd")]
-            Encoder::Ppmd(w) => w.as_mut().unwrap().flush(),
+            Encoder::Ppmd(w) => w.as_mut().unwrap().get_mut().flush(),
             #[cfg(feature = "bzip2")]
             Encoder::Bzip2(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "deflate")]
