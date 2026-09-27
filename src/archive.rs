@@ -1,6 +1,6 @@
 #[cfg(feature = "compress")]
 use crate::encoder_options::EncoderOptions;
-use crate::{NtTime, bitset::BitSet, block::*};
+use crate::{ArchiveReaderLimits, NtTime, bitset::BitSet, block::*};
 
 /// Size of the 7z signature header in bytes (32 bytes).
 /// This is needed for calculating absolute byte offsets within the archive.
@@ -57,6 +57,10 @@ pub struct Archive {
     pub stream_map: StreamMap,
     /// Whether this is a solid archive (better compression, slower random access).
     pub is_solid: bool,
+    /// Metadata bytes charged against the limits while parsing.
+    pub(crate) metadata_bytes: usize,
+    /// Limits the archive was read with.
+    pub(crate) limits: ArchiveReaderLimits,
 }
 
 impl Archive {

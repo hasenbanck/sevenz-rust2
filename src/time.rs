@@ -9,7 +9,7 @@ pub enum NtTimeError {
 ///
 /// Can easily be converted to and from [`std::time::SystemTime`].
 ///
-/// The feature flag `nt-time` implements conversions for [`nt_time::FileTime`].
+/// The feature flag `nt-time` implements conversions for `nt_time::FileTime`.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NtTime(pub(crate) u64);
 

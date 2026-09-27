@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Opt-in resource limits: `ArchiveReaderLimits`, `ArchiveReader::new_with_limits`, `Archive::read_with_limits`.
+- New `Error::ResourceLimit` variant; `Error` is not `#[non_exhaustive]`, so this needs a minor version bump.
+
+### Changed
+
+- `ArchiveReader::read_file` on a solid archive drains earlier entries instead of keeping them.
+
+### Fixed
+
+- `NtTime` docs no longer link to `nt_time::FileTime` without the `nt-time` feature.
+
 ## 0.23.0 - 2026-09-18
 
 ### Changed

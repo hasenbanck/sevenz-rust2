@@ -43,6 +43,15 @@ pub enum Error {
         /// Actual required memory in KB.
         actaul_kb: usize,
     },
+    /// A resource limit was exceeded.
+    ResourceLimit {
+        /// Name of the limited resource.
+        resource: &'static str,
+        /// Configured limit.
+        limit: usize,
+        /// Required amount.
+        required: usize,
+    },
     /// Password required for encrypted archive.
     PasswordRequired,
     /// Feature or operation not supported.

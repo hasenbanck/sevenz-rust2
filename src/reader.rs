@@ -12,15 +12,204 @@ use crc32fast::Hasher;
 use lzma_rust2::filter::bcj2::Bcj2Reader;
 
 use crate::{
-    ByteReader, Password, archive::*, bitset::BitSet, block::*, decoder::add_decoder, error::Error,
+    ByteReader, Password,
+    archive::*,
+    bitset::BitSet,
+    block::*,
+    decoder::{BCJ2_BUFFER_KIB, DecoderMemoryBudget, WRAPPER_MEMORY_KIB, add_decoder},
+    error::Error,
 };
 
 const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
+const MAX_CODER_COUNT: usize = 32;
+
+/// Resource limits for reading untrusted archives.
+///
+/// An exceeded limit is reported as [`Error::ResourceLimit`] before the allocation is made.
+/// The default is [`ArchiveReaderLimits::permissive`].
+#[derive(Debug, Clone, Copy)]
+pub struct ArchiveReaderLimits {
+    /// Maximum size of the raw header in bytes.
+    pub max_next_header_bytes: usize,
+    /// Maximum size of the decoded header in bytes.
+    pub max_decoded_header_bytes: usize,
+    /// Maximum LZMA and LZMA2 dictionary size in bytes.
+    pub max_dictionary_bytes: u32,
+    /// Maximum estimated decoder memory of one block in KiB. When set, decoding is
+    /// single-threaded and codecs without an estimate (Brotli, BZip2, Deflate, LZ4, Zstd) fail.
+    pub max_decoder_memory_kib: usize,
+    /// Maximum estimated memory of the parsed metadata (entries, names, stream info) in bytes.
+    pub max_metadata_bytes: usize,
+    /// Maximum number of entries.
+    pub max_files: usize,
+    /// Maximum entry size in bytes that [`ArchiveReader::read_file`] reads into memory.
+    pub max_read_file_bytes: usize,
+}
+
+impl ArchiveReaderLimits {
+    /// Suggested limits for untrusted archives.
+    #[must_use]
+    pub const fn untrusted_default() -> Self {
+        Self {
+            max_next_header_bytes: 32 << 20,
+            max_decoded_header_bytes: 32 << 20,
+            max_dictionary_bytes: 256 << 20,
+            max_decoder_memory_kib: 512 << 10,
+            max_metadata_bytes: 64 << 20,
+            max_files: 10_000,
+            max_read_file_bytes: 256 << 20,
+        }
+    }
+
+    /// No limits, as used by [`ArchiveReader::new`] and [`Archive::read`].
+    #[must_use]
+    pub const fn permissive() -> Self {
+        Self {
+            max_next_header_bytes: usize::MAX,
+            max_decoded_header_bytes: usize::MAX,
+            max_dictionary_bytes: u32::MAX,
+            max_decoder_memory_kib: MAX_MEM_LIMIT_KB,
+            max_metadata_bytes: usize::MAX,
+            max_files: usize::MAX,
+            max_read_file_bytes: usize::MAX,
+        }
+    }
+
+    pub(crate) const fn decoder_memory_is_bounded(&self) -> bool {
+        self.max_decoder_memory_kib != MAX_MEM_LIMIT_KB
+    }
+}
+
+impl Default for ArchiveReaderLimits {
+    fn default() -> Self {
+        Self::permissive()
+    }
+}
+
+struct MetadataBudget {
+    used: usize,
+    limit: usize,
+}
+
+impl MetadataBudget {
+    const fn new(limit: usize) -> Self {
+        Self { used: 0, limit }
+    }
+
+    const fn with_used(limit: usize, used: usize) -> Self {
+        Self { used, limit }
+    }
+
+    fn charge(
+        &mut self,
+        count: usize,
+        bytes_per_item: usize,
+        resource: &'static str,
+    ) -> Result<(), Error> {
+        // Assume one allocator header per non-empty allocation.
+        let allocation_overhead = if count == 0 {
+            0
+        } else {
+            2 * std::mem::size_of::<usize>()
+        };
+        let required = count
+            .checked_mul(bytes_per_item)
+            .and_then(|bytes| bytes.checked_add(allocation_overhead))
+            .and_then(|bytes| self.used.checked_add(bytes))
+            .ok_or(Error::ResourceLimit {
+                resource,
+                limit: self.limit,
+                required: usize::MAX,
+            })?;
+        if required > self.limit {
+            return Err(Error::ResourceLimit {
+                resource,
+                limit: self.limit,
+                required,
+            });
+        }
+        self.used = required;
+        Ok(())
+    }
+}
+
+struct EncodedHeaderContext<'a> {
+    password: &'a Password,
+    limit: usize,
+    thread_count: u32,
+    limits: ArchiveReaderLimits,
+    metadata: &'a mut MetadataBudget,
+}
+
+struct DecoderGraph<'a, 'r, R: Read + Seek> {
+    sources: &'a [SharedBoundedReader<'r, R>],
+    coder_to_stream_map: &'a [usize],
+    password: &'a Password,
+    limits: &'a ArchiveReaderLimits,
+    metadata: &'a mut MetadataBudget,
+    decoder_memory: &'a mut DecoderMemoryBudget,
+    thread_count: u32,
+}
+
+fn reject_bounded_multithreading(
+    limits: &ArchiveReaderLimits,
+    thread_count: u32,
+) -> Result<(), Error> {
+    if limits.decoder_memory_is_bounded() && thread_count > 1 {
+        return Err(Error::ResourceLimit {
+            resource: "decoder_threads",
+            limit: 1,
+            required: thread_count as usize,
+        });
+    }
+    Ok(())
+}
+
+fn reject_bounded_coder_count(
+    limits: &ArchiveReaderLimits,
+    coder_count: usize,
+) -> Result<(), Error> {
+    if limits.decoder_memory_is_bounded() && coder_count > MAX_CODER_COUNT {
+        return Err(Error::ResourceLimit {
+            resource: "coder_count",
+            limit: MAX_CODER_COUNT,
+            required: coder_count,
+        });
+    }
+    Ok(())
+}
 
 /// Upper bound for eagerly pre-allocating an output buffer from an archive-declared
 /// (untrusted) uncompressed size. The buffer still grows to the real size as data is
 /// read; this only stops a tiny archive from forcing a huge up-front allocation.
 const MAX_PREALLOC_BYTES: usize = 4 << 20;
+const DECODED_HEADER_INITIAL_BYTES: usize = 64 << 10;
+
+/// Reads up to `declared_len` bytes, never reserving more than that.
+fn read_decoded_header<R: Read>(reader: &mut R, declared_len: usize) -> io::Result<Vec<u8>> {
+    let mut decoded = Vec::new();
+    let mut filled = 0;
+    while filled < declared_len {
+        if filled == decoded.len() {
+            let next_len =
+                declared_len.min(DECODED_HEADER_INITIAL_BYTES.max(decoded.len().saturating_mul(2)));
+            let reserve = next_len - decoded.len();
+            // `reserve` may over-allocate past `declared_len`.
+            decoded
+                .try_reserve_exact(reserve)
+                .map_err(|_| io::Error::other("decoded header allocation failed"))?;
+            decoded.resize(next_len, 0);
+        }
+        match reader.read(&mut decoded[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    decoded.truncate(filled);
+    Ok(decoded)
+}
 
 pub struct BoundedReader<R: Read> {
     inner: R,
@@ -194,6 +383,15 @@ impl Archive {
     /// }
     /// ```
     pub fn read<R: Read + Seek>(reader: &mut R, password: &Password) -> Result<Archive, Error> {
+        Self::read_with_limits(reader, password, ArchiveReaderLimits::permissive())
+    }
+
+    /// Like [`Archive::read`], but enforces `limits`.
+    pub fn read_with_limits<R: Read + Seek>(
+        reader: &mut R,
+        password: &Password,
+        limits: ArchiveReaderLimits,
+    ) -> Result<Archive, Error> {
         let reader_len = reader.seek(SeekFrom::End(0))?;
         reader.seek(SeekFrom::Start(0))?;
 
@@ -226,9 +424,9 @@ impl Archive {
         };
         if header_valid {
             let start_header = Self::read_start_header(reader, start_header_crc)?;
-            Self::init_archive(reader, start_header, password, true, 1)
+            Self::init_archive(reader, start_header, password, true, 1, limits)
         } else {
-            Self::try_to_locale_end_header(reader, reader_len, password, 1)
+            Self::try_to_locale_end_header(reader, reader_len, password, 1, limits)
         }
     }
 
@@ -258,6 +456,8 @@ impl Archive {
         header: &mut R,
         archive: &mut Archive,
         limit: usize,
+        limits: ArchiveReaderLimits,
+        metadata: &mut MetadataBudget,
     ) -> Result<(), Error> {
         let mut nid = header.read_u8()?;
         if nid == K_ARCHIVE_PROPERTIES {
@@ -269,11 +469,11 @@ impl Archive {
             return Err(Error::other("Additional streams unsupported"));
         }
         if nid == K_MAIN_STREAMS_INFO {
-            Self::read_streams_info(header, archive, limit)?;
+            Self::read_streams_info(header, archive, limit, metadata)?;
             nid = header.read_u8()?;
         }
         if nid == K_FILES_INFO {
-            Self::read_files_info(header, archive, limit)?;
+            Self::read_files_info(header, archive, limit, limits, metadata)?;
             nid = header.read_u8()?;
         }
         if nid != K_END {
@@ -300,6 +500,7 @@ impl Archive {
         reader_len: u64,
         password: &Password,
         thread_count: u32,
+        limits: ArchiveReaderLimits,
     ) -> Result<Self, Error> {
         let search_limit = 1024 * 1024;
         let prev_data_size = reader.stream_position()? + 20;
@@ -326,8 +527,14 @@ impl Archive {
                     next_header_size: reader_len - pos,
                     next_header_crc: 0,
                 };
-                let result =
-                    Self::init_archive(reader, start_header, password, false, thread_count)?;
+                let result = Self::init_archive(
+                    reader,
+                    start_header,
+                    password,
+                    false,
+                    thread_count,
+                    limits,
+                )?;
 
                 if !result.files.is_empty() {
                     return Ok(result);
@@ -345,6 +552,7 @@ impl Archive {
         password: &Password,
         verify_crc: bool,
         thread_count: u32,
+        limits: ArchiveReaderLimits,
     ) -> Result<Self, Error> {
         // Bound the declared next-header size against the actual file length before allocating.
         let reader_len = reader.seek(SeekFrom::End(0))?;
@@ -358,6 +566,13 @@ impl Archive {
         }
 
         let next_header_size_int = start_header.next_header_size as usize;
+        if next_header_size_int > limits.max_next_header_bytes {
+            return Err(Error::ResourceLimit {
+                resource: "next_header_bytes",
+                limit: limits.max_next_header_bytes,
+                required: next_header_size_int,
+            });
+        }
 
         // Bound the header position too: `next_header_offset` is an unbounded `u64`, so the
         // addition can overflow (a panic under overflow checks) and any value past the file
@@ -375,27 +590,22 @@ impl Archive {
         }
 
         let mut archive = Archive::default();
+        let mut metadata = MetadataBudget::new(limits.max_metadata_bytes);
         let mut buf_reader = buf.as_slice();
         let mut nid = buf_reader.read_u8()?;
         let mut header = if nid == K_ENCODED_HEADER {
-            let (mut out_reader, buf_size) = Self::read_encoded_header(
-                &mut buf_reader,
-                reader,
-                &mut archive,
+            let mut context = EncodedHeaderContext {
                 password,
-                next_header_size_int,
+                limit: next_header_size_int,
                 thread_count,
-            )?;
-            // Read the decoded header lazily instead of pre-allocating `buf_size` bytes:
-            // a crafted encoded header can declare a huge unpack size, and `resize`
-            // would allocate it all up front (OOM) before any data is produced. `take`
-            // caps the read at the declared size while `read_to_end` grows the buffer to
-            // match only what is actually decoded, so the allocation tracks real input.
-            buf.clear();
-            (&mut out_reader)
-                .take(buf_size as u64)
-                .read_to_end(&mut buf)
+                limits,
+                metadata: &mut metadata,
+            };
+            let (mut out_reader, buf_size) =
+                Self::read_encoded_header(&mut buf_reader, reader, &mut archive, &mut context)?;
+            let decoded = read_decoded_header(&mut out_reader, buf_size)
                 .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
+            buf = decoded;
             if buf.len() != buf_size {
                 return Err(Error::bad_password(
                     io::Error::from(io::ErrorKind::UnexpectedEof),
@@ -416,7 +626,13 @@ impl Archive {
         let header_len_bound = header.len();
         let mut header = std::io::Cursor::new(&mut header);
         if nid == K_HEADER {
-            Self::read_header(&mut header, &mut archive, header_len_bound)?;
+            Self::read_header(
+                &mut header,
+                &mut archive,
+                header_len_bound,
+                limits,
+                &mut metadata,
+            )?;
         } else {
             return Err(Error::other("Broken or unsupported archive: no Header"));
         }
@@ -425,6 +641,8 @@ impl Archive {
             .blocks
             .iter()
             .any(|block| block.num_unpack_sub_streams > 1);
+        archive.metadata_bytes = metadata.used;
+        archive.limits = limits;
 
         Ok(archive)
     }
@@ -433,15 +651,29 @@ impl Archive {
         header: &mut R,
         reader: &'r mut RI,
         archive: &mut Archive,
-        password: &Password,
-        limit: usize,
-        thread_count: u32,
+        context: &mut EncodedHeaderContext<'_>,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
-        Self::read_streams_info(header, archive, limit)?;
+        reject_bounded_multithreading(&context.limits, context.thread_count)?;
+        Self::read_streams_info(header, archive, context.limit, context.metadata)?;
         let block = archive
             .blocks
             .first()
             .ok_or(Error::other("no blocks, can't read encoded header"))?;
+        reject_bounded_coder_count(&context.limits, block.coders.len())?;
+        let unpack_size =
+            usize::try_from(block.get_unpack_size()).map_err(|_| Error::ResourceLimit {
+                resource: "decoded_header_bytes",
+                limit: context.limits.max_decoded_header_bytes,
+                required: usize::MAX,
+            })?;
+        // Check before the codec allocates its dictionary.
+        if unpack_size > context.limits.max_decoded_header_bytes {
+            return Err(Error::ResourceLimit {
+                resource: "decoded_header_bytes",
+                limit: context.limits.max_decoded_header_bytes,
+                required: unpack_size,
+            });
+        }
         let first_pack_stream_index = 0;
         let block_offset = SIGNATURE_HEADER_SIZE
             .checked_add(archive.pack_pos)
@@ -452,8 +684,9 @@ impl Archive {
 
         reader.seek(SeekFrom::Start(block_offset))?;
         let coder_len = block.coders.len();
-        let unpack_size = block.get_unpack_size() as usize;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
+        let mut decoder_memory = DecoderMemoryBudget::new(context.limits.max_decoder_memory_kib);
+        decoder_memory.charge(WRAPPER_MEMORY_KIB)?;
         let input_reader = BoundedReader::new(reader, pack_size);
         let mut decoder: Box<dyn Read> = Box::new(input_reader);
         let mut decoder = if coder_len > 0 {
@@ -467,9 +700,10 @@ impl Archive {
                     decoder,
                     block.get_unpack_size_at_index(index) as usize,
                     coder,
-                    password,
-                    MAX_MEM_LIMIT_KB,
-                    thread_count,
+                    context.password,
+                    &context.limits,
+                    &mut decoder_memory,
+                    context.thread_count,
                 )?;
                 decoder = Box::new(next);
             }
@@ -478,6 +712,7 @@ impl Archive {
             decoder
         };
         if block.has_crc {
+            decoder_memory.charge(WRAPPER_MEMORY_KIB)?;
             decoder = Box::new(Crc32VerifyingReader::new(decoder, unpack_size, block.crc));
         }
 
@@ -488,21 +723,22 @@ impl Archive {
         header: &mut R,
         archive: &mut Archive,
         limit: usize,
+        metadata: &mut MetadataBudget,
     ) -> Result<(), Error> {
         let mut nid = header.read_u8()?;
         if nid == K_PACK_INFO {
-            Self::read_pack_info(header, archive, limit)?;
+            Self::read_pack_info(header, archive, limit, metadata)?;
             nid = header.read_u8()?;
         }
 
         if nid == K_UNPACK_INFO {
-            Self::read_unpack_info(header, archive, limit)?;
+            Self::read_unpack_info(header, archive, limit, metadata)?;
             nid = header.read_u8()?;
         } else {
             archive.blocks.clear();
         }
         if nid == K_SUB_STREAMS_INFO {
-            Self::read_sub_streams_info(header, archive, limit)?;
+            Self::read_sub_streams_info(header, archive, limit, metadata)?;
             nid = header.read_u8()?;
         }
         if nid != K_END {
@@ -516,8 +752,22 @@ impl Archive {
         header: &mut R,
         archive: &mut Archive,
         limit: usize,
+        limits: ArchiveReaderLimits,
+        metadata: &mut MetadataBudget,
     ) -> Result<(), Error> {
         let num_files = bounded_count(read_variable_u64(header)?, limit, "num files")?;
+        if num_files > limits.max_files {
+            return Err(Error::ResourceLimit {
+                resource: "file_count",
+                limit: limits.max_files,
+                required: num_files,
+            });
+        }
+        metadata.charge(
+            num_files,
+            std::mem::size_of::<ArchiveEntry>(),
+            "file_metadata",
+        )?;
         let mut files: Vec<ArchiveEntry> = vec![Default::default(); num_files];
 
         let mut is_empty_stream: Option<BitSet> = None;
@@ -531,7 +781,7 @@ impl Archive {
             let size = read_variable_u64(header)?;
             match prop_type {
                 K_EMPTY_STREAM => {
-                    is_empty_stream = Some(read_bits(header, num_files)?);
+                    is_empty_stream = Some(read_bits(header, num_files, metadata)?);
                 }
                 K_EMPTY_FILE => {
                     let n = if let Some(s) = &is_empty_stream {
@@ -541,7 +791,7 @@ impl Archive {
                             "Header format error: kEmptyStream must appear before kEmptyFile",
                         ));
                     };
-                    is_empty_file = Some(read_bits(header, n)?);
+                    is_empty_file = Some(read_bits(header, n, metadata)?);
                 }
                 K_ANTI => {
                     let n = if let Some(s) = is_empty_stream.as_ref() {
@@ -551,7 +801,7 @@ impl Archive {
                             "Header format error: kEmptyStream must appear before kEmptyFile",
                         ));
                     };
-                    is_anti = Some(read_bits(header, n)?);
+                    is_anti = Some(read_bits(header, n, metadata)?);
                 }
                 K_NAME => {
                     let external = header.read_u8()?;
@@ -564,28 +814,10 @@ impl Archive {
                     }
 
                     let size = bounded_count(size, limit, "file names length")?;
-                    // let mut names = vec![0u8; size - 1];
-                    // header.read_exact(&mut names)?;
-                    let names_reader = NamesReader::new(header, size - 1);
-
-                    let mut next_file = 0;
-                    for s in names_reader {
-                        // The names blob is an independent length, so it can yield more
-                        // names than `num_files`. Bail with an error instead of letting
-                        // `files[next_file]` panic with an out-of-bounds index.
-                        if next_file >= files.len() {
-                            return Err(Error::other("Error parsing file names"));
-                        }
-                        files[next_file].name = s?;
-                        next_file += 1;
-                    }
-
-                    if next_file != files.len() {
-                        return Err(Error::other("Error parsing file names"));
-                    }
+                    read_names(header, size - 1, &mut files, metadata)?;
                 }
                 K_C_TIME => {
-                    let times_defined = read_all_or_bits(header, num_files)?;
+                    let times_defined = read_all_or_bits(header, num_files, metadata)?;
                     let external = header.read_u8()?;
                     if external != 0 {
                         return Err(Error::other(format!(
@@ -600,7 +832,7 @@ impl Archive {
                     }
                 }
                 K_A_TIME => {
-                    let times_defined = read_all_or_bits(header, num_files)?;
+                    let times_defined = read_all_or_bits(header, num_files, metadata)?;
                     let external = header.read_u8()?;
                     if external != 0 {
                         return Err(Error::other(format!(
@@ -615,7 +847,7 @@ impl Archive {
                     }
                 }
                 K_M_TIME => {
-                    let times_defined = read_all_or_bits(header, num_files)?;
+                    let times_defined = read_all_or_bits(header, num_files, metadata)?;
                     let external = header.read_u8()?;
                     if external != 0 {
                         return Err(Error::other(format!(
@@ -630,7 +862,7 @@ impl Archive {
                     }
                 }
                 K_WIN_ATTRIBUTES => {
-                    let times_defined = read_all_or_bits(header, num_files)?;
+                    let times_defined = read_all_or_bits(header, num_files, metadata)?;
                     let external = header.read_u8()?;
                     if external != 0 {
                         return Err(Error::other(format!(
@@ -706,15 +938,19 @@ impl Archive {
         }
         archive.files = files;
 
-        Self::calculate_stream_map(archive)?;
+        Self::calculate_stream_map(archive, metadata)?;
         Ok(())
     }
 
-    fn calculate_stream_map(archive: &mut Archive) -> Result<(), Error> {
+    fn calculate_stream_map(
+        archive: &mut Archive,
+        metadata: &mut MetadataBudget,
+    ) -> Result<(), Error> {
         let mut stream_map = StreamMap::default();
 
         let mut next_block_pack_stream_index = 0;
         let num_blocks = archive.blocks.len();
+        metadata.charge(num_blocks, std::mem::size_of::<usize>(), "stream_map")?;
         stream_map.block_first_pack_stream_index = vec![0; num_blocks];
         for i in 0..num_blocks {
             stream_map.block_first_pack_stream_index[i] = next_block_pack_stream_index;
@@ -737,6 +973,7 @@ impl Archive {
         // does not re-sum the preceding blocks every time it opens one, which
         // made extracting an archive of many non-solid blocks quadratic.
         let mut next_sub_stream_index: usize = 0;
+        metadata.charge(num_blocks, std::mem::size_of::<usize>(), "stream_map")?;
         stream_map.block_first_sub_stream_index = vec![0; num_blocks];
         for i in 0..num_blocks {
             stream_map.block_first_sub_stream_index[i] = next_sub_stream_index;
@@ -747,6 +984,7 @@ impl Archive {
 
         let mut next_pack_stream_offset: u64 = 0;
         let num_pack_sizes = archive.pack_sizes.len();
+        metadata.charge(num_pack_sizes, std::mem::size_of::<u64>(), "stream_map")?;
         stream_map.pack_stream_offsets = vec![0; num_pack_sizes];
         for i in 0..num_pack_sizes {
             stream_map.pack_stream_offsets[i] = next_pack_stream_offset;
@@ -755,6 +993,12 @@ impl Archive {
                 .ok_or_else(|| Error::other("pack stream offset overflow"))?;
         }
 
+        metadata.charge(num_blocks, std::mem::size_of::<usize>(), "stream_map")?;
+        metadata.charge(
+            archive.files.len(),
+            std::mem::size_of::<Option<usize>>(),
+            "stream_map",
+        )?;
         stream_map.block_first_file_index = vec![0; num_blocks];
         stream_map.file_block_index = vec![None; archive.files.len()];
         let mut next_block_index = 0;
@@ -829,12 +1073,14 @@ impl Archive {
         header: &mut R,
         archive: &mut Archive,
         limit: usize,
+        metadata: &mut MetadataBudget,
     ) -> Result<(), Error> {
         archive.pack_pos = read_variable_u64(header)?;
         let num_pack_streams =
             bounded_count(read_variable_u64(header)?, limit, "num pack streams")?;
         let mut nid = header.read_u8()?;
         if nid == K_SIZE {
+            metadata.charge(num_pack_streams, std::mem::size_of::<u64>(), "pack_sizes")?;
             archive.pack_sizes = vec![0u64; num_pack_streams];
             for i in 0..archive.pack_sizes.len() {
                 archive.pack_sizes[i] = read_variable_u64(header)?;
@@ -843,7 +1089,8 @@ impl Archive {
         }
 
         if nid == K_CRC {
-            archive.pack_crcs_defined = read_all_or_bits(header, num_pack_streams)?;
+            archive.pack_crcs_defined = read_all_or_bits(header, num_pack_streams, metadata)?;
+            metadata.charge(num_pack_streams, std::mem::size_of::<u64>(), "pack_crcs")?;
             archive.pack_crcs = vec![0; num_pack_streams];
             for i in 0..num_pack_streams {
                 if archive.pack_crcs_defined.contains(i) {
@@ -863,6 +1110,7 @@ impl Archive {
         header: &mut R,
         archive: &mut Archive,
         limit: usize,
+        metadata: &mut MetadataBudget,
     ) -> Result<(), Error> {
         let nid = header.read_u8()?;
         if nid != K_FOLDER {
@@ -870,6 +1118,7 @@ impl Archive {
         }
         let num_blocks = bounded_count(read_variable_u64(header)?, limit, "num blocks")?;
 
+        metadata.charge(num_blocks, std::mem::size_of::<Block>(), "blocks")?;
         archive.blocks.reserve_exact(num_blocks);
         let external = header.read_u8()?;
         if external != 0 {
@@ -877,7 +1126,9 @@ impl Archive {
         }
 
         for _ in 0..num_blocks {
-            archive.blocks.push(Self::read_block(header, limit)?);
+            archive
+                .blocks
+                .push(Self::read_block(header, limit, metadata)?);
         }
 
         let nid = header.read_u8()?;
@@ -891,6 +1142,7 @@ impl Archive {
             // `total_output_streams` is bounded in `read_block`, but clamp the eager
             // reservation to `limit` as well so it can never over-allocate.
             let tos = block.total_output_streams;
+            metadata.charge(tos, std::mem::size_of::<u64>(), "block_unpack_sizes")?;
             block.unpack_sizes.reserve_exact(tos.min(limit));
             for _ in 0..tos {
                 block.unpack_sizes.push(read_variable_u64(header)?);
@@ -899,7 +1151,7 @@ impl Archive {
 
         let mut nid = header.read_u8()?;
         if nid == K_CRC {
-            let crcs_defined = read_all_or_bits(header, num_blocks)?;
+            let crcs_defined = read_all_or_bits(header, num_blocks, metadata)?;
             for i in 0..num_blocks {
                 if crcs_defined.contains(i) {
                     archive.blocks[i].has_crc = true;
@@ -921,6 +1173,7 @@ impl Archive {
         header: &mut R,
         archive: &mut Archive,
         limit: usize,
+        metadata: &mut MetadataBudget,
     ) -> Result<(), Error> {
         for block in archive.blocks.iter_mut() {
             block.num_unpack_sub_streams = 1;
@@ -943,6 +1196,21 @@ impl Archive {
             nid = header.read_u8()?;
         }
 
+        metadata.charge(
+            total_unpack_streams,
+            std::mem::size_of::<u64>(),
+            "substream_metadata",
+        )?;
+        metadata.charge(
+            total_unpack_streams,
+            std::mem::size_of::<u64>(),
+            "substream_metadata",
+        )?;
+        metadata.charge(
+            total_unpack_streams,
+            std::mem::size_of::<usize>(),
+            "substream_metadata",
+        )?;
         let mut sub_streams_info = SubStreamsInfo::default();
         sub_streams_info
             .unpack_sizes
@@ -989,7 +1257,8 @@ impl Archive {
         }
 
         if nid == K_CRC {
-            let has_missing_crc = read_all_or_bits(header, num_digests)?;
+            let has_missing_crc = read_all_or_bits(header, num_digests, metadata)?;
+            metadata.charge(num_digests, std::mem::size_of::<u64>(), "substream_crcs")?;
             let mut missing_crcs = vec![0; num_digests];
             for (i, missing_crc) in missing_crcs.iter_mut().enumerate() {
                 if has_missing_crc.contains(i) {
@@ -1028,10 +1297,15 @@ impl Archive {
         Ok(())
     }
 
-    fn read_block<R: Read>(header: &mut R, limit: usize) -> Result<Block, Error> {
+    fn read_block<R: Read>(
+        header: &mut R,
+        limit: usize,
+        metadata: &mut MetadataBudget,
+    ) -> Result<Block, Error> {
         let mut block = Block::default();
 
         let num_coders = bounded_count(read_variable_u64(header)?, limit, "num coders")?;
+        metadata.charge(num_coders, std::mem::size_of::<Coder>(), "coders")?;
         let mut coders = Vec::with_capacity(num_coders);
         let mut total_in_streams: u64 = 0;
         let mut total_out_streams: u64 = 0;
@@ -1069,6 +1343,7 @@ impl Archive {
             if has_attributes {
                 let properties_size =
                     bounded_count(read_variable_u64(header)?, limit, "properties size")?;
+                metadata.charge(properties_size, 1, "coder_properties")?;
                 let mut props = vec![0u8; properties_size];
                 header.read_exact(&mut props)?;
                 coder.properties = props;
@@ -1091,6 +1366,11 @@ impl Archive {
             return Err(Error::other("Total output streams can't be 0"));
         }
         let num_bind_pairs = total_out_streams - 1;
+        metadata.charge(
+            num_bind_pairs,
+            std::mem::size_of::<BindPair>(),
+            "bind_pairs",
+        )?;
         let mut bind_pairs = Vec::with_capacity(num_bind_pairs);
         for _ in 0..num_bind_pairs {
             let bp = BindPair {
@@ -1113,6 +1393,11 @@ impl Archive {
             ));
         }
         let num_packed_streams = total_in_streams - num_bind_pairs;
+        metadata.charge(
+            num_packed_streams,
+            std::mem::size_of::<u64>(),
+            "packed_streams",
+        )?;
         let mut packed_streams = vec![0; num_packed_streams];
         if num_packed_streams == 1 {
             let mut index = u64::MAX;
@@ -1169,20 +1454,30 @@ fn read_variable_u64<R: Read>(reader: &mut R) -> io::Result<u64> {
     Ok(value)
 }
 
-fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
+fn read_all_or_bits<R: Read>(
+    header: &mut R,
+    size: usize,
+    metadata: &mut MetadataBudget,
+) -> Result<BitSet, Error> {
     let all = header.read_u8()?;
     if all != 0 {
+        metadata.charge(size, std::mem::size_of::<usize>(), "bitset")?;
         let mut bits = BitSet::with_capacity(size);
         for i in 0..size {
             bits.insert(i);
         }
         Ok(bits)
     } else {
-        read_bits(header, size)
+        read_bits(header, size, metadata)
     }
 }
 
-fn read_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
+fn read_bits<R: Read>(
+    header: &mut R,
+    size: usize,
+    metadata: &mut MetadataBudget,
+) -> Result<BitSet, Error> {
+    metadata.charge(size, std::mem::size_of::<usize>(), "bitset")?;
     let mut bits = BitSet::with_capacity(size);
     let mut mask = 0u32;
     let mut cache = 0u32;
@@ -1199,48 +1494,66 @@ fn read_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
     Ok(bits)
 }
 
-struct NamesReader<'a, R: Read> {
-    max_bytes: usize,
-    read_bytes: usize,
-    cache: Vec<u16>,
-    reader: &'a mut R,
-}
-
-impl<'a, R: Read> NamesReader<'a, R> {
-    fn new(reader: &'a mut R, max_bytes: usize) -> Self {
-        Self {
-            max_bytes,
-            reader,
-            read_bytes: 0,
-            cache: Vec::with_capacity(16),
-        }
+fn read_names<R: Read>(
+    header: &mut R,
+    byte_len: usize,
+    files: &mut [ArchiveEntry],
+    metadata: &mut MetadataBudget,
+) -> Result<(), Error> {
+    let unit_count = byte_len / 2;
+    metadata.charge(unit_count, std::mem::size_of::<u16>(), "file_names_utf16")?;
+    let mut units = vec![0_u16; unit_count];
+    for unit in &mut units {
+        let mut encoded = [0_u8; 2];
+        header.read_exact(&mut encoded)?;
+        *unit = u16::from_le_bytes(encoded);
     }
-}
 
-impl<R: Read> Iterator for NamesReader<'_, R> {
-    type Item = Result<String, Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.max_bytes <= self.read_bytes {
-            return None;
+    let mut start = 0;
+    for file in files {
+        if start >= units.len() {
+            return Err(Error::other("Error parsing file names"));
         }
-        self.cache.clear();
-        let mut buf = [0; 2];
-        while self.read_bytes < self.max_bytes {
-            let r = self.reader.read_exact(&mut buf);
-            self.read_bytes += 2;
-            if let Err(e) = r {
-                return Some(Err(e.into()));
-            }
-            let u = u16::from_le_bytes(buf);
-            if u == 0 {
-                break;
-            }
-            self.cache.push(u);
+        let relative_end = units[start..]
+            .iter()
+            .position(|unit| *unit == 0)
+            .unwrap_or(units.len() - start);
+        let end = start + relative_end;
+        let name_units = &units[start..end];
+        let mut utf8_len = 0_usize;
+        for scalar in char::decode_utf16(name_units.iter().copied()) {
+            let scalar = scalar.map_err(|error| Error::other(error.to_string()))?;
+            utf8_len = utf8_len
+                .checked_add(scalar.len_utf8())
+                .ok_or(Error::ResourceLimit {
+                    resource: "file_name_strings",
+                    limit: metadata.limit,
+                    required: usize::MAX,
+                })?;
         }
-
-        Some(String::from_utf16(&self.cache).map_err(|e| Error::other(e.to_string())))
+        // `String::from_utf16` may grow geometrically, so charge twice the next power of two.
+        let basis = name_units.len().max(utf8_len);
+        let capacity_bound = if basis == 0 {
+            0
+        } else {
+            basis
+                .checked_next_power_of_two()
+                .and_then(|capacity| capacity.checked_mul(2))
+                .ok_or(Error::ResourceLimit {
+                    resource: "file_name_strings",
+                    limit: metadata.limit,
+                    required: usize::MAX,
+                })?
+        };
+        metadata.charge(1, capacity_bound, "file_name_strings")?;
+        file.name =
+            String::from_utf16(name_units).map_err(|error| Error::other(error.to_string()))?;
+        start = end + 1;
     }
+    if start < units.len() {
+        return Err(Error::other("Error parsing file names"));
+    }
+    Ok(())
 }
 
 #[derive(Copy, Clone)]
@@ -1255,6 +1568,7 @@ pub struct ArchiveReader<R: Read + Seek> {
     archive: Archive,
     password: Password,
     thread_count: u32,
+    limits: ArchiveReaderLimits,
     index: HashMap<String, IndexEntry>,
 }
 
@@ -1272,30 +1586,38 @@ impl ArchiveReader<File> {
 impl<R: Read + Seek> ArchiveReader<R> {
     /// Creates a [`ArchiveReader`] to read a 7z archive file from the given `source` reader.
     #[inline]
-    pub fn new(mut source: R, password: Password) -> Result<Self, Error> {
-        let archive = Archive::read(&mut source, &password)?;
+    pub fn new(source: R, password: Password) -> Result<Self, Error> {
+        Self::new_with_limits(source, password, ArchiveReaderLimits::permissive())
+    }
 
-        let mut reader = Self {
-            source,
-            archive,
-            password,
-            thread_count: 1,
-            index: HashMap::default(),
-        };
-
-        reader.fill_index();
-
-        let thread_count =
-            std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
-        reader.set_thread_count(thread_count.get() as u32);
-
-        Ok(reader)
+    /// Like [`ArchiveReader::new`], but enforces `limits`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::fs::File;
+    ///
+    /// use sevenz_rust2::*;
+    ///
+    /// let file = File::open("untrusted.7z").unwrap();
+    /// let limits = ArchiveReaderLimits::untrusted_default();
+    /// let mut reader = ArchiveReader::new_with_limits(file, Password::empty(), limits).unwrap();
+    /// let data = reader.read_file("data.txt").unwrap();
+    /// ```
+    #[inline]
+    pub fn new_with_limits(
+        mut source: R,
+        password: Password,
+        limits: ArchiveReaderLimits,
+    ) -> Result<Self, Error> {
+        let archive = Archive::read_with_limits(&mut source, &password, limits)?;
+        Ok(Self::from_archive(archive, source, password))
     }
 
     /// Creates an [`ArchiveReader`] from an existing [`Archive`] instance.
     ///
     /// This is useful when you already have a parsed archive and want to create a reader
-    /// without re-parsing the archive structure.
+    /// without re-parsing the archive structure. The limits the archive was read with apply.
     ///
     /// # Arguments
     /// * `archive` - An existing parsed archive instance
@@ -1303,19 +1625,26 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// * `password` - Password for encrypted archives
     #[inline]
     pub fn from_archive(archive: Archive, source: R, password: Password) -> Self {
+        let limits = archive.limits;
         let mut reader = Self {
             source,
             archive,
             password,
             thread_count: 1,
+            limits,
             index: HashMap::default(),
         };
 
-        reader.fill_index();
+        if limits.max_metadata_bytes == usize::MAX {
+            reader.fill_index();
+        }
 
-        let thread_count =
-            std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
-        reader.set_thread_count(thread_count.get() as u32);
+        // Multi-threaded decoding is not covered by the decoder memory limit.
+        if !limits.decoder_memory_is_bounded() {
+            let thread_count =
+                std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
+            reader.set_thread_count(thread_count.get() as u32);
+        }
 
         reader
     }
@@ -1342,6 +1671,22 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
     }
 
+    fn index_entry(&self, name: &str) -> Option<IndexEntry> {
+        self.index.get(name).copied().or_else(|| {
+            // No index under a metadata limit; the last duplicate wins, as in the index.
+            self.archive
+                .files
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, file)| file.name == name)
+                .map(|(file_index, _)| IndexEntry {
+                    block_index: self.archive.stream_map.file_block_index[file_index],
+                    file_index,
+                })
+        })
+    }
+
     /// Returns a reference to the underlying [`Archive`] structure.
     ///
     /// This provides access to the archive metadata including files, blocks,
@@ -1356,11 +1701,21 @@ impl<R: Read + Seek> ArchiveReader<R> {
         archive: &Archive,
         block_index: usize,
         password: &Password,
+        limits: &ArchiveReaderLimits,
         thread_count: u32,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
+        reject_bounded_multithreading(limits, thread_count)?;
         let block = &archive.blocks[block_index];
+        reject_bounded_coder_count(limits, block.coders.len())?;
         if block.total_input_streams > block.total_output_streams {
-            return Self::build_decode_stack2(source, archive, block_index, password, thread_count);
+            return Self::build_decode_stack2(
+                source,
+                archive,
+                block_index,
+                password,
+                limits,
+                thread_count,
+            );
         }
         let first_pack_stream_index = archive.stream_map.block_first_pack_stream_index[block_index];
         let block_offset = SIGNATURE_HEADER_SIZE
@@ -1390,6 +1745,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
         source.seek(SeekFrom::Start(block_offset))?;
         let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
 
+        let mut decoder_memory = DecoderMemoryBudget::new(limits.max_decoder_memory_kib);
+        decoder_memory.charge(WRAPPER_MEMORY_KIB)?;
         let mut decoder: Box<dyn Read> = Box::new(BoundedReader::new(source, pack_size));
         let block = &archive.blocks[block_index];
         for (index, coder) in block.ordered_coder_iter() {
@@ -1403,12 +1760,14 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 block.get_unpack_size_at_index(index) as usize,
                 coder,
                 password,
-                MAX_MEM_LIMIT_KB,
+                limits,
+                &mut decoder_memory,
                 thread_count,
             )?;
             decoder = Box::new(next);
         }
         if has_crc {
+            decoder_memory.charge(WRAPPER_MEMORY_KIB)?;
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
                 block.get_unpack_size() as usize,
@@ -1424,10 +1783,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
         archive: &Archive,
         block_index: usize,
         password: &Password,
+        limits: &ArchiveReaderLimits,
         thread_count: u32,
     ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
-        const MAX_CODER_COUNT: usize = 32;
         let block = &archive.blocks[block_index];
+        reject_bounded_coder_count(limits, block.coders.len())?;
         if block.coders.len() > MAX_CODER_COUNT {
             return Err(Error::unsupported(format!(
                 "Too many coders: {}",
@@ -1443,6 +1803,13 @@ impl<R: Read + Seek> ArchiveReader<R> {
             .ok_or_else(|| Error::other("pack position out of range"))?;
         let offsets = &archive.stream_map.pack_stream_offsets[first_pack_stream_index..];
 
+        let mut decoder_metadata =
+            MetadataBudget::with_used(limits.max_metadata_bytes, archive.metadata_bytes);
+        decoder_metadata.charge(
+            block.packed_streams.len(),
+            std::mem::size_of::<SharedBoundedReader<R>>(),
+            "decoder_sources",
+        )?;
         let mut sources = Vec::with_capacity(block.packed_streams.len());
 
         for (i, offset) in offsets[..block.packed_streams.len()].iter().enumerate() {
@@ -1494,16 +1861,22 @@ impl<R: Read + Seek> ArchiveReader<R> {
         // output stream. `get_in_stream2` recursively wires up the whole coder graph,
         // so this also handles single-input filters (e.g. Delta) layered on top of a
         // BCJ2 coder's output, not just a bare BCJ2 main coder.
-        let mut decoder = Self::get_in_stream2(
-            block,
-            &sources,
-            &coder_to_stream_map,
-            password,
-            main_coder_index,
-            0,
-            thread_count,
-        )?;
+        let mut decoder_memory = DecoderMemoryBudget::new(limits.max_decoder_memory_kib);
+        decoder_memory.charge(WRAPPER_MEMORY_KIB)?;
+        let mut decoder = {
+            let mut graph = DecoderGraph {
+                sources: &sources,
+                coder_to_stream_map: &coder_to_stream_map,
+                password,
+                limits,
+                metadata: &mut decoder_metadata,
+                decoder_memory: &mut decoder_memory,
+                thread_count,
+            };
+            Self::get_in_stream2(block, &mut graph, main_coder_index, 0)?
+        };
         if block.has_crc {
+            decoder_memory.charge(WRAPPER_MEMORY_KIB)?;
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
                 block.get_unpack_size() as usize,
@@ -1518,12 +1891,9 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
     fn get_in_stream<'r>(
         block: &Block,
-        sources: &[SharedBoundedReader<'r, R>],
-        coder_to_stream_map: &[usize],
-        password: &Password,
+        graph: &mut DecoderGraph<'_, 'r, R>,
         in_stream_index: usize,
         depth: usize,
-        thread_count: u32,
     ) -> Result<Box<dyn Read + 'r>, Error>
     where
         R: 'r,
@@ -1533,7 +1903,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             .iter()
             .position(|&i| i == in_stream_index as u64);
         if let Some(index) = index {
-            return Ok(Box::new(sources[index].clone()));
+            return Ok(Box::new(graph.sources[index].clone()));
         }
 
         let bp = block
@@ -1545,25 +1915,14 @@ impl<R: Read + Seek> ArchiveReader<R> {
             })?;
         let index = bp.out_index as usize;
 
-        Self::get_in_stream2(
-            block,
-            sources,
-            coder_to_stream_map,
-            password,
-            index,
-            depth,
-            thread_count,
-        )
+        Self::get_in_stream2(block, graph, index, depth)
     }
 
     fn get_in_stream2<'r>(
         block: &Block,
-        sources: &[SharedBoundedReader<'r, R>],
-        coder_to_stream_map: &[usize],
-        password: &Password,
+        graph: &mut DecoderGraph<'_, 'r, R>,
         in_stream_index: usize,
         depth: usize,
-        thread_count: u32,
     ) -> Result<Box<dyn Read + 'r>, Error>
     where
         R: 'r,
@@ -1576,7 +1935,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
         let (Some(coder), Some(&start_index)) = (
             block.coders.get(in_stream_index),
-            coder_to_stream_map.get(in_stream_index),
+            graph.coder_to_stream_map.get(in_stream_index),
         ) else {
             return Err(Error::other("in_stream_index out of range"));
         };
@@ -1589,23 +1948,16 @@ impl<R: Read + Seek> ArchiveReader<R> {
             .ok_or_else(|| Error::other("in_stream_index out of range"))?
             as usize;
         if coder.num_in_streams == 1 {
-            let input = Self::get_in_stream(
-                block,
-                sources,
-                coder_to_stream_map,
-                password,
-                start_index,
-                depth + 1,
-                thread_count,
-            )?;
+            let input = Self::get_in_stream(block, graph, start_index, depth + 1)?;
 
             let decoder = add_decoder(
                 input,
                 uncompressed_len,
                 coder,
-                password,
-                MAX_MEM_LIMIT_KB,
-                thread_count,
+                graph.password,
+                graph.limits,
+                graph.decoder_memory,
+                graph.thread_count,
             )?;
             return Ok(Box::new(decoder));
         }
@@ -1621,17 +1973,17 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     "BCJ2 coder must declare exactly four input streams",
                 ));
             }
+            graph
+                .decoder_memory
+                .charge(WRAPPER_MEMORY_KIB + BCJ2_BUFFER_KIB)?;
+            graph.metadata.charge(
+                num_in_streams,
+                std::mem::size_of::<Box<dyn Read>>(),
+                "bcj2_inputs",
+            )?;
             let mut inputs: Vec<Box<dyn Read>> = Vec::with_capacity(num_in_streams);
             for i in start_index..start_index + num_in_streams {
-                inputs.push(Self::get_in_stream(
-                    block,
-                    sources,
-                    coder_to_stream_map,
-                    password,
-                    i,
-                    depth + 1,
-                    thread_count,
-                )?);
+                inputs.push(Self::get_in_stream(block, graph, i, depth + 1)?);
             }
             return Ok(Box::new(Bcj2Reader::new(inputs, uncompressed_len as u64)));
         }
@@ -1653,11 +2005,12 @@ impl<R: Read + Seek> ArchiveReader<R> {
     ) -> Result<(), Error> {
         let block_count = self.archive.blocks.len();
         for block_index in 0..block_count {
-            let forder_dec = BlockDecoder::new(
+            let forder_dec = BlockDecoder::new_with_limits(
                 self.thread_count,
                 block_index,
                 &self.archive,
                 &self.password,
+                self.limits,
                 &mut self.source,
             );
             forder_dec.for_each_entries(&mut each)?;
@@ -1682,11 +2035,19 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// This function is very inefficient when used with solid archives, since
     /// it needs to decode all data before the actual file.
     pub fn read_file(&mut self, name: &str) -> Result<Vec<u8>, Error> {
-        let index_entry = *self.index.get(name).ok_or(Error::FileNotFound)?;
+        let index_entry = self.index_entry(name).ok_or(Error::FileNotFound)?;
         let file = &self.archive.files[index_entry.file_index];
 
         if !file.has_stream {
             return Ok(Vec::new());
+        }
+
+        if file.size > self.limits.max_read_file_bytes as u64 {
+            return Err(Error::ResourceLimit {
+                resource: "read_file_bytes",
+                limit: self.limits.max_read_file_bytes,
+                required: usize::try_from(file.size).unwrap_or(usize::MAX),
+            });
         }
 
         let block_index = index_entry
@@ -1698,24 +2059,25 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 let mut result = None;
                 let target_file_ptr = file as *const _;
 
-                BlockDecoder::new(
+                BlockDecoder::new_with_limits(
                     self.thread_count,
                     block_index,
                     &self.archive,
                     &self.password,
+                    self.limits,
                     &mut self.source,
                 )
                 .for_each_entries(&mut |archive_entry, reader| {
+                    if !std::ptr::eq(archive_entry, target_file_ptr) {
+                        std::io::copy(reader, &mut std::io::sink())?;
+                        return Ok(true);
+                    }
+
                     let mut data =
                         Vec::with_capacity((archive_entry.size as usize).min(MAX_PREALLOC_BYTES));
                     reader.read_to_end(&mut data)?;
-
-                    if std::ptr::eq(archive_entry, target_file_ptr) {
-                        result = Some(data);
-                        Ok(false)
-                    } else {
-                        Ok(true)
-                    }
+                    result = Some(data);
+                    Ok(false)
                 })?;
 
                 result.ok_or(Error::FileNotFound)
@@ -1735,6 +2097,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     &self.archive,
                     block_index,
                     &self.password,
+                    &self.limits,
                     self.thread_count,
                 )?;
 
@@ -1763,7 +2126,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         file_name: &str,
         methods: &mut Vec<EncoderMethod>,
     ) -> Result<(), Error> {
-        let index_entry = self.index.get(file_name).ok_or(Error::FileNotFound)?;
+        let index_entry = self.index_entry(file_name).ok_or(Error::FileNotFound)?;
         let file = &self.archive.files[index_entry.file_index];
 
         if !file.has_stream {
@@ -1801,6 +2164,7 @@ pub struct BlockDecoder<'a, R: Read + Seek> {
     block_index: usize,
     archive: &'a Archive,
     password: &'a Password,
+    limits: ArchiveReaderLimits,
     source: &'a mut R,
 }
 
@@ -1821,11 +2185,31 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         password: &'a Password,
         source: &'a mut R,
     ) -> Self {
+        Self::new_with_limits(
+            thread_count,
+            block_index,
+            archive,
+            password,
+            archive.limits,
+            source,
+        )
+    }
+
+    /// Like [`BlockDecoder::new`], but enforces `limits`.
+    pub fn new_with_limits(
+        thread_count: u32,
+        block_index: usize,
+        archive: &'a Archive,
+        password: &'a Password,
+        limits: ArchiveReaderLimits,
+        source: &'a mut R,
+    ) -> Self {
         Self {
             thread_count,
             block_index,
             archive,
             password,
+            limits,
             source,
         }
     }
@@ -1865,6 +2249,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             block_index,
             archive,
             password,
+            limits,
             source,
         } = self;
         let (mut block_reader, _size) = ArchiveReader::build_decode_stack(
@@ -1872,6 +2257,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             archive,
             block_index,
             password,
+            &limits,
             thread_count,
         )?;
         let start = archive.stream_map.block_first_file_index[block_index];
@@ -1902,5 +2288,50 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             }
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct InterruptedOneByteReader {
+        remaining: usize,
+        interrupted: bool,
+    }
+
+    impl Read for InterruptedOneByteReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.interrupted {
+                self.interrupted = false;
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "retry"));
+            }
+            if self.remaining == 0 {
+                return Ok(0);
+            }
+            buf[0] = 0xA5;
+            self.remaining -= 1;
+            self.interrupted = true;
+            Ok(1)
+        }
+    }
+
+    #[test]
+    fn decoded_header_short_reads_never_grow_capacity_past_the_declared_limit() {
+        let declared_len = DECODED_HEADER_INITIAL_BYTES + 1;
+        let mut source = InterruptedOneByteReader {
+            remaining: declared_len,
+            interrupted: false,
+        };
+
+        let decoded = read_decoded_header(&mut source, declared_len).expect("decode header");
+
+        assert_eq!(decoded.len(), declared_len);
+        assert!(
+            decoded.capacity() <= declared_len,
+            "capacity {} exceeded declared limit {declared_len}",
+            decoded.capacity()
+        );
+        assert!(decoded.iter().all(|byte| *byte == 0xA5));
     }
 }
