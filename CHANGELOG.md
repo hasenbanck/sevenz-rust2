@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `ArchiveWriter::push_raw_block`, which copies a block of an existing archive into the one being
+  written without decoding it, under new entry names. Renaming an entry, dropping one, or adding
+  to an archive no longer means re-encoding the rest of it.
+
 ## 0.23.0 - 2026-09-18
 
 ### Changed
