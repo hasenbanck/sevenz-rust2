@@ -1,7 +1,7 @@
 use std::{io::Write, sync::Arc};
 
 use super::*;
-use crate::EncoderConfiguration;
+use crate::{Block, EncoderConfiguration};
 #[derive(Debug, Clone, Default)]
 pub(crate) struct UnpackInfo {
     pub(crate) blocks: Vec<BlockInfo>,
@@ -39,6 +39,27 @@ impl UnpackInfo {
             num_sub_unpack_streams,
             sub_stream_crcs,
             sub_stream_sizes,
+            raw: None,
+        })
+    }
+
+    /// A block copied from another archive by [`ArchiveWriter::push_raw_block`], written back
+    /// with the coders it was read with.
+    pub(crate) fn add_raw(
+        &mut self,
+        block: &Block,
+        num_sub_unpack_streams: u64,
+        sub_stream_sizes: Vec<u64>,
+        sub_stream_crcs: Vec<u32>,
+    ) {
+        self.blocks.push(BlockInfo {
+            raw: Some(block.clone()),
+            sizes: block.unpack_sizes.clone(),
+            crc: block.crc as u32,
+            num_sub_unpack_streams,
+            sub_stream_sizes,
+            sub_stream_crcs,
+            ..Default::default()
         })
     }
 
@@ -131,6 +152,9 @@ impl UnpackInfo {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct BlockInfo {
     pub(crate) methods: Arc<Vec<EncoderConfiguration>>,
+    /// Set for a block copied as it was encoded, whose coders are written from here rather than
+    /// from `methods`.
+    pub(crate) raw: Option<Block>,
     pub(crate) sizes: Vec<u64>,
     pub(crate) crc: u32,
     pub(crate) num_sub_unpack_streams: u64,
@@ -144,6 +168,9 @@ impl BlockInfo {
         header: &mut W,
         cache: &mut Vec<u8>,
     ) -> std::io::Result<()> {
+        if let Some(block) = &self.raw {
+            return write_raw_block(block, header);
+        }
         cache.clear();
         let mut num_coders = 0;
         for mc in self.methods.iter() {
@@ -179,4 +206,42 @@ impl BlockInfo {
         }
         Ok(())
     }
+}
+
+/// Write a block's coders back as the reader parsed them: the inverse of `read_block`, so that a
+/// coder chain of any shape, bind pairs and several packed streams included, survives the trip.
+fn write_raw_block<W: Write>(block: &Block, header: &mut W) -> std::io::Result<()> {
+    write_u64(header, block.coders.len() as u64)?;
+    for coder in &block.coders {
+        let id = coder.encoder_method_id();
+        let simple = coder.num_in_streams == 1 && coder.num_out_streams == 1;
+        let mut flags = id.len() as u8;
+        if !simple {
+            flags |= 0x10;
+        }
+        if !coder.properties.is_empty() {
+            flags |= 0x20;
+        }
+        header.write_u8(flags)?;
+        header.write_all(id)?;
+        if !simple {
+            write_u64(header, coder.num_in_streams)?;
+            write_u64(header, coder.num_out_streams)?;
+        }
+        if !coder.properties.is_empty() {
+            write_u64(header, coder.properties.len() as u64)?;
+            header.write_all(&coder.properties)?;
+        }
+    }
+    for pair in &block.bind_pairs {
+        write_u64(header, pair.in_index)?;
+        write_u64(header, pair.out_index)?;
+    }
+    // A single packed stream is implied: the one input no bind pair consumes.
+    if block.packed_streams.len() > 1 {
+        for stream in &block.packed_streams {
+            write_u64(header, *stream)?;
+        }
+    }
+    Ok(())
 }
