@@ -213,7 +213,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             entry.compressed_crc = compressed_crc as u64;
             entry.compressed_size = compressed_len as u64;
             self.pack_info
-                .add_stream(compressed_len as u64, compressed_crc);
+                .add_stream(compressed_len as u64, Some(compressed_crc));
 
             let mut sizes = Vec::with_capacity(more_sizes.len() + 1);
             sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
@@ -262,7 +262,8 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             .write_all(&compressed)
             .map_err(|e| Error::io_msg(e, "push_prepared_block: write".to_string()))?;
 
-        self.pack_info.add_stream(compressed_len, compressed_crc);
+        self.pack_info
+            .add_stream(compressed_len, Some(compressed_crc));
         self.unpack_info.add_multiple(
             methods,
             sizes,
@@ -284,15 +285,16 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     /// or adding to an archive cheap: write the new archive from the old one's blocks, raw.
     ///
     /// A block's entries go together, since leaving one out of a solid block means re-encoding
-    /// the others: to drop an entry, decode its block with [`BlockDecoder`] and push the rest
+    /// the others: to drop an entry, decode its block with [`BlockDecoder`](crate::BlockDecoder) and push the rest
     /// again. Entries without data belong to no block, and are pushed with
     /// [`push_archive_entry`](Self::push_archive_entry) and no reader.
     ///
     /// `archive` must be the one `source` holds, as [`Archive::read`] parsed it.
     ///
     /// # Errors
-    /// If `block_index` is out of range, or the block is missing a CRC this writer would have to
-    /// invent: it writes every sub-stream's CRC as defined.
+    /// If `block_index` is out of range, the archive has no stream map for the block (it has no
+    /// `FilesInfo`), the block's offset in `source` overflows, or the block is missing a CRC
+    /// this writer would have to invent: it writes every sub-stream's CRC as defined.
     pub fn push_raw_block<R: Read + Seek>(
         &mut self,
         archive: &Archive,
@@ -305,9 +307,19 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             .get(block_index)
             .ok_or_else(|| Error::other(format!("push_raw_block: no block {block_index}")))?;
         let map = &archive.stream_map;
+        // The stream map is only built along with the files, so an archive without a
+        // `FilesInfo` has blocks and no map of them.
+        let unmapped = || {
+            Error::other(format!(
+                "push_raw_block: block {block_index} is missing from the stream map"
+            ))
+        };
 
         // Its sub-streams, which are its entries' sizes and CRCs.
-        let first_sub_stream = map.block_first_sub_stream_index[block_index];
+        let first_sub_stream = *map
+            .block_first_sub_stream_index
+            .get(block_index)
+            .ok_or_else(unmapped)?;
         let sub_streams = first_sub_stream..first_sub_stream + block.num_unpack_sub_streams;
         let info = archive.sub_streams_info.as_ref();
         let mut sub_stream_sizes = Vec::with_capacity(sub_streams.len());
@@ -328,12 +340,13 @@ impl<W: Write + Seek> ArchiveWriter<W> {
                 .push(info.map_or(block.get_unpack_size(), |info| info.unpack_sizes[index]));
         }
 
-        // Its entries, the files with data in it, in order.
+        // Its entries, the files with data in it, in order. An empty entry between two of a
+        // solid block's may be mapped to it too, but it has no sub-stream there.
         let entries: Vec<ArchiveEntry> = archive
             .files
             .iter()
             .zip(&map.file_block_index)
-            .filter(|(_, block)| **block == Some(block_index))
+            .filter(|(entry, block)| entry.has_stream && **block == Some(block_index))
             .map(|(entry, _)| ArchiveEntry {
                 name: rename(entry),
                 ..entry.clone()
@@ -348,11 +361,26 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         }
 
         // Its packed streams, copied as they are.
-        let first_pack_stream = map.block_first_pack_stream_index[block_index];
+        let first_pack_stream = *map
+            .block_first_pack_stream_index
+            .get(block_index)
+            .ok_or_else(unmapped)?;
         for pack_stream in first_pack_stream..first_pack_stream + block.packed_streams.len() {
-            let size = archive.pack_sizes[pack_stream];
-            let offset =
-                SIGNATURE_HEADER_SIZE + archive.pack_pos + map.pack_stream_offsets[pack_stream];
+            let (Some(&size), Some(&stream_offset)) = (
+                archive.pack_sizes.get(pack_stream),
+                map.pack_stream_offsets.get(pack_stream),
+            ) else {
+                return Err(unmapped());
+            };
+            // The header's offsets are not bounded when it is read.
+            let offset = SIGNATURE_HEADER_SIZE
+                .checked_add(archive.pack_pos)
+                .and_then(|offset| offset.checked_add(stream_offset))
+                .ok_or_else(|| {
+                    Error::other(format!(
+                        "push_raw_block: block {block_index} lies past the end of any file"
+                    ))
+                })?;
             source.seek(std::io::SeekFrom::Start(offset))?;
             let copied = std::io::copy(&mut (&mut *source).take(size), &mut self.output)?;
             if copied != size {
@@ -360,11 +388,10 @@ impl<W: Write + Seek> ArchiveWriter<W> {
                     "push_raw_block: block {block_index} is truncated"
                 )));
             }
-            let crc = if archive.pack_crcs_defined.contains(pack_stream) {
-                archive.pack_crcs[pack_stream] as u32
-            } else {
-                0
-            };
+            let crc = archive
+                .pack_crcs_defined
+                .contains(pack_stream)
+                .then(|| archive.pack_crcs[pack_stream] as u32);
             self.pack_info.add_stream(size, crc);
         }
 
@@ -450,7 +477,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         }
 
         self.pack_info
-            .add_stream(compressed_len as u64, compressed_crc);
+            .add_stream(compressed_len as u64, Some(compressed_crc));
 
         let mut sizes = Vec::with_capacity(more_sizes.len() + 1);
         sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
@@ -584,7 +611,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         }
         self.output.write_all(&encoded_data[..compress_size])?;
 
-        pack_info.add_stream(compress_size as u64, compress_crc);
+        pack_info.add_stream(compress_size as u64, Some(compress_crc));
 
         let mut unpack_info = UnpackInfo::default();
         let mut sizes = Vec::with_capacity(1 + more_sizes.len());

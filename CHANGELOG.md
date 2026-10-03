@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written without decoding it, under new entry names. Renaming an entry, dropping one, or adding
   to an archive no longer means re-encoding the rest of it.
 
+### Fixed
+
+- Writing packed streams of which only some have a CRC wrote which ones did, but not their CRCs,
+  leaving an archive neither this crate nor 7-Zip could open. A CRC of 0 was also taken for a
+  missing one.
+
 ## 0.23.0 - 2026-09-18
 
 ### Changed
