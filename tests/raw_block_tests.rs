@@ -195,7 +195,7 @@ fn copy_fixture(pack_pos: u64, include_files: bool, interleaved_empty: bool) -> 
     };
     let mut header = vec![1, 4, 6]; // Header, MainStreamsInfo, PackInfo.
     // A 7z NUMBER prefixed with 0xFF stores all eight following bytes verbatim.
-    header.push(0xff);
+    header.push(0xFF);
     header.extend(pack_pos.to_le_bytes());
     header.extend([1, 9, data.len() as u8, 0]); // One packed stream, size, End.
     header.extend([7, 11, 1, 0]); // UnpackInfo, Folder, one inline block.
@@ -239,7 +239,7 @@ fn copy_fixture(pack_pos: u64, include_files: bool, interleaved_empty: bool) -> 
     start.extend((data.len() as u64).to_le_bytes()); // NextHeaderOffset.
     start.extend((header.len() as u64).to_le_bytes()); // NextHeaderSize.
     start.extend(crc32fast::hash(&header).to_le_bytes());
-    let mut bytes = vec![0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0, 4];
+    let mut bytes = vec![0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0, 4];
     bytes.extend(crc32fast::hash(&start).to_le_bytes());
     bytes.extend(start);
     bytes.extend(data);
