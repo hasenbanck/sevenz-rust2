@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.24.0 - 2026-10-11
+
+### Changed
+
+- Bumped `lzma-rust2` to 0.22.
+
 ### Added
 
 - `ArchiveWriter::push_raw_block`, which copies a block of an existing archive into the one being
