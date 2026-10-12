@@ -24,11 +24,11 @@ const MAX_PREALLOC_BYTES: usize = 4 << 20;
 
 pub struct BoundedReader<R: Read> {
     inner: R,
-    remain: usize,
+    remain: u64,
 }
 
 impl<R: Read> BoundedReader<R> {
-    pub fn new(inner: R, max_size: usize) -> Self {
+    pub fn new(inner: R, max_size: u64) -> Self {
         Self {
             inner,
             remain: max_size,
@@ -41,9 +41,9 @@ impl<R: Read> Read for BoundedReader<R> {
         if self.remain == 0 {
             return Ok(0);
         }
-        let bound = buf.len().min(self.remain);
+        let bound = usize::try_from(self.remain).map_or(buf.len(), |r| buf.len().min(r));
         let size = self.inner.read(&mut buf[..bound])?;
-        self.remain -= size;
+        self.remain -= size as u64;
         Ok(size)
     }
 }
@@ -92,7 +92,8 @@ impl<'a, R: Read + Seek> Read for SharedBoundedReader<'a, R> {
 
         inner.seek(SeekFrom::Start(self.cur))?;
 
-        let bound = buf.len().min((self.bounds.1 - self.cur) as usize);
+        let remain = self.bounds.1 - self.cur;
+        let bound = usize::try_from(remain).map_or(buf.len(), |r| buf.len().min(r));
         let size = inner.read(&mut buf[..bound])?;
         self.cur += size as u64;
         Ok(size)
@@ -113,31 +114,31 @@ struct Crc32VerifyingReader<R> {
     inner: R,
     crc_digest: Hasher,
     expected_value: u64,
-    remaining: i64,
+    remaining: u64,
 }
 
 impl<R: Read> Crc32VerifyingReader<R> {
-    fn new(inner: R, remaining: usize, expected_value: u64) -> Self {
+    fn new(inner: R, remaining: u64, expected_value: u64) -> Self {
         Self {
             inner,
             crc_digest: Hasher::new(),
             expected_value,
-            remaining: remaining as i64,
+            remaining,
         }
     }
 }
 
 impl<R: Read> Read for Crc32VerifyingReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.remaining <= 0 {
+        if self.remaining == 0 {
             return Ok(0);
         }
         let size = self.inner.read(buf)?;
         if size > 0 {
-            self.remaining -= size as i64;
+            self.remaining = self.remaining.saturating_sub(size as u64);
             self.crc_digest.update(&buf[..size]);
         }
-        if self.remaining <= 0 {
+        if self.remaining == 0 {
             let d = std::mem::replace(&mut self.crc_digest, Hasher::new()).finalize();
             if d as u64 != self.expected_value {
                 return Err(std::io::Error::other(Error::ChecksumVerificationFailed));
@@ -393,10 +394,10 @@ impl Archive {
             // match only what is actually decoded, so the allocation tracks real input.
             buf.clear();
             (&mut out_reader)
-                .take(buf_size as u64)
+                .take(buf_size)
                 .read_to_end(&mut buf)
                 .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
-            if buf.len() != buf_size {
+            if buf.len() as u64 != buf_size {
                 return Err(Error::bad_password(
                     io::Error::from(io::ErrorKind::UnexpectedEof),
                     !password.is_empty(),
@@ -436,7 +437,7 @@ impl Archive {
         password: &Password,
         limit: usize,
         thread_count: u32,
-    ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
+    ) -> Result<(Box<dyn Read + 'r>, u64), Error> {
         Self::read_streams_info(header, archive, limit)?;
         let block = archive
             .blocks
@@ -452,8 +453,8 @@ impl Archive {
 
         reader.seek(SeekFrom::Start(block_offset))?;
         let coder_len = block.coders.len();
-        let unpack_size = block.get_unpack_size() as usize;
-        let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
+        let unpack_size = block.get_unpack_size();
+        let pack_size = archive.pack_sizes[first_pack_stream_index];
         let input_reader = BoundedReader::new(reader, pack_size);
         let mut decoder: Box<dyn Read> = Box::new(input_reader);
         let mut decoder = if coder_len > 0 {
@@ -465,7 +466,7 @@ impl Archive {
                 }
                 let next = add_decoder(
                     decoder,
-                    block.get_unpack_size_at_index(index) as usize,
+                    block.get_unpack_size_at_index(index),
                     coder,
                     password,
                     MAX_MEM_LIMIT_KB,
@@ -1357,7 +1358,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         block_index: usize,
         password: &Password,
         thread_count: u32,
-    ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
+    ) -> Result<Box<dyn Read + 'r>, Error> {
         let block = &archive.blocks[block_index];
         if block.total_input_streams > block.total_output_streams {
             return Self::build_decode_stack2(source, archive, block_index, password, thread_count);
@@ -1388,7 +1389,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
 
         source.seek(SeekFrom::Start(block_offset))?;
-        let pack_size = archive.pack_sizes[first_pack_stream_index] as usize;
+        let pack_size = archive.pack_sizes[first_pack_stream_index];
 
         let mut decoder: Box<dyn Read> = Box::new(BoundedReader::new(source, pack_size));
         let block = &archive.blocks[block_index];
@@ -1400,7 +1401,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             }
             let next = add_decoder(
                 decoder,
-                block.get_unpack_size_at_index(index) as usize,
+                block.get_unpack_size_at_index(index),
                 coder,
                 password,
                 MAX_MEM_LIMIT_KB,
@@ -1411,12 +1412,12 @@ impl<R: Read + Seek> ArchiveReader<R> {
         if has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
-                block.get_unpack_size() as usize,
+                block.get_unpack_size(),
                 crc,
             ));
         }
 
-        Ok((decoder, pack_size))
+        Ok(decoder)
     }
 
     fn build_decode_stack2<'r>(
@@ -1425,7 +1426,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         block_index: usize,
         password: &Password,
         thread_count: u32,
-    ) -> Result<(Box<dyn Read + 'r>, usize), Error> {
+    ) -> Result<Box<dyn Read + 'r>, Error> {
         const MAX_CODER_COUNT: usize = 32;
         let block = &archive.blocks[block_index];
         if block.coders.len() > MAX_CODER_COUNT {
@@ -1506,14 +1507,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
         if block.has_crc {
             decoder = Box::new(Crc32VerifyingReader::new(
                 decoder,
-                block.get_unpack_size() as usize,
+                block.get_unpack_size(),
                 block.crc,
             ));
         }
-        Ok((
-            decoder,
-            archive.pack_sizes[first_pack_stream_index] as usize,
-        ))
+        Ok(decoder)
     }
 
     fn get_in_stream<'r>(
@@ -1586,8 +1584,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         let uncompressed_len = *block
             .unpack_sizes
             .get(in_stream_index)
-            .ok_or_else(|| Error::other("in_stream_index out of range"))?
-            as usize;
+            .ok_or_else(|| Error::other("in_stream_index out of range"))?;
         if coder.num_in_streams == 1 {
             let input = Self::get_in_stream(
                 block,
@@ -1633,7 +1630,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     thread_count,
                 )?);
             }
-            return Ok(Box::new(Bcj2Reader::new(inputs, uncompressed_len as u64)));
+            return Ok(Box::new(Bcj2Reader::new(inputs, uncompressed_len)));
         }
 
         Err(Error::unsupported(format!(
@@ -1706,8 +1703,9 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     &mut self.source,
                 )
                 .for_each_entries(&mut |archive_entry, reader| {
-                    let mut data =
-                        Vec::with_capacity((archive_entry.size as usize).min(MAX_PREALLOC_BYTES));
+                    let mut data = Vec::with_capacity(
+                        archive_entry.size.min(MAX_PREALLOC_BYTES as u64) as usize,
+                    );
                     reader.read_to_end(&mut data)?;
 
                     if std::ptr::eq(archive_entry, target_file_ptr) {
@@ -1730,7 +1728,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
                 self.source.seek(SeekFrom::Start(block_offset))?;
 
-                let (mut block_reader, _size) = Self::build_decode_stack(
+                let mut block_reader = Self::build_decode_stack(
                     &mut self.source,
                     &self.archive,
                     block_index,
@@ -1738,16 +1736,13 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     self.thread_count,
                 )?;
 
-                let mut data = Vec::with_capacity((file.size as usize).min(MAX_PREALLOC_BYTES));
+                let mut data =
+                    Vec::with_capacity(file.size.min(MAX_PREALLOC_BYTES as u64) as usize);
                 let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
+                    Box::new(BoundedReader::new(&mut block_reader, file.size));
 
                 if file.has_crc {
-                    decoder = Box::new(Crc32VerifyingReader::new(
-                        decoder,
-                        file.size as usize,
-                        file.crc,
-                    ));
+                    decoder = Box::new(Crc32VerifyingReader::new(decoder, file.size, file.crc));
                 }
 
                 decoder.read_to_end(&mut data)?;
@@ -1867,7 +1862,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             password,
             source,
         } = self;
-        let (mut block_reader, _size) = ArchiveReader::build_decode_stack(
+        let mut block_reader = ArchiveReader::build_decode_stack(
             source,
             archive,
             block_index,
@@ -1881,13 +1876,9 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             let file = &archive.files[file_index];
             if file.has_stream && file.size > 0 {
                 let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut block_reader, file.size as usize));
+                    Box::new(BoundedReader::new(&mut block_reader, file.size));
                 if file.has_crc {
-                    decoder = Box::new(Crc32VerifyingReader::new(
-                        decoder,
-                        file.size as usize,
-                        file.crc,
-                    ));
+                    decoder = Box::new(Crc32VerifyingReader::new(decoder, file.size, file.crc));
                 }
                 if !each(file, &mut decoder)
                     .map_err(|e| e.maybe_bad_password(!self.password.is_empty()))?
@@ -1902,5 +1893,23 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             }
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn shared_bounded_reader_reads_with_4_gib_remaining() {
+        let mut inner = Cursor::new(vec![0x5Au8; 16]);
+        let shared = Rc::new(RefCell::new(&mut inner));
+        let mut reader = SharedBoundedReader::new(shared, (0, 1 << 32));
+
+        let mut buf = [0u8; 16];
+        assert_eq!(reader.read(&mut buf).unwrap(), 16);
+        assert_eq!(buf, [0x5A; 16]);
     }
 }

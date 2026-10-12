@@ -74,7 +74,7 @@ impl<R: Read> Read for Decoder<R> {
 
 pub fn add_decoder<I: Read>(
     input: I,
-    uncompressed_len: usize,
+    uncompressed_len: u64,
     coder: &Coder,
     #[allow(unused)] password: &Password,
     max_mem_limit_kb: usize,
@@ -99,9 +99,8 @@ pub fn add_decoder<I: Read>(
             }
             let dict_size = get_lzma_dic_size(coder)?;
             let props = coder.properties[0];
-            let lz =
-                LzmaReader::new_with_props(input, uncompressed_len as _, props, dict_size, None)
-                    .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
+            let lz = LzmaReader::new_with_props(input, uncompressed_len, props, dict_size, None)
+                .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
             Ok(Decoder::Lzma(Box::new(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
