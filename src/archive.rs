@@ -71,6 +71,27 @@ impl Archive {
     pub fn pack_sizes(&self) -> &[u64] {
         &self.pack_sizes
     }
+
+    /// Returns whether a file's owning compression block contains the 7z
+    /// AES256-SHA256 coder.
+    ///
+    /// Returns `false` for an invalid file index or an entry without an owning
+    /// block, such as a directory or an empty streamless file. This describes
+    /// content encryption; encrypted headers must be decoded before file
+    /// metadata is available.
+    pub fn is_file_encrypted(&self, file_index: usize) -> bool {
+        self.stream_map
+            .file_block_index
+            .get(file_index)
+            .and_then(|block_index| *block_index)
+            .and_then(|block_index| self.blocks.get(block_index))
+            .is_some_and(|block| {
+                block
+                    .coders
+                    .iter()
+                    .any(|coder| coder.encoder_method_id() == EncoderMethod::ID_AES256_SHA256)
+            })
+    }
 }
 
 #[derive(Debug, Default, Clone)]
