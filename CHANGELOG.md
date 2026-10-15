@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Restore BCJ2 block framing and reject unconsumed input streams after decoding.
+
 ## 0.24.2 - 2026-10-30
 
 ### Fixed
