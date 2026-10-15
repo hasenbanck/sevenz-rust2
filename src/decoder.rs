@@ -139,6 +139,9 @@ pub fn add_decoder<I: Read>(
             // required for termination. Do not merely trust it: require the
             // range coder to be in a valid terminal state at that boundary.
             lz.set_relaxed_end_condition(false);
+            // Expose recovered output to entry callbacks. Consumers must read
+            // through block completion to observe deferred decode errors.
+            lz.set_defer_errors(true);
             Ok(Decoder::Lzma(Box::new(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
@@ -400,5 +403,53 @@ mod tests {
             Err(Error::MaxMemLimited { .. })
         ));
         assert!(get_ppmd_order_memory_size(&coder, 2048).is_ok());
+    }
+
+    #[cfg(feature = "compress")]
+    #[test]
+    fn raw_lzma_accepts_optional_end_marker_and_defers_size_errors() {
+        use std::io::Write;
+
+        use lzma_rust2::{LzmaOptions, LzmaWriter};
+
+        let data = b"scanner must receive content before a malformed ending".repeat(100);
+        let options = LzmaOptions::with_preset(6);
+        let mut properties = vec![options.get_props()];
+        properties.extend_from_slice(&options.dict_size.to_le_bytes());
+        let coder = coder(EncoderMethod::ID_LZMA, properties);
+        for marker in [false, true] {
+            let mut writer =
+                LzmaWriter::new(Vec::new(), &options, false, marker, Some(data.len() as u64))
+                    .unwrap();
+            writer.write_all(&data).unwrap();
+            let compressed = writer.finish().unwrap();
+            let mut decoder = add_decoder(
+                &compressed[..],
+                data.len() as u64,
+                &coder,
+                &Password::empty(),
+                usize::MAX,
+                1,
+            )
+            .unwrap();
+            let mut output = Vec::new();
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(output, data);
+
+            let declared_size = data.len() - 50;
+            let mut decoder = add_decoder(
+                &compressed[..],
+                declared_size as u64,
+                &coder,
+                &Password::empty(),
+                usize::MAX,
+                1,
+            )
+            .unwrap();
+            let mut output = vec![0; declared_size];
+            decoder.read_exact(&mut output).unwrap();
+            assert_eq!(output, data[..declared_size]);
+            assert!(decoder.read(&mut [0]).is_err());
+        }
     }
 }
