@@ -245,6 +245,58 @@ impl<R: Read> Read for CountingReader<R> {
     }
 }
 
+// BCJ2 needs its declared output length for framing. Verify complete input
+// consumption before reporting EOF so that a falsely short declaration cannot
+// silently discard buffered data or bytes in any of the four input streams.
+struct Bcj2VerifyingReader<R> {
+    inner: Option<Bcj2Reader<R>>,
+    failure: Option<io::Error>,
+}
+
+impl<R> Bcj2VerifyingReader<R> {
+    fn new(inputs: Vec<R>, uncompressed_size: u64) -> Self {
+        Self {
+            inner: Some(Bcj2Reader::new(inputs, uncompressed_size)),
+            failure: None,
+        }
+    }
+
+    fn copy_error(error: &io::Error) -> io::Error {
+        match error.raw_os_error() {
+            Some(code) => io::Error::from_raw_os_error(code),
+            None => io::Error::new(error.kind(), error.to_string()),
+        }
+    }
+}
+
+impl<R: Read> Read for Bcj2VerifyingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        if let Some(error) = &self.failure {
+            return Err(Self::copy_error(error));
+        }
+        let Some(reader) = self.inner.as_mut() else {
+            return Ok(0);
+        };
+        let size = reader.read(buf)?;
+        if size != 0 {
+            return Ok(size);
+        }
+        // Finish on the next read, after the last output has reached the
+        // caller. Our inputs are already confined to their archive streams.
+        if let Some(reader) = self.inner.take()
+            && let Err(error) = reader.finish()
+        {
+            let reported = Self::copy_error(&error);
+            self.failure = Some(error);
+            return Err(reported);
+        }
+        Ok(0)
+    }
+}
+
 impl Archive {
     /// Open 7z file under specified `path`.
     #[inline]
@@ -1806,9 +1858,10 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     memory_limit_kb,
                 )?);
             }
-            // BCJ2's declared output length is untrusted. Let its input streams
-            // determine termination and validate observed output at block scope.
-            return Ok(Box::new(Bcj2Reader::new(inputs, u64::MAX)));
+            // The BCJ2 reader requires a finite output length. Also verify
+            // complete input consumption: the declaration alone must not
+            // establish that the block ended correctly.
+            return Ok(Box::new(Bcj2VerifyingReader::new(inputs, uncompressed_len)));
         }
 
         Err(Error::unsupported(format!(
@@ -2374,5 +2427,209 @@ mod tests {
         let mut buf = [0u8; 16];
         assert_eq!(reader.read(&mut buf).unwrap(), 16);
         assert_eq!(buf, [0x5A; 16]);
+    }
+}
+
+#[cfg(test)]
+mod bcj2_completion_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn literal_streams(payload: &[u8]) -> [Vec<u8>; 4] {
+        // No branch markers: MAIN contains the payload and RC contains only
+        // the five-byte range-coder initialization/flush sequence.
+        [payload.to_vec(), Vec::new(), Vec::new(), vec![0; 5]]
+    }
+
+    fn archive_with_bcj2_streams(
+        declared_size: u64,
+        streams: [Vec<u8>; 4],
+    ) -> (Archive, Cursor<Vec<u8>>) {
+        let mut coder = Coder::default();
+        coder.id_size = EncoderMethod::ID_BCJ2.len();
+        coder.num_in_streams = 4;
+        coder.num_out_streams = 1;
+        coder
+            .decompression_method_id_mut()
+            .copy_from_slice(EncoderMethod::ID_BCJ2);
+        let mut entry = ArchiveEntry::new_file("payload");
+        entry.size = declared_size;
+        let mut offset = 0;
+        let offsets = streams
+            .iter()
+            .map(|stream| {
+                let start = offset;
+                offset += stream.len() as u64;
+                start
+            })
+            .collect();
+        let archive = Archive {
+            pack_sizes: streams.iter().map(|stream| stream.len() as u64).collect(),
+            blocks: vec![Block {
+                coders: vec![coder],
+                total_input_streams: 4,
+                total_output_streams: 1,
+                packed_streams: vec![0, 1, 2, 3],
+                unpack_sizes: vec![declared_size],
+                num_unpack_sub_streams: 1,
+                ..Default::default()
+            }],
+            files: vec![entry],
+            stream_map: StreamMap {
+                block_first_pack_stream_index: vec![0],
+                pack_stream_offsets: offsets,
+                block_first_file_index: vec![0],
+                block_first_sub_stream_index: vec![0],
+                file_block_index: vec![Some(0)],
+            },
+            ..Default::default()
+        };
+        let mut source = vec![0; SIGNATURE_HEADER_SIZE as usize];
+        for stream in streams {
+            source.extend_from_slice(&stream);
+        }
+        (archive, Cursor::new(source))
+    }
+
+    fn decode_block(declared_size: u64, streams: [Vec<u8>; 4]) -> (Vec<u8>, Result<bool, Error>) {
+        let (archive, mut source) = archive_with_bcj2_streams(declared_size, streams);
+        let password = Password::empty();
+        let decoder = BlockDecoder::new(1, 0, &archive, &password, &mut source);
+        let mut output = Vec::new();
+        let result = decoder.for_each_entries(&mut |_entry, reader| {
+            reader.read_to_end(&mut output)?;
+            Ok(true)
+        });
+        (output, result)
+    }
+
+    #[test]
+    fn bcj2_valid_and_empty_blocks_complete() {
+        for payload in [&b""[..], &b"plain payload"[..]] {
+            let (output, result) = decode_block(payload.len() as u64, literal_streams(payload));
+            assert!(result.unwrap());
+            assert_eq!(output, payload);
+        }
+    }
+
+    #[test]
+    fn bcj2_short_declaration_is_rejected_after_framed_output() {
+        let payload = b"clean-prefix-hidden-suffix";
+        let (output, result) = decode_block(5, literal_streams(payload));
+        assert_eq!(output, &payload[..5]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bcj2_long_declaration_is_rejected_after_available_output() {
+        let payload = b"plain payload";
+        let (output, result) = decode_block(payload.len() as u64 + 1, literal_streams(payload));
+        assert_eq!(output, payload);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bcj2_trailing_data_is_rejected_in_each_input_stream() {
+        let payload = b"plain payload";
+        for index in 0..4 {
+            let mut streams = literal_streams(payload);
+            streams[index].extend_from_slice(&[1, 2, 3, 4]);
+            let (output, result) = decode_block(payload.len() as u64, streams);
+            assert_eq!(output, payload, "stream {index}");
+            assert!(result.is_err(), "stream {index}");
+        }
+    }
+
+    #[test]
+    fn bcj2_empty_block_requires_a_complete_range_coder() {
+        for size in 0..5 {
+            let mut streams = literal_streams(b"");
+            streams[3].truncate(size);
+            let (output, result) = decode_block(0, streams);
+            assert!(output.is_empty());
+            assert!(result.is_err(), "RC length {size}");
+        }
+    }
+
+    #[test]
+    fn bcj2_completion_error_repeats_after_output_and_empty_reads() {
+        let payload = b"plain payload";
+        let mut streams = literal_streams(payload);
+        streams[1].extend_from_slice(&[1, 2, 3, 4]);
+        let mut reader = Bcj2VerifyingReader::new(
+            streams.into_iter().map(Cursor::new).collect(),
+            payload.len() as u64,
+        );
+        let mut output = vec![0; payload.len()];
+        reader.read_exact(&mut output).unwrap();
+        assert_eq!(output, payload);
+        assert_eq!(reader.read(&mut []).unwrap(), 0);
+        for _ in 0..3 {
+            let error = reader.read(&mut [0]).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(error.to_string(), "trailing BCJ2 input");
+        }
+    }
+
+    #[test]
+    fn bcj2_completion_preserves_input_errors() {
+        struct Input<'a> {
+            remaining: &'a [u8],
+            fail_at_end: bool,
+        }
+        impl Read for Input<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                if !buf.is_empty() && self.remaining.is_empty() && self.fail_at_end {
+                    Err(io::Error::from_raw_os_error(5))
+                } else {
+                    self.remaining.read(buf)
+                }
+            }
+        }
+        let payload = b"plain payload";
+        let streams = literal_streams(payload);
+        let inputs = streams
+            .iter()
+            .enumerate()
+            .map(|(index, stream)| Input {
+                remaining: stream,
+                fail_at_end: index == 1,
+            })
+            .collect();
+        let mut reader = Bcj2VerifyingReader::new(inputs, payload.len() as u64);
+        let mut output = vec![0; payload.len()];
+        reader.read_exact(&mut output).unwrap();
+        assert_eq!(output, payload);
+        for _ in 0..3 {
+            assert_eq!(reader.read(&mut [0]).unwrap_err().raw_os_error(), Some(5));
+        }
+    }
+
+    #[test]
+    fn bcj2_trailing_main_data_beyond_the_input_buffer_is_rejected() {
+        // Match the BCJ2 reader's 256 KiB input buffer so that the surplus
+        // byte remains in the source instead of being buffered already.
+        let declared_size = 1 << 18;
+        let payload = vec![b'a'; declared_size + 1];
+        let (output, result) = decode_block(declared_size as u64, literal_streams(&payload));
+        assert_eq!(output, payload[..declared_size]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bcj2_partially_read_entries_still_validate_completion() {
+        let payload = b"plain payload";
+        let mut streams = literal_streams(payload);
+        streams[2].extend_from_slice(&[1, 2, 3, 4]);
+        let (archive, mut source) = archive_with_bcj2_streams(payload.len() as u64, streams);
+        let password = Password::empty();
+        let decoder = BlockDecoder::new(1, 0, &archive, &password, &mut source);
+        let result = decoder.for_each_entries(&mut |_entry, reader| {
+            let mut prefix = [0];
+            reader.read_exact(&mut prefix)?;
+            assert_eq!(prefix[0], payload[0]);
+            Ok(true)
+        });
+        assert!(result.is_err());
     }
 }

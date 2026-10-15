@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fix decoding large files under 32-bit systems
+- Restore BCJ2 block framing and reject unconsumed input streams after decoding.
 
 ## 0.24.0 - 2026-10-11
 
