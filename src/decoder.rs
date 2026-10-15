@@ -7,7 +7,7 @@ use flate2::bufread::DeflateDecoder;
 use lzma_rust2::{
     Lzma2Reader, Lzma2ReaderMt, LzmaReader,
     filter::{bcj::BcjReader, delta::DeltaReader},
-    lzma2_get_memory_usage,
+    lzma_get_memory_usage_by_props, lzma2_get_memory_usage,
 };
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{
@@ -22,13 +22,38 @@ use crate::codec::lz4::Lz4Decoder;
 use crate::encryption::Aes256Sha256Decoder;
 use crate::{ByteReader, Password, archive::EncoderMethod, block::Coder, error::Error};
 
+pub struct OutputBoundReader<R> {
+    inner: R,
+    remaining: u64,
+}
+
+impl<R> OutputBoundReader<R> {
+    fn new(inner: R, remaining: u64) -> Self {
+        Self { inner, remaining }
+    }
+}
+
+impl<R: Read> Read for OutputBoundReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.remaining == 0 {
+            return Ok(0);
+        }
+        let bound = buf
+            .len()
+            .min(usize::try_from(self.remaining).unwrap_or(usize::MAX));
+        let size = self.inner.read(&mut buf[..bound])?;
+        self.remaining -= size as u64;
+        Ok(size)
+    }
+}
+
 pub enum Decoder<R: Read> {
     Copy(R),
     Lzma(Box<LzmaReader<R>>),
     Lzma2(Box<Lzma2Reader<R>>),
     Lzma2Mt(Box<Lzma2ReaderMt<R>>),
     #[cfg(feature = "ppmd")]
-    Ppmd(Box<Ppmd7Decoder<R>>),
+    Ppmd(Box<OutputBoundReader<Ppmd7Decoder<R>>>),
     Bcj(BcjReader<R>),
     Delta(DeltaReader<R>),
     #[cfg(feature = "brotli")]
@@ -99,8 +124,25 @@ pub fn add_decoder<I: Read>(
             }
             let dict_size = get_lzma_dic_size(coder)?;
             let props = coder.properties[0];
-            let lz = LzmaReader::new_with_props(input, uncompressed_len, props, dict_size, None)
-                .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
+            let mem_size = lzma_get_memory_usage_by_props(dict_size, props)
+                .map_err(|e| Error::bad_password(e, !password.is_empty()))?
+                as usize;
+            if mem_size > max_mem_limit_kb {
+                return Err(Error::MaxMemLimited {
+                    max_kb: max_mem_limit_kb,
+                    actaul_kb: mem_size,
+                });
+            }
+            let mut lz =
+                LzmaReader::new_with_props(input, uncompressed_len, props, dict_size, None)
+                    .map_err(|e| Error::bad_password(e, !password.is_empty()))?;
+            // Raw 7z LZMA commonly omits an end marker, so its declared size is
+            // required for termination. Do not merely trust it: require the
+            // range coder to be in a valid terminal state at that boundary.
+            lz.set_relaxed_end_condition(false);
+            // Expose recovered output to entry callbacks. Consumers must read
+            // through block completion to observe deferred decode errors.
+            lz.set_defer_errors(true);
             Ok(Decoder::Lzma(Box::new(lz)))
         }
         EncoderMethod::ID_LZMA2 => {
@@ -126,7 +168,13 @@ pub fn add_decoder<I: Read>(
             let (order, memory_size) = get_ppmd_order_memory_size(coder, max_mem_limit_kb)?;
             let ppmd = Ppmd7Decoder::new(input, order, memory_size)
                 .map_err(|err| Error::other(err.to_string()))?;
-            Ok(Decoder::Ppmd(Box::new(ppmd)))
+            // PPMd7 streams may omit an end marker and therefore intrinsically
+            // require the folder size for framing. CRC and block validation
+            // still verify that boundary; policy limits never use this value.
+            Ok(Decoder::Ppmd(Box::new(OutputBoundReader::new(
+                ppmd,
+                uncompressed_len,
+            ))))
         }
         #[cfg(feature = "brotli")]
         EncoderMethod::ID_BROTLI => {
@@ -273,4 +321,111 @@ fn get_lzma2_dic_size(coder: &Coder) -> Result<u32, Error> {
 fn get_lzma_dic_size(coder: &Coder) -> io::Result<u32> {
     let mut props = &coder.properties[1..5];
     props.read_u32()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn coder(method: &[u8], properties: Vec<u8>) -> Coder {
+        let mut coder = Coder::default();
+        coder.id_size = method.len();
+        coder.decompression_method_id_mut().copy_from_slice(method);
+        coder.properties = properties;
+        coder
+    }
+
+    #[test]
+    fn lzma_dictionary_is_checked_before_decoder_allocation() {
+        let coder = coder(EncoderMethod::ID_LZMA, vec![93, 0, 0, 0, 0x10]);
+        let result = add_decoder(
+            Cursor::new(Vec::<u8>::new()),
+            1,
+            &coder,
+            &Password::empty(),
+            1024,
+            1,
+        );
+        assert!(matches!(result, Err(Error::MaxMemLimited { .. })));
+    }
+
+    #[test]
+    fn lzma2_dictionary_is_checked_before_decoder_allocation() {
+        let coder = coder(EncoderMethod::ID_LZMA2, vec![40]);
+        let result = add_decoder(
+            Cursor::new(Vec::<u8>::new()),
+            1,
+            &coder,
+            &Password::empty(),
+            1024,
+            1,
+        );
+        assert!(matches!(result, Err(Error::MaxMemLimited { .. })));
+    }
+
+    #[cfg(feature = "ppmd")]
+    #[test]
+    fn ppmd_byte_size_is_compared_to_kibibyte_limit() {
+        let coder = coder(
+            EncoderMethod::ID_PPMD,
+            [6u8]
+                .into_iter()
+                .chain((2u32 << 20).to_le_bytes())
+                .collect(),
+        );
+        assert!(matches!(
+            get_ppmd_order_memory_size(&coder, 1024),
+            Err(Error::MaxMemLimited { .. })
+        ));
+        assert!(get_ppmd_order_memory_size(&coder, 2048).is_ok());
+    }
+
+    #[cfg(feature = "compress")]
+    #[test]
+    fn raw_lzma_accepts_optional_end_marker_and_defers_size_errors() {
+        use std::io::Write;
+
+        use lzma_rust2::{LzmaOptions, LzmaWriter};
+
+        let data = b"scanner must receive content before a malformed ending".repeat(100);
+        let options = LzmaOptions::with_preset(6);
+        let mut properties = vec![options.get_props()];
+        properties.extend_from_slice(&options.dict_size.to_le_bytes());
+        let coder = coder(EncoderMethod::ID_LZMA, properties);
+        for marker in [false, true] {
+            let mut writer =
+                LzmaWriter::new(Vec::new(), &options, false, marker, Some(data.len() as u64))
+                    .unwrap();
+            writer.write_all(&data).unwrap();
+            let compressed = writer.finish().unwrap();
+            let mut decoder = add_decoder(
+                &compressed[..],
+                data.len() as u64,
+                &coder,
+                &Password::empty(),
+                usize::MAX,
+                1,
+            )
+            .unwrap();
+            let mut output = Vec::new();
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(output, data);
+
+            let declared_size = data.len() - 50;
+            let mut decoder = add_decoder(
+                &compressed[..],
+                declared_size as u64,
+                &coder,
+                &Password::empty(),
+                usize::MAX,
+                1,
+            )
+            .unwrap();
+            let mut output = vec![0; declared_size];
+            decoder.read_exact(&mut output).unwrap();
+            assert_eq!(output, data[..declared_size]);
+            assert!(decoder.read(&mut [0]).is_err());
+        }
+    }
 }
