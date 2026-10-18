@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-### Fixed
+## 0.24.1 - 2026-10-18
 
-- Fix decoding large files under 32-bit systems
+- Bumped `lzma-rust2` to 0.23.
 
 ## 0.24.0 - 2026-10-11
 
