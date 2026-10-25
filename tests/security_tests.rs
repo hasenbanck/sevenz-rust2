@@ -683,41 +683,17 @@ fn aes_raw_key_mode_does_not_panic() {
     }
 }
 
-/// A header with streams info (one block) but no files info used to leave the stream map
-/// empty; `for_each_entries` then indexed `block_first_pack_stream_index[0]` and panicked.
-/// 7-Zip rejects such a header as well, so it must be an error, not a panic.
+/// An archive whose header has streams info but no files info must be rejected.
 #[test]
 fn streams_without_files_info_are_rejected() {
-    let nh: &[u8] = &[
-        K_HEADER,
-        K_MAIN_STREAMS_INFO,
-        K_PACK_INFO,
-        0x00, // pack_pos
-        0x01, // num_pack_streams
-        K_SIZE,
-        0x05, // pack_sizes[0] = 5
-        K_END,
-        K_UNPACK_INFO,
-        K_FOLDER,
-        0x01, // num_blocks
-        0x00, // external
-        0x01, // num_coders
-        0x01, // coder flags: id_size=1, simple
-        0x00, // coder id = COPY
-        K_CODERS_UNPACK_SIZE,
-        0x05, // unpack_sizes[0] = 5
-        K_END,
-        K_END, // streams_info end
-        K_END, // header end (no K_FILES_INFO)
-    ];
-    let bytes = raw_7z_with_packed(b"hello", nh);
+    let bytes = std::fs::read("tests/resources/streams_without_files_info.bin").unwrap();
 
     assert!(
         open_err(&bytes).is_err(),
-        "a block without files info must be rejected when opening"
+        "streams without files info must be rejected when opening"
     );
     assert!(
         decode_err(&bytes).is_err(),
-        "a block without files info must be rejected, not panic"
+        "streams without files info must be rejected when decoding"
     );
 }
