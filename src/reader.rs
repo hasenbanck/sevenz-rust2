@@ -277,8 +277,8 @@ impl Archive {
             Self::read_files_info(header, archive, limit)?;
             nid = header.read_u8()?;
         } else if !archive.blocks.is_empty() {
-            // The stream map is only built from the files info, and decoding a block
-            // indexes into it. 7-Zip rejects streams without files as well.
+            // The stream map is built from the files info. Without it, blocks cannot be
+            // mapped to entries.
             return Err(Error::other("Header has streams but no files info"));
         }
         if nid != K_END {
