@@ -96,7 +96,7 @@ jobs:
         with:
           toolchain: stable
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
       - name: Install cargo-hack
         uses: taiki-e/install-action@cargo-hack
       - name: Test every feature combination
@@ -114,7 +114,7 @@ jobs:
           toolchain: stable
           components: rustfmt
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
       - name: Check code formatted
         run: cargo fmt --all -- --check
 
@@ -130,7 +130,7 @@ jobs:
           toolchain: stable
           components: clippy
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Check no lint warnings
         run: cargo clippy --workspace -- -D warnings
@@ -150,7 +150,7 @@ jobs:
           toolchain: stable
           components: clippy
       - name: Cache build artifacts
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Create solid archive
         shell: bash
