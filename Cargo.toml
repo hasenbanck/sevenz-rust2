@@ -9,6 +9,7 @@ readme = "README.md"
 repository = "https://github.com/hasenbanck/sevenz-rust"
 rust-version = "1.93"
 version = "0.24.1"
+include = ["Cargo.lock", "Cargo.toml", "src/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
