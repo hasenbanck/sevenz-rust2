@@ -9,7 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bound each decoded entry by its declared size and reject surplus output.
 - Restore BCJ2 block framing and reject unconsumed input streams after decoding.
+- Keep reporting checksum and decoder errors when a callback ignores the first error.
+
+### Added
+
+- `EntryDecision` and `ArchiveReader::for_each_entries_with_decision()` for continuing, skipping a block,
+  or stopping archive iteration. Returning `false` from the existing `for_each_entries()` callback skips
+  the remaining entries of the current block.
+- `ArchiveReader::new_with_memory_limit()`, `Archive::read_with_memory_limit()`, and
+  `BlockDecoder::new_with_memory_limit()` for limiting header and decoder dictionary/model allocations.
+- `Archive::is_file_encrypted()` to report whether an entry's compression block uses 7z AES.
 
 ## 0.24.2 - 2026-10-30
 

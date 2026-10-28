@@ -67,7 +67,7 @@ pub enum Decoder<R: Read> {
     #[cfg(feature = "zstd")]
     Zstd(zstd::Decoder<'static, std::io::BufReader<R>>),
     #[cfg(feature = "aes256")]
-    Aes256Sha256(Box<Aes256Sha256Decoder<R>>),
+    Aes256Sha256(Box<OutputBoundReader<Aes256Sha256Decoder<R>>>),
 }
 
 impl<R: Read> Read for Decoder<R> {
@@ -246,7 +246,10 @@ pub fn add_decoder<I: Read>(
                 return Err(Error::PasswordRequired);
             }
             let de = Aes256Sha256Decoder::new(input, &coder.properties, password)?;
-            Ok(Decoder::Aes256Sha256(Box::new(de)))
+            Ok(Decoder::Aes256Sha256(Box::new(OutputBoundReader::new(
+                de,
+                uncompressed_len,
+            ))))
         }
         _ => Err(unsupported_method(
             method.name().len(),
