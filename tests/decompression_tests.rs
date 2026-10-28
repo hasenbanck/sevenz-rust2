@@ -561,3 +561,327 @@ fn malformed_coder_stream_counts_are_rejected() {
         "malformed archive must be rejected, got: {result:?}"
     );
 }
+
+// 7z structure IDs for the hand-crafted archives below.
+const K_END: u8 = 0x00;
+const K_HEADER: u8 = 0x01;
+const K_MAIN_STREAMS_INFO: u8 = 0x04;
+const K_FILES_INFO: u8 = 0x05;
+const K_PACK_INFO: u8 = 0x06;
+const K_UNPACK_INFO: u8 = 0x07;
+const K_SUB_STREAMS_INFO: u8 = 0x08;
+const K_SIZE: u8 = 0x09;
+const K_CRC: u8 = 0x0A;
+const K_FOLDER: u8 = 0x0B;
+const K_CODERS_UNPACK_SIZE: u8 = 0x0C;
+const K_NUM_UNPACK_STREAM: u8 = 0x0D;
+const K_EMPTY_STREAM: u8 = 0x0E;
+const K_NAME: u8 = 0x11;
+
+/// Coder description of a single COPY coder: id size 1, no properties, id 0x00.
+const COPY_CODER: &[u8] = &[0x01, 0x00];
+
+/// A block of a hand-crafted archive with a single coder.
+struct RawBlock {
+    /// Coder flags, id and properties of the single coder.
+    coder: Vec<u8>,
+    /// The unpack size the header declares for the block.
+    unpack_size: u64,
+    /// The block CRC. The header carries block CRCs when every block has one.
+    crc: Option<u32>,
+    /// The declared size of each sub-stream. The count can be zero.
+    sub_streams: Vec<u64>,
+}
+
+/// Encodes a value in the 7z NUMBER format.
+fn write_number(out: &mut Vec<u8>, value: u64) {
+    let mut first: u8 = 0;
+    let mut mask: u8 = 0x80;
+    let mut low = Vec::new();
+    for i in 0..8 {
+        if value < (1u64 << (7 * (i + 1))) {
+            first |= (value >> (8 * i)) as u8;
+            break;
+        }
+        first |= mask;
+        mask >>= 1;
+        low.push((value >> (8 * i)) as u8);
+    }
+    out.push(first);
+    out.extend_from_slice(&low);
+}
+
+/// Builds an unencoded header. Each block reads one pack stream of the given size.
+/// Files listed in `empty_files` have no stream. The other files map to the
+/// sub-streams in block order.
+fn raw_header(
+    pack_sizes: &[u64],
+    blocks: &[RawBlock],
+    names: &[&str],
+    empty_files: &[usize],
+) -> Vec<u8> {
+    let mut h = vec![K_HEADER, K_MAIN_STREAMS_INFO, K_PACK_INFO, 0x00];
+    write_number(&mut h, pack_sizes.len() as u64);
+    h.push(K_SIZE);
+    for &size in pack_sizes {
+        write_number(&mut h, size);
+    }
+    h.push(K_END);
+
+    h.extend_from_slice(&[K_UNPACK_INFO, K_FOLDER]);
+    write_number(&mut h, blocks.len() as u64);
+    h.push(0x00);
+    for block in blocks {
+        h.push(0x01);
+        h.extend_from_slice(&block.coder);
+    }
+    h.push(K_CODERS_UNPACK_SIZE);
+    for block in blocks {
+        write_number(&mut h, block.unpack_size);
+    }
+    if blocks.iter().all(|block| block.crc.is_some()) {
+        h.extend_from_slice(&[K_CRC, 0x01]);
+        for block in blocks {
+            h.extend_from_slice(&block.crc.unwrap().to_le_bytes());
+        }
+    }
+    h.push(K_END);
+
+    h.extend_from_slice(&[K_SUB_STREAMS_INFO, K_NUM_UNPACK_STREAM]);
+    for block in blocks {
+        write_number(&mut h, block.sub_streams.len() as u64);
+    }
+    if blocks.iter().any(|block| block.sub_streams.len() > 1) {
+        h.push(K_SIZE);
+        for block in blocks {
+            for &size in block.sub_streams.iter().rev().skip(1).rev() {
+                write_number(&mut h, size);
+            }
+        }
+    }
+    h.extend_from_slice(&[K_END, K_END]);
+
+    h.push(K_FILES_INFO);
+    write_number(&mut h, names.len() as u64);
+    if !empty_files.is_empty() {
+        let mut bits = vec![0u8; names.len().div_ceil(8)];
+        for &index in empty_files {
+            bits[index / 8] |= 0x80 >> (index % 8);
+        }
+        h.push(K_EMPTY_STREAM);
+        write_number(&mut h, bits.len() as u64);
+        h.extend_from_slice(&bits);
+    }
+    let mut name_bytes = vec![0x00];
+    for name in names {
+        for unit in name.encode_utf16().chain([0]) {
+            name_bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+    }
+    h.push(K_NAME);
+    write_number(&mut h, name_bytes.len() as u64);
+    h.extend_from_slice(&name_bytes);
+    h.extend_from_slice(&[K_END, K_END]);
+    h
+}
+
+/// Assembles a 7z file from the pack data and the header that follows it.
+fn raw_7z(pack: &[u8], header: &[u8]) -> Vec<u8> {
+    let mut start = Vec::with_capacity(20);
+    start.extend_from_slice(&(pack.len() as u64).to_le_bytes());
+    start.extend_from_slice(&(header.len() as u64).to_le_bytes());
+    start.extend_from_slice(&crc32fast::hash(header).to_le_bytes());
+
+    let mut out = vec![0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00, 0x04];
+    out.extend_from_slice(&crc32fast::hash(&start).to_le_bytes());
+    out.extend_from_slice(&start);
+    out.extend_from_slice(pack);
+    out.extend_from_slice(header);
+    out
+}
+
+/// A solid LZMA2 block declares two 16 byte entries but decodes to 16 MiB. No entry
+/// may hand out more bytes than its declared size, neither through `for_each_entries`
+/// nor through `read_file`.
+#[cfg(feature = "compress")]
+#[test]
+fn final_solid_entry_output_is_bounded_by_declared_size() {
+    use std::io::{Cursor, Write};
+
+    const DECLARED: u64 = 16;
+
+    let mut options = lzma_rust2::Lzma2Options::with_preset(1);
+    options.lzma_options.dict_size = 1 << 20;
+    let mut writer = lzma_rust2::Lzma2Writer::new(Vec::new(), options);
+    writer.write_all(&vec![0; 16 << 20]).unwrap();
+    let pack = writer.finish().unwrap();
+
+    // LZMA2 coder: id size 1 with properties, id 0x21, one property byte for a 1 MiB dictionary.
+    let block = RawBlock {
+        coder: vec![0x21, 0x21, 0x01, 16],
+        unpack_size: 2 * DECLARED,
+        crc: None,
+        sub_streams: vec![DECLARED, DECLARED],
+    };
+    let header = raw_header(&[pack.len() as u64], &[block], &["a", "b"], &[]);
+    let archive = raw_7z(&pack, &header);
+
+    let mut reader = ArchiveReader::new(Cursor::new(archive.clone()), Password::empty()).unwrap();
+    let mut delivered = Vec::new();
+    let _ = reader.for_each_entries(|entry, data| {
+        let size = std::io::copy(data, &mut std::io::sink())?;
+        delivered.push((entry.name().to_string(), size));
+        Ok(true)
+    });
+    for (name, size) in &delivered {
+        assert!(
+            *size <= DECLARED,
+            "entry {name} delivered {size} bytes but declares {DECLARED}"
+        );
+    }
+
+    let mut reader = ArchiveReader::new(Cursor::new(archive), Password::empty()).unwrap();
+    if let Ok(data) = reader.read_file("b") {
+        assert!(
+            data.len() as u64 <= DECLARED,
+            "read_file returned {} bytes but the entry declares {DECLARED}",
+            data.len()
+        );
+    }
+}
+
+/// A callback that ignores a checksum error from its reader and returns `true` must not
+/// make the iteration succeed.
+#[test]
+fn ignored_checksum_error_fails_iteration() {
+    use std::io::Cursor;
+
+    let payload = b"hello world";
+    let block = RawBlock {
+        coder: COPY_CODER.to_vec(),
+        unpack_size: payload.len() as u64,
+        crc: Some(!crc32fast::hash(payload)),
+        sub_streams: vec![payload.len() as u64],
+    };
+    let header = raw_header(&[payload.len() as u64], &[block], &["payload"], &[]);
+    let archive = raw_7z(payload, &header);
+
+    let mut reader = ArchiveReader::new(Cursor::new(archive), Password::empty()).unwrap();
+    let mut saw_error = false;
+    let result = reader.for_each_entries(|_entry, data| {
+        saw_error |= data.read_to_end(&mut Vec::new()).is_err();
+        Ok(true)
+    });
+
+    assert!(saw_error, "the callback must see the checksum error");
+    assert!(
+        result.is_err(),
+        "iteration must fail after a checksum error, got: {result:?}"
+    );
+}
+
+/// `false` from the `for_each_entries` callback ends the current block. Iteration
+/// continues with the next block.
+#[test]
+fn false_from_callback_ends_only_the_current_block() {
+    use std::io::Cursor;
+
+    let first = b"first";
+    let second = b"second";
+    let blocks = [first.as_slice(), second.as_slice()].map(|data| RawBlock {
+        coder: COPY_CODER.to_vec(),
+        unpack_size: data.len() as u64,
+        crc: Some(crc32fast::hash(data)),
+        sub_streams: vec![data.len() as u64],
+    });
+    let header = raw_header(
+        &[first.len() as u64, second.len() as u64],
+        &blocks,
+        &["first", "second"],
+        &[],
+    );
+    let archive = raw_7z(&[first.as_slice(), second.as_slice()].concat(), &header);
+
+    let mut reader = ArchiveReader::new(Cursor::new(archive), Password::empty()).unwrap();
+    let mut visited = Vec::new();
+    reader
+        .for_each_entries(|entry, _data| {
+            visited.push(entry.name().to_string());
+            Ok(false)
+        })
+        .unwrap();
+
+    assert_eq!(visited, ["first", "second"]);
+}
+
+/// The 7z format allows a block without sub-streams. Such a block holds no entry
+/// and must not fail iteration.
+#[test]
+fn block_without_sub_streams_is_accepted() {
+    use std::io::Cursor;
+
+    let payload = b"data";
+    let block = RawBlock {
+        coder: COPY_CODER.to_vec(),
+        unpack_size: payload.len() as u64,
+        crc: Some(crc32fast::hash(payload)),
+        sub_streams: Vec::new(),
+    };
+    let header = raw_header(&[payload.len() as u64], &[block], &["empty"], &[0]);
+    let archive = raw_7z(payload, &header);
+
+    let mut reader = ArchiveReader::new(Cursor::new(archive), Password::empty()).unwrap();
+    let mut visited = Vec::new();
+    let result = reader.for_each_entries(|entry, data| {
+        std::io::copy(data, &mut std::io::sink())?;
+        visited.push(entry.name().to_string());
+        Ok(true)
+    });
+
+    assert!(
+        result.is_ok(),
+        "a block without sub-streams must be accepted, got: {result:?}"
+    );
+    assert_eq!(visited, ["empty"]);
+}
+
+/// An AES coder decrypts whole 16 byte blocks. The padding after the declared unpack
+/// size of the coder is not part of the entry, so an encrypted COPY archive decodes to
+/// exactly its declared size.
+#[cfg(all(feature = "compress", feature = "aes256"))]
+#[test]
+fn encrypted_copy_entry_excludes_aes_padding() {
+    use std::io::Cursor;
+
+    use sevenz_rust2::{
+        ArchiveEntry, ArchiveWriter, EncoderConfiguration, EncoderMethod,
+        encoder_options::AesEncoderOptions,
+    };
+
+    let content = b"hello world, this is not a multiple of sixteen";
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        writer.set_content_methods(vec![
+            AesEncoderOptions::new(Password::new("test")).into(),
+            EncoderConfiguration::new(EncoderMethod::COPY),
+        ]);
+        writer
+            .push_archive_entry(ArchiveEntry::new_file("a.txt"), Some(content.as_slice()))
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let mut reader = ArchiveReader::new(Cursor::new(bytes), Password::new("test")).unwrap();
+    let mut data = Vec::new();
+    let result = reader.for_each_entries(|_entry, reader| {
+        std::io::copy(reader, &mut data)?;
+        Ok(true)
+    });
+
+    assert!(
+        result.is_ok(),
+        "a valid encrypted COPY archive must decode, got: {result:?}"
+    );
+    assert_eq!(data, content);
+}

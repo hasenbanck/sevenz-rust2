@@ -142,6 +142,7 @@ struct Crc32VerifyingReader<R> {
     crc_digest: Hasher,
     expected_value: u64,
     remaining: u64,
+    mismatch: bool,
 }
 
 impl<R: Read> Crc32VerifyingReader<R> {
@@ -151,12 +152,16 @@ impl<R: Read> Crc32VerifyingReader<R> {
             crc_digest: Hasher::new(),
             expected_value,
             remaining,
+            mismatch: false,
         }
     }
 }
 
 impl<R: Read> Read for Crc32VerifyingReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.mismatch {
+            return Err(io::Error::other(Error::ChecksumVerificationFailed));
+        }
         if self.remaining == 0 {
             return Ok(0);
         }
@@ -168,6 +173,7 @@ impl<R: Read> Read for Crc32VerifyingReader<R> {
         if self.remaining == 0 {
             let d = std::mem::replace(&mut self.crc_digest, Hasher::new()).finalize();
             if d as u64 != self.expected_value {
+                self.mismatch = true;
                 return Err(std::io::Error::other(Error::ChecksumVerificationFailed));
             }
         }
@@ -184,7 +190,6 @@ struct Crc32VerifyingPassthroughReader<R> {
     expected_value: u64,
     remaining: u64,
     mismatch: bool,
-    mismatch_reported: bool,
 }
 
 impl<R: Read> Crc32VerifyingPassthroughReader<R> {
@@ -195,7 +200,6 @@ impl<R: Read> Crc32VerifyingPassthroughReader<R> {
             expected_value,
             remaining,
             mismatch: false,
-            mismatch_reported: false,
         }
     }
 }
@@ -224,10 +228,46 @@ impl<R: Read> Read for Crc32VerifyingPassthroughReader<R> {
             size
         };
 
-        if size == 0 && self.mismatch && !self.mismatch_reported {
-            self.mismatch_reported = true;
+        if size == 0 && self.mismatch {
             return Err(io::Error::other(Error::ChecksumVerificationFailed));
         }
+        Ok(size)
+    }
+}
+
+/// Read exactly the size declared for an entry, then probe the decoder once
+/// to reject any surplus output.
+struct DeclaredSizeReader<R> {
+    inner: R,
+    remaining: u64,
+}
+
+impl<R: Read> Read for DeclaredSizeReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        if self.remaining == 0 {
+            return match self.inner.read(&mut [0])? {
+                0 => Ok(0),
+                _ => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "decoded data exceeds declared size",
+                )),
+            };
+        }
+
+        let bound = buf
+            .len()
+            .min(usize::try_from(self.remaining).unwrap_or(usize::MAX));
+        let size = self.inner.read(&mut buf[..bound])?;
+        if size == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "decoded data shorter than declared size",
+            ));
+        }
+        self.remaining -= size as u64;
         Ok(size)
     }
 }
@@ -235,17 +275,40 @@ impl<R: Read> Read for Crc32VerifyingPassthroughReader<R> {
 struct CountingReader<R> {
     inner: R,
     count: u64,
+    failure: Option<io::Error>,
 }
 
 impl<R> CountingReader<R> {
     fn new(inner: R) -> Self {
-        Self { inner, count: 0 }
+        Self {
+            inner,
+            count: 0,
+            failure: None,
+        }
+    }
+}
+
+fn copy_io_error(error: &io::Error) -> io::Error {
+    match error.raw_os_error() {
+        Some(code) => io::Error::from_raw_os_error(code),
+        None => io::Error::new(error.kind(), error.to_string()),
     }
 }
 
 impl<R: Read> Read for CountingReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let size = self.inner.read(buf)?;
+        if let Some(error) = &self.failure {
+            return Err(copy_io_error(error));
+        }
+        let size = match self.inner.read(buf) {
+            Ok(size) => size,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => return Err(error),
+            Err(error) => {
+                let reported = copy_io_error(&error);
+                self.failure = Some(error);
+                return Err(reported);
+            }
+        };
         self.count = self
             .count
             .checked_add(size as u64)
@@ -269,13 +332,6 @@ impl<R> Bcj2VerifyingReader<R> {
             failure: None,
         }
     }
-
-    fn copy_error(error: &io::Error) -> io::Error {
-        match error.raw_os_error() {
-            Some(code) => io::Error::from_raw_os_error(code),
-            None => io::Error::new(error.kind(), error.to_string()),
-        }
-    }
 }
 
 impl<R: Read> Read for Bcj2VerifyingReader<R> {
@@ -284,7 +340,7 @@ impl<R: Read> Read for Bcj2VerifyingReader<R> {
             return Ok(0);
         }
         if let Some(error) = &self.failure {
-            return Err(Self::copy_error(error));
+            return Err(copy_io_error(error));
         }
         let Some(reader) = self.inner.as_mut() else {
             return Ok(0);
@@ -298,7 +354,7 @@ impl<R: Read> Read for Bcj2VerifyingReader<R> {
         if let Some(reader) = self.inner.take()
             && let Err(error) = reader.finish()
         {
-            let reported = Self::copy_error(&error);
+            let reported = copy_io_error(&error);
             self.failure = Some(error);
             return Err(reported);
         }
@@ -1985,6 +2041,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
     /// Takes a closure to decode each files in the archive.
     ///
+    /// Returning `false` skips the remaining entries of the current block.
+    ///
     /// Attention about solid archive:
     /// When decoding a solid archive, the data to be decompressed depends on the data in front of it,
     /// you cannot simply skip the previous data and only decompress the data in the back.
@@ -1998,7 +2056,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             Ok(if each(entry, reader)? {
                 EntryDecision::Continue
             } else {
-                EntryDecision::Stop
+                EntryDecision::SkipBlock
             })
         })
     }
@@ -2265,7 +2323,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             Ok(if each(entry, reader)? {
                 EntryDecision::Continue
             } else {
-                EntryDecision::Stop
+                EntryDecision::SkipBlock
             })
         })?;
         Ok(decision == EntryDecision::Continue)
@@ -2285,6 +2343,9 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             password,
             source,
         } = self;
+        if archive.blocks[block_index].num_unpack_sub_streams == 0 {
+            return Ok(EntryDecision::Continue);
+        }
         let block_reader = ArchiveReader::build_decode_stack(
             source,
             archive,
@@ -2302,14 +2363,14 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         for file_index in start..end {
             let file = &archive.files[file_index];
             if file.has_stream {
-                // Declared sizes are needed to preserve intermediate member
-                // boundaries in a solid block. The final member is deliberately
-                // unbounded so surplus decoder output cannot be hidden behind a
-                // falsified final size; block-level validation below rejects the
-                // declaration only after callers have observed all output.
+                // Declared sizes preserve member boundaries in solid blocks and
+                // prevent a malformed final member from exposing unbounded output.
                 let is_last = Some(file_index) == last_stream_index;
                 let mut decoder: Box<dyn Read> = if is_last {
-                    Box::new(&mut block_reader)
+                    Box::new(DeclaredSizeReader {
+                        inner: &mut block_reader,
+                        remaining: file.size,
+                    })
                 } else {
                     Box::new(BoundedReader::new(&mut block_reader, file.size))
                 };
@@ -2463,7 +2524,7 @@ mod streaming_hardening_tests {
     }
 
     #[test]
-    fn declared_small_block_does_not_hide_decoder_output() {
+    fn declared_small_block_rejects_surplus_output() {
         let payload = b"clean-prefix-MALICIOUS-SUFFIX";
         let (archive, mut source) = copy_archive(5, payload);
         let password = Password::empty();
@@ -2475,7 +2536,7 @@ mod streaming_hardening_tests {
             Ok(true)
         });
 
-        assert_eq!(observed, payload);
+        assert_eq!(observed, &payload[..5]);
         assert!(result.is_err());
     }
 
@@ -2519,8 +2580,8 @@ mod streaming_hardening_tests {
     }
 
     #[test]
-    fn ordinary_false_decision_stops_the_archive() {
-        let (archive, source) = two_block_copy_archive(b"first", b"must not be visited");
+    fn ordinary_false_decision_skips_the_block() {
+        let (archive, source) = two_block_copy_archive(b"first", b"second");
         let mut reader = ArchiveReader::from_archive(archive, source, Password::empty());
         let mut visited = Vec::new();
 
@@ -2531,7 +2592,45 @@ mod streaming_hardening_tests {
             })
             .unwrap();
 
-        assert_eq!(visited, ["oversized"]);
+        assert_eq!(visited, ["oversized", "later"]);
+    }
+
+    #[test]
+    fn checksum_mismatch_is_reported_on_every_read() {
+        let payload = b"abc";
+        let mut reader = Crc32VerifyingReader::new(
+            &payload[..],
+            payload.len() as u64,
+            (!crc32fast::hash(payload)) as u64,
+        );
+        assert!(reader.read_to_end(&mut Vec::new()).is_err());
+        assert!(reader.read(&mut [0]).is_err());
+
+        let mut reader = Crc32VerifyingPassthroughReader::new(
+            &payload[..],
+            payload.len() as u64,
+            (!crc32fast::hash(payload)) as u64,
+        );
+        assert_eq!(reader.read(&mut [0; 3]).unwrap(), 3);
+        assert!(reader.read(&mut [0]).is_err());
+        assert!(reader.read(&mut [0]).is_err());
+    }
+
+    #[test]
+    fn block_without_substreams_does_not_build_a_decoder() {
+        let (mut archive, mut source) = copy_archive(4, b"data");
+        archive.blocks[0].num_unpack_sub_streams = 0;
+        let password = Password::empty();
+        let decoder = BlockDecoder::new(1, 0, &archive, &password, &mut source);
+        let mut called = false;
+
+        let result = decoder.for_each_entries(&mut |_entry, _reader| {
+            called = true;
+            Ok(true)
+        });
+
+        assert!(matches!(result, Ok(true)));
+        assert!(!called);
     }
 }
 
