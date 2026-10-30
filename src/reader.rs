@@ -1653,6 +1653,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// Attention about solid archive:
     /// When decoding a solid archive, the data to be decompressed depends on the data in front of it,
     /// you cannot simply skip the previous data and only decompress the data in the back.
+    /// The reader decodes and verifies the data a closure leaves unread when a later entry with
+    /// data of the same block follows.
     pub fn for_each_entries<F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>>(
         &mut self,
         mut each: F,
@@ -1860,6 +1862,8 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     ///
     /// When decoding files in a block, the data to be decompressed depends on the data in front of
     /// it, you cannot simply skip the previous data and only decompress the data in the back.
+    /// The decoder decodes and verifies the data a closure leaves unread when a later entry with
+    /// data of the block follows.
     ///
     /// Non-solid archives use one block per file and allow more effective decoding of single files.
     pub fn for_each_entries<F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>>(
@@ -1882,10 +1886,12 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         )?;
         let start = archive.stream_map.block_first_file_index[block_index];
         let end = archive.stream_map.block_end_file_index[block_index];
+        let has_data = |file: &ArchiveEntry| file.has_stream && file.size > 0;
+        let last_data_index = (start..end).rev().find(|&i| has_data(&archive.files[i]));
 
         for file_index in start..end {
             let file = &archive.files[file_index];
-            if file.has_stream && file.size > 0 {
+            if has_data(file) {
                 let mut decoder: Box<dyn Read> =
                     Box::new(BoundedReader::new(&mut block_reader, file.size));
                 if file.has_crc {
@@ -1895,6 +1901,12 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
                     .map_err(|e| e.maybe_bad_password(!self.password.is_empty()))?
                 {
                     return Ok(false);
+                }
+                // The next entry starts where this one ends in the block. Read and verify the
+                // data the closure left unread.
+                if Some(file_index) != last_data_index {
+                    io::copy(&mut decoder, &mut io::sink())
+                        .map_err(|e| Error::bad_password(e, !self.password.is_empty()))?;
                 }
             } else {
                 let empty_reader: &mut dyn Read = &mut ([0u8; 0].as_slice());
