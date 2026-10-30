@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fit.
 - Opening an archive with a very long entry name could exceed the address space and panic or
   abort the process on 32-bit targets. The reader returns an error when a name does not fit.
+- Opening an archive with very many blocks or with large coder properties could exceed the
+  address space and abort the process on 32-bit targets. The reader returns an error when they
+  do not fit.
 
 ## 0.24.1 - 2026-10-18
 

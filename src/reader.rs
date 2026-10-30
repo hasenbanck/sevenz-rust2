@@ -888,7 +888,7 @@ impl Archive {
         archive
             .blocks
             .try_reserve_exact(num_blocks)
-            .map_err(|e| Error::other(format!("cannot allocate {num_blocks} blocks: {e}")))?;
+            .map_err(|_| Error::other("cannot allocate the blocks"))?;
         let external = header.read_u8()?;
         if external != 0 {
             return Err(Error::ExternalUnsupported);
@@ -909,7 +909,7 @@ impl Archive {
             // `total_output_streams` is bounded in `read_block`, but clamp the eager
             // reservation to `limit` as well so it can never over-allocate.
             let tos = block.total_output_streams;
-            block.unpack_sizes.reserve_exact(tos.min(limit));
+            block.unpack_sizes = try_with_capacity(tos.min(limit))?;
             for _ in 0..tos {
                 block.unpack_sizes.push(read_variable_u64(header)?);
             }
@@ -1055,7 +1055,7 @@ impl Archive {
                 "Block has too many coders: {num_coders}"
             )));
         }
-        let mut coders = Vec::with_capacity(num_coders);
+        let mut coders = try_with_capacity(num_coders)?;
         let mut total_in_streams: u64 = 0;
         let mut total_out_streams: u64 = 0;
         for _i in 0..num_coders {
@@ -1102,7 +1102,7 @@ impl Archive {
             if has_attributes {
                 let properties_size =
                     bounded_count(read_variable_u64(header)?, limit, "properties size")?;
-                let mut props = vec![0u8; properties_size];
+                let mut props = try_vec(properties_size, 0u8)?;
                 header.read_exact(&mut props)?;
                 coder.properties = props;
             }
@@ -1126,9 +1126,9 @@ impl Archive {
         let num_bind_pairs = total_out_streams - 1;
         // The decoder builds the coders behind a stream once for every use of it. 7-Zip
         // rejects a block that uses a stream twice as well.
-        let mut in_stream_used = vec![false; total_in_streams];
-        let mut out_stream_used = vec![false; total_out_streams];
-        let mut bind_pairs = Vec::with_capacity(num_bind_pairs);
+        let mut in_stream_used = try_vec(total_in_streams, false)?;
+        let mut out_stream_used = try_vec(total_out_streams, false)?;
+        let mut bind_pairs = try_with_capacity(num_bind_pairs)?;
         for _ in 0..num_bind_pairs {
             let bp = BindPair {
                 in_index: read_variable_u64(header)?,
@@ -1160,7 +1160,7 @@ impl Archive {
         if num_packed_streams == 0 {
             return Err(Error::other("Block has no packed streams"));
         }
-        let mut packed_streams = vec![0; num_packed_streams];
+        let mut packed_streams = try_vec(num_packed_streams, 0)?;
         if num_packed_streams == 1 {
             let mut index = u64::MAX;
             for i in 0..total_in_streams {
@@ -1208,12 +1208,22 @@ fn bounded_count(value: u64, limit: usize, field: &str) -> Result<usize, Error> 
     Ok(value as usize)
 }
 
+/// Allocates an empty vector with room for `capacity` entries for a count from the archive
+/// header. Returns an error when the entries exceed the address space or the allocator fails.
+///
+/// The allocation errors of the reader carry static messages. Memory can be exhausted when
+/// they occur, and an error must not allocate.
+fn try_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
+    let mut vec = Vec::new();
+    vec.try_reserve_exact(capacity)
+        .map_err(|_| Error::other("cannot allocate header entries"))?;
+    Ok(vec)
+}
+
 /// Allocates `len` copies of `value` for a count from the archive header. Returns an error
 /// when the entries exceed the address space or the allocator fails.
 fn try_vec<T: Clone>(len: usize, value: T) -> Result<Vec<T>, Error> {
-    let mut vec = Vec::new();
-    vec.try_reserve_exact(len)
-        .map_err(|e| Error::other(format!("cannot allocate {len} header entries: {e}")))?;
+    let mut vec = try_with_capacity(len)?;
     vec.resize(len, value);
     Ok(vec)
 }
@@ -1302,11 +1312,9 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
             }
             // A name can be as long as the header. Grow the buffer with fallible allocation.
             if self.cache.len() == self.cache.capacity()
-                && let Err(e) = self.cache.try_reserve(self.cache.len())
+                && self.cache.try_reserve(self.cache.len()).is_err()
             {
-                return Some(Err(Error::other(format!(
-                    "cannot allocate an entry name: {e}"
-                ))));
+                return Some(Err(Error::other("cannot allocate an entry name")));
             }
             self.cache.push(u);
         }
@@ -1323,7 +1331,7 @@ fn utf16_to_string(units: &[u16]) -> Result<String, Error> {
     }
     let mut name = String::new();
     name.try_reserve_exact(len)
-        .map_err(|e| Error::other(format!("cannot allocate an entry name: {e}")))?;
+        .map_err(|_| Error::other("cannot allocate an entry name"))?;
     name.extend(char::decode_utf16(units.iter().copied()).flatten());
     Ok(name)
 }
@@ -1418,17 +1426,14 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
         let files = &self.archive.files;
         let mut index = HashMap::new();
-        index.try_reserve(files.len()).map_err(|e| {
-            Error::other(format!(
-                "cannot allocate the index of {} entries: {e}",
-                files.len()
-            ))
-        })?;
+        index
+            .try_reserve(files.len())
+            .map_err(|_| Error::other("cannot allocate the name index"))?;
         for (file_index, file) in files.iter().enumerate() {
             let block_index = self.archive.stream_map.file_block_index[file_index];
             let mut name = String::new();
             name.try_reserve_exact(file.name.len())
-                .map_err(|e| Error::other(format!("cannot allocate an entry name: {e}")))?;
+                .map_err(|_| Error::other("cannot allocate an entry name"))?;
             name.push_str(&file.name);
             index.insert(
                 name,

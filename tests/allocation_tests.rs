@@ -1,5 +1,6 @@
 //! Tests that run the crate under an allocator which refuses allocations above a per-thread
-//! size limit. A refused allocation must make the crate return an error.
+//! size limit or beyond a per-thread budget of live bytes. A refused allocation must make the
+//! crate return an error.
 
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -9,22 +10,49 @@ use std::{
 
 use sevenz_rust2::{Archive, ArchiveReader, Password};
 
+/// No limit and no budget.
+const UNLIMITED: usize = usize::MAX;
+
 thread_local! {
-    static LIMIT: Cell<usize> = const { Cell::new(usize::MAX) };
+    static LIMIT: Cell<usize> = const { Cell::new(UNLIMITED) };
+    static BUDGET: Cell<usize> = const { Cell::new(UNLIMITED) };
 }
 
-/// The system allocator with a per-thread limit on the size of one allocation.
+/// Takes `size` bytes from the budget of this thread. Returns false when they do not fit.
+fn take_budget(size: usize) -> bool {
+    BUDGET.with(|budget| match budget.get() {
+        UNLIMITED => true,
+        left if size <= left => {
+            budget.set(left - size);
+            true
+        }
+        _ => false,
+    })
+}
+
+/// Returns `size` bytes to the budget of this thread.
+fn return_budget(size: usize) {
+    BUDGET.with(|budget| {
+        if budget.get() != UNLIMITED {
+            budget.set(budget.get().saturating_add(size).min(UNLIMITED - 1));
+        }
+    });
+}
+
+/// The system allocator with a per-thread limit on the size of one allocation and a
+/// per-thread budget of live bytes.
 struct LimitedAllocator;
 
 unsafe impl GlobalAlloc for LimitedAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if layout.size() > LIMIT.with(Cell::get) {
+        if layout.size() > LIMIT.with(Cell::get) || !take_budget(layout.size()) {
             return std::ptr::null_mut();
         }
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        return_budget(layout.size());
         unsafe { System.dealloc(ptr, layout) }
     }
 
@@ -32,7 +60,17 @@ unsafe impl GlobalAlloc for LimitedAllocator {
         if new_size > LIMIT.with(Cell::get) {
             return std::ptr::null_mut();
         }
-        unsafe { System.realloc(ptr, layout, new_size) }
+        let old_size = layout.size();
+        if new_size > old_size && !take_budget(new_size - old_size) {
+            return std::ptr::null_mut();
+        }
+        let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
+        if new_ptr.is_null() {
+            return_budget(new_size.saturating_sub(old_size));
+        } else if new_size < old_size {
+            return_budget(old_size - new_size);
+        }
+        new_ptr
     }
 }
 
@@ -43,8 +81,21 @@ static GLOBAL: LimitedAllocator = LimitedAllocator;
 fn with_allocation_limit<T>(limit: usize, f: impl FnOnce() -> T) -> T {
     LIMIT.with(|l| l.set(limit));
     let result = f();
-    LIMIT.with(|l| l.set(usize::MAX));
+    LIMIT.with(|l| l.set(UNLIMITED));
     result
+}
+
+/// Runs `f` with at most `budget` bytes of new allocations live on this thread.
+fn with_allocation_budget<T>(budget: usize, f: impl FnOnce() -> T) -> T {
+    BUDGET.with(|b| b.set(budget));
+    let result = f();
+    BUDGET.with(|b| b.set(UNLIMITED));
+    result
+}
+
+/// Returns true when `result` failed because an allocation was refused.
+fn is_allocation_error<T: std::fmt::Debug>(result: &Result<T, sevenz_rust2::Error>) -> bool {
+    matches!(result, Err(e) if e.to_string().contains("cannot allocate"))
 }
 
 /// Encodes a value using the 7z NUMBER varint format.
@@ -164,4 +215,96 @@ fn entry_name_allocation_failure_returns_an_error() {
             "{name}: a name that does not fit must be an error, got {result:?}"
         );
     }
+}
+
+/// A plain header with three blocks of two COPY coders each. The second coder of a block has
+/// properties and feeds the first one through a bind pair. The header ends after the unpack
+/// info.
+fn small_blocks_header() -> Vec<u8> {
+    let mut nh = vec![
+        0x01, // kHeader
+        0x04, // kMainStreamsInfo
+        0x06, // kPackInfo
+        0x00, // pack_pos
+        0x03, // num_pack_streams
+        0x09, // kSize
+        0x01, 0x01, 0x01, // pack_sizes
+        0x00, // pack_info end
+        0x07, // kUnpackInfo
+        0x0B, // kFolder
+        0x03, // num_blocks
+        0x00, // external
+    ];
+    for _ in 0..3 {
+        nh.extend_from_slice(&[
+            0x02, // num_coders
+            0x01, 0x00, // simple COPY coder
+            0x21, 0x00, 0x02, 0xAA, 0xBB, // simple COPY coder with two property bytes
+            0x00, 0x01, // bind pair: in_index 0, out_index 1
+        ]);
+    }
+    nh.push(0x0C); // kCodersUnpackSize
+    nh.extend_from_slice(&[0x01; 6]);
+    nh.push(0x00); // unpack_info end
+    nh
+}
+
+/// Opens `bytes` under every budget from 0 bytes up until the result is no allocation error.
+/// Under each budget, opening must return. That result must equal the result without a
+/// budget.
+fn assert_returns_under_every_budget(bytes: &[u8]) {
+    let unlimited = format!(
+        "{:?}",
+        Archive::read(&mut Cursor::new(bytes.to_vec()), &Password::empty()).map(|_| ())
+    );
+    for budget in 0..65536 {
+        let mut source = Cursor::new(bytes.to_vec());
+        let result = with_allocation_budget(budget, || {
+            Archive::read(&mut source, &Password::empty()).map(|_| ())
+        });
+        if !is_allocation_error(&result) {
+            assert_eq!(format!("{result:?}"), unlimited, "budget {budget}");
+            assert!(budget > 0, "the smallest budget must be refused");
+            return;
+        }
+    }
+    panic!("opening must finish under a budget below 64 KiB");
+}
+
+/// Each block allocates its coders, properties, bind pairs and streams. Opening the archive
+/// must return under every budget.
+#[test]
+fn block_allocation_failure_returns_an_error() {
+    assert_returns_under_every_budget(&raw_7z_exact(&small_blocks_header()));
+}
+
+/// One coder declares 1 MiB of properties. The budget holds the header, which contains them,
+/// and little more. Opening the archive must return an allocation error.
+#[test]
+fn coder_properties_allocation_failure_returns_an_error() {
+    const PROPERTIES_SIZE: usize = 1 << 20;
+    let mut header = vec![
+        0x01, // kHeader
+        0x04, // kMainStreamsInfo
+        0x07, // kUnpackInfo
+        0x0B, // kFolder
+        0x01, // num_blocks
+        0x00, // external
+        0x01, // num_coders
+        0x21, // coder flags: id_size=1, simple, has attributes
+        0x00, // coder id = COPY
+    ];
+    write_number(&mut header, PROPERTIES_SIZE as u64);
+    header.resize(header.len() + PROPERTIES_SIZE, 0x00);
+    let budget = header.len() + 4096;
+    let mut source = Cursor::new(raw_7z_exact(&header));
+
+    let result = with_allocation_budget(budget, || {
+        Archive::read(&mut source, &Password::empty()).map(|_| ())
+    });
+
+    assert!(
+        is_allocation_error(&result),
+        "coder properties that do not fit must be an allocation error, got {result:?}"
+    );
 }
