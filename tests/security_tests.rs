@@ -155,8 +155,8 @@ fn open_err(bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-/// A tiny archive declaring a multi-exabyte next-header size must be rejected before
-/// the `vec![0; next_header_size]` allocation.
+/// A tiny archive declaring a multi-exabyte next-header size must be rejected before the next
+/// header buffer is allocated.
 #[test]
 fn oversized_next_header_size_is_rejected() {
     let bytes = raw_7z(&[], 1u64 << 63);
@@ -1023,4 +1023,53 @@ fn block_with_a_stream_used_twice_is_rejected() {
         let bytes = raw_7z_with_packed(&vec![0xAA; packed_streams.len()], &nh);
         assert!(open_err(&bytes).is_err(), "{name} must be rejected");
     }
+}
+
+/// A source of `len` bytes that holds `head` at its start and zeros after it.
+#[cfg(target_pointer_width = "32")]
+struct SparseSource {
+    head: Vec<u8>,
+    len: u64,
+    pos: u64,
+}
+
+#[cfg(target_pointer_width = "32")]
+impl std::io::Read for SparseSource {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = (self.len.saturating_sub(self.pos)).min(buf.len() as u64) as usize;
+        for (i, byte) in buf[..n].iter_mut().enumerate() {
+            *byte = *self.head.get(self.pos as usize + i).unwrap_or(&0);
+        }
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+impl std::io::Seek for SparseSource {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.pos = match pos {
+            std::io::SeekFrom::Start(n) => n,
+            std::io::SeekFrom::End(n) => self.len.checked_add_signed(n).unwrap(),
+            std::io::SeekFrom::Current(n) => self.pos.checked_add_signed(n).unwrap(),
+        };
+        Ok(self.pos)
+    }
+}
+
+/// The start header declares a next header of 0x9000_0000 bytes in a 3 GiB source. The size
+/// fits the source and exceeds `isize::MAX` on 32-bit targets. Opening the archive must fail
+/// with an error.
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn next_header_beyond_the_address_space_is_rejected() {
+    let source = SparseSource {
+        head: raw_7z(&[], 0x9000_0000),
+        len: 3 << 30,
+        pos: 0,
+    };
+    assert!(
+        ArchiveReader::new(source, Password::empty()).is_err(),
+        "a next header beyond the address space must be rejected"
+    );
 }
