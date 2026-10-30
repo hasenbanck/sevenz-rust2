@@ -114,7 +114,54 @@ fn name_index_allocation_failure_returns_an_error() {
     });
 
     assert!(
-        result.is_err(),
-        "a name index that does not fit must be an error"
+        matches!(&result, Err(e) if e.to_string().contains("index")),
+        "a name index that does not fit must be an error, got {result:?}"
     );
+}
+
+/// A plain header with one empty entry whose name holds `units`.
+fn one_name_header(units: &[u16]) -> Vec<u8> {
+    let mut nh = vec![
+        0x01, // kHeader
+        0x05, // kFilesInfo
+        0x01, // num_files = 1
+        0x0E, // kEmptyStream
+        0x01, // property size
+        0x80, // entry 0 has no stream
+        0x11, // kName
+    ];
+    write_number(&mut nh, 2 * units.len() as u64 + 3);
+    nh.push(0x00); // external
+    for unit in units {
+        nh.extend_from_slice(&unit.to_le_bytes());
+    }
+    nh.extend_from_slice(&[0x00, 0x00]); // name terminator
+    nh.extend_from_slice(&[0x00, 0x00]); // files_info props end, header end
+    nh
+}
+
+/// A name of 2^20 + 1 ASCII units grows its UTF-16 buffer to 4 MiB. A name of 1,000,000 CJK
+/// units needs 3,000,000 bytes as UTF-8. Both allocations exceed the limit, and the header
+/// fits under it. Opening the archive must return an error.
+#[test]
+fn entry_name_allocation_failure_returns_an_error() {
+    let cases: [(&str, Vec<u16>, usize); 2] = [
+        ("UTF-16 buffer", vec![0x61; (1 << 20) + 1], 3 << 20),
+        ("UTF-8 name", vec![0x4E00; 1_000_000], 5 << 19),
+    ];
+    for (name, units, limit) in cases {
+        let bytes = raw_7z_exact(&one_name_header(&units));
+        assert!(
+            Archive::read(&mut Cursor::new(bytes.clone()), &Password::empty()).is_ok(),
+            "{name}: the archive must open without a limit"
+        );
+
+        let result = with_allocation_limit(limit, || {
+            Archive::read(&mut Cursor::new(bytes), &Password::empty()).map(|_| ())
+        });
+        assert!(
+            matches!(&result, Err(e) if e.to_string().contains("entry name")),
+            "{name}: a name that does not fit must be an error, got {result:?}"
+        );
+    }
 }
