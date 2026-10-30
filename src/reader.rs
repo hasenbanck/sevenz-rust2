@@ -245,11 +245,13 @@ impl<R: Read> Read for Crc32VerifyingPassthroughReader<R> {
     }
 }
 
-/// Read exactly the size declared for an entry, then probe the decoder once
-/// to reject any surplus output.
+/// Read exactly the size declared for an entry. An early end of the decoder is
+/// an error. With `reject_surplus`, probe the decoder once after the declared
+/// size to reject any surplus output.
 struct DeclaredSizeReader<R> {
     inner: R,
     remaining: u64,
+    reject_surplus: bool,
 }
 
 impl<R: Read> Read for DeclaredSizeReader<R> {
@@ -258,6 +260,9 @@ impl<R: Read> Read for DeclaredSizeReader<R> {
             return Ok(0);
         }
         if self.remaining == 0 {
+            if !self.reject_surplus {
+                return Ok(0);
+            }
             return match self.inner.read(&mut [0])? {
                 0 => Ok(0),
                 _ => Err(io::Error::new(
@@ -2151,6 +2156,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
                     inner: &mut block_reader,
                     remaining: file.size,
+                    reject_surplus: true,
                 });
 
                 if file.has_crc {
@@ -2343,15 +2349,13 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             if file.has_stream {
                 // Declared sizes preserve member boundaries in solid blocks and
                 // prevent a malformed final member from exposing unbounded output.
+                // An entry that ends before its declared size is an error.
                 let is_last = Some(file_index) == last_stream_index;
-                let mut decoder: Box<dyn Read> = if is_last {
-                    Box::new(DeclaredSizeReader {
-                        inner: &mut block_reader,
-                        remaining: file.size,
-                    })
-                } else {
-                    Box::new(BoundedReader::new(&mut block_reader, file.size))
-                };
+                let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
+                    inner: &mut block_reader,
+                    remaining: file.size,
+                    reject_surplus: is_last,
+                });
                 if file.has_crc {
                     decoder = if is_last {
                         Box::new(Crc32VerifyingPassthroughReader::new(
@@ -2666,6 +2670,54 @@ mod streaming_hardening_tests {
         };
         assert!(is_checksum_error(first), "got {first:?}");
         assert_eq!(repeated.kind(), first.kind());
+    }
+
+    /// A solid block that declares a first entry of 10 bytes and a last entry of 2 bytes. Its
+    /// packed stream holds only 6 bytes.
+    fn truncated_solid_archive() -> (Archive, Cursor<Vec<u8>>) {
+        let payload = b"short!";
+        let (mut archive, source) = copy_archive(12, payload);
+        archive.is_solid = true;
+        archive.blocks[0].num_unpack_sub_streams = 2;
+        archive.files = vec![
+            ArchiveEntry::new_file("first"),
+            ArchiveEntry::new_file("last"),
+        ];
+        archive.files[0].size = 10;
+        archive.files[1].size = 2;
+        archive.stream_map.block_end_file_index = vec![2];
+        archive.stream_map.file_block_index = vec![Some(0), Some(0)];
+        (archive, source)
+    }
+
+    #[test]
+    fn read_file_rejects_a_truncated_entry_before_the_last_one() {
+        let (mut archive, source) = truncated_solid_archive();
+        archive.files[0].has_crc = true;
+        archive.files[0].crc = crc32fast::hash(b"short!") as u64;
+        let mut reader = ArchiveReader::from_archive(archive, source, Password::empty());
+
+        let result = reader.read_file("first");
+
+        assert!(
+            matches!(&result, Err(Error::Io(e, _)) if e.kind() == io::ErrorKind::UnexpectedEof),
+            "a truncated entry must be an error, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn a_truncated_entry_before_the_last_one_is_an_error_for_the_closure() {
+        let (archive, mut source) = truncated_solid_archive();
+        let password = Password::empty();
+        let decoder = BlockDecoder::new(1, 0, &archive, &password, &mut source);
+        let mut first = None;
+
+        let _ = decoder.for_each_entries(&mut |_entry, reader| {
+            first.get_or_insert(reader.read_to_end(&mut Vec::new()).map_err(|e| e.kind()));
+            Ok(false)
+        });
+
+        assert_eq!(first, Some(Err(io::ErrorKind::UnexpectedEof)));
     }
 
     #[test]

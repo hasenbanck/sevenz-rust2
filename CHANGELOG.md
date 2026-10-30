@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Bound each decoded entry by its declared size and reject surplus output.
+- Reject an entry whose decoded data ends before its declared size. `for_each_entries`,
+  `BlockDecoder::for_each_entries` and `read_file` returned such an entry as complete and skipped
+  its CRC check. With a wrong password, `read_file` could return an empty entry.
 - Restore BCJ2 block framing and reject unconsumed input streams after decoding.
 - Keep reporting checksum and decoder errors when a callback ignores the first error.
 - Decode and verify the unread data of the last entry of a block when iteration continues, and
