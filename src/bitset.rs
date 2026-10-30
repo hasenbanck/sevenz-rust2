@@ -1,6 +1,6 @@
-use std::fmt;
 #[cfg(feature = "compress")]
 use std::io::Write;
+use std::{collections::TryReserveError, fmt};
 
 /// A set of usize values represented as a bit vector.
 #[derive(Clone, PartialEq, Eq)]
@@ -20,11 +20,21 @@ impl BitSet {
         }
     }
 
-    /// Returns a new [`BitSet`] with the initial capacity for `count` elements.
+    /// Returns a new [`BitSet`] of `bit_count` bits.
+    #[cfg(feature = "compress")]
     pub(crate) fn with_capacity(bit_count: usize) -> Self {
         let num_blocks = Self::blocks_for_bits(bit_count);
         let bits = vec![0; num_blocks];
         Self { bits, bit_count }
+    }
+
+    /// Returns a new [`BitSet`] of `bit_count` bits. Returns an error when the allocation fails.
+    pub(crate) fn try_with_capacity(bit_count: usize) -> Result<Self, TryReserveError> {
+        let num_blocks = Self::blocks_for_bits(bit_count);
+        let mut bits = Vec::new();
+        bits.try_reserve_exact(num_blocks)?;
+        bits.resize(num_blocks, 0);
+        Ok(Self { bits, bit_count })
     }
 
     /// Returns the number of set bits in this set.
@@ -112,21 +122,6 @@ impl BitSet {
 
         self.bit_count = new_len;
     }
-
-    /// Reserves the minimum capacity for the given `BitSet` to contain `count` distinct elements.
-    pub(crate) fn reserve_len_exact(&mut self, count: usize) {
-        if count > self.bit_count {
-            let new_num_blocks = Self::blocks_for_bits(count);
-            let old_num_blocks = self.bits.len();
-
-            if new_num_blocks > old_num_blocks {
-                self.bits.reserve_exact(new_num_blocks - old_num_blocks);
-                self.bits.resize(new_num_blocks, 0);
-            }
-
-            self.bit_count = count;
-        }
-    }
 }
 
 impl Default for BitSet {
@@ -196,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_bitset_with_capacity() {
-        let mut bs = BitSet::with_capacity(100);
+        let mut bs = BitSet::try_with_capacity(100).unwrap();
         assert_eq!(bs.len(), 0);
 
         bs.insert(150);

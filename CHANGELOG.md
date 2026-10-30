@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening an archive with very many blocks or with large coder properties could exceed the
   address space and abort the process on 32-bit targets. The reader returns an error when they
   do not fit.
+- Opening an archive with very many entries, blocks or streams could abort the process on
+  32-bit targets when a bit field of the header, such as the CRC, empty stream, time or
+  attribute flags, did not fit in the address space. The reader returns an error when it does
+  not fit.
 
 ## 0.24.1 - 2026-10-18
 
