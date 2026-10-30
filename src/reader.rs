@@ -22,6 +22,14 @@ const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 /// read; this only stops a tiny archive from forcing a huge up-front allocation.
 const MAX_PREALLOC_BYTES: usize = 4 << 20;
 
+/// The decoder nests one reader for each coder of a block. 7-Zip accepts at most 64 coders in a
+/// block.
+const MAX_BLOCK_CODERS: usize = 64;
+
+/// The bind pair lookups of a block scan all of its streams. 7-Zip accepts at most 64 input
+/// streams in a block.
+const MAX_BLOCK_IN_STREAMS: u64 = 64;
+
 pub struct BoundedReader<R: Read> {
     inner: R,
     remain: u64,
@@ -1038,6 +1046,11 @@ impl Archive {
         let mut block = Block::default();
 
         let num_coders = bounded_count(read_variable_u64(header)?, limit, "num coders")?;
+        if num_coders > MAX_BLOCK_CODERS {
+            return Err(Error::other(format!(
+                "Block has too many coders: {num_coders}"
+            )));
+        }
         let mut coders = Vec::with_capacity(num_coders);
         let mut total_in_streams: u64 = 0;
         let mut total_out_streams: u64 = 0;
@@ -1076,6 +1089,11 @@ impl Archive {
                 .ok_or_else(|| Error::other("coder stream counts exceed available input"))?;
             if total_in_streams > limit as u64 || total_out_streams > limit as u64 {
                 return Err(Error::other("coder stream counts exceed available input"));
+            }
+            if total_in_streams > MAX_BLOCK_IN_STREAMS {
+                return Err(Error::other(format!(
+                    "Block has too many input streams: {total_in_streams}"
+                )));
             }
             if has_attributes {
                 let properties_size =
