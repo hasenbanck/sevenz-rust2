@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening an archive whose header declares so many files, blocks or streams that their entries
   exceed the address space or the allocator aborted the process on 64-bit targets and panicked
   on 32-bit targets. The reader returns an error for such a header.
+- A block whose bind pairs or packed streams used a stream twice made the decoder build the
+  coders behind that stream once for every use. This could exhaust memory and abort the
+  process. The reader rejects a block that uses a stream twice.
 
 ## 0.24.1 - 2026-10-18
 
