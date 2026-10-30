@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening an archive whose encoded header decodes to more data than its next header holds
   panicked on 32-bit targets and could abort the process on 64-bit targets. The reader returns
   an error when the decoded header exceeds the address space or the allocator.
+- The name index of `ArchiveReader` for an archive with very many entries could exceed the
+  address space and abort the process on 32-bit targets. The reader builds the index on the
+  first `read_file` or `file_compression_methods` call and returns an error when it does not
+  fit.
 
 ## 0.24.1 - 2026-10-18
 
