@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to open the archive. Both vectors now hold one bit for every entry without a stream.
 - Decoding an archive with a block without packed streams panicked. The reader rejects such a
   block with an error.
+- A closure of `for_each_entries` that left an entry of a solid block unread or partly read
+  broke the later entries of that block. The reader now decodes and verifies the unread data
+  before it hands out the next entry with data. Skipping such an entry costs its decoding, and
+  an error in its data ends the iteration.
 
 ## 0.24.1 - 2026-10-18
 

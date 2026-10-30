@@ -321,6 +321,34 @@ fn test_empty_entry_between_files_of_a_solid_block() {
 }
 
 #[test]
+fn test_unread_entry_data_of_a_solid_block() {
+    // One solid block holds `test/test1.txt` and `test/test2.txt`. The callback leaves all or
+    // part of `test/test1.txt` unread. `test/test2.txt` must still decode to its own data.
+    let path = "tests/resources/solid.7z";
+    let mut reader = ArchiveReader::open(path, Password::empty()).unwrap();
+    let expected = reader.read_file("test/test2.txt").unwrap();
+
+    for read_len in [0, 100] {
+        let mut reader = ArchiveReader::open(path, Password::empty()).unwrap();
+        let mut second = None;
+        reader
+            .for_each_entries(|entry, data| {
+                if entry.name() == "test/test1.txt" {
+                    let mut buf = vec![0; read_len];
+                    data.read_exact(&mut buf)?;
+                } else if entry.name() == "test/test2.txt" {
+                    let mut buf = Vec::new();
+                    data.read_to_end(&mut buf)?;
+                    second = Some(buf);
+                }
+                Ok(true)
+            })
+            .unwrap();
+        assert_eq!(second.as_ref(), Some(&expected), "read_len {read_len}");
+    }
+}
+
+#[test]
 fn test_entry_compressed_size() {
     let dir = std::fs::read_dir("tests/resources").unwrap();
     for entry in dir {
