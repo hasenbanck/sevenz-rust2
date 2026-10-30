@@ -1058,6 +1058,11 @@ impl Archive {
             } else {
                 coder.num_in_streams = read_variable_u64(header)?;
                 coder.num_out_streams = read_variable_u64(header)?;
+                // The block keeps one unpack size for each coder. 7-Zip rejects other
+                // output stream counts as well.
+                if coder.num_out_streams != 1 {
+                    return Err(Error::other("Coder must have exactly one output stream"));
+                }
             }
             // Each stream is referenced by a bind-pair/packed-stream entry that consumes
             // header bytes, so the totals cannot legitimately exceed `limit`. The counts are
