@@ -7,9 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Reading an archive whose header declares streams info but no files info panicked. The reader
+  rejects such a header with an error, as 7-Zip does.
+
 ## 0.24.1 - 2026-10-18
 
+### Changed
+
 - Bumped `lzma-rust2` to 0.23.
+
+### Fixed
+
+- Fix decoding large files under 32-bit systems.
 
 ## 0.24.0 - 2026-10-11
 
