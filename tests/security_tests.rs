@@ -458,13 +458,14 @@ fn bcj2_coder_with_wrong_input_count_is_rejected() {
     );
 }
 
-/// A block whose bind pairs form a cycle among single-in/single-out coders must not make
-/// `OrderedCoderIter` yield coders forever (nesting decoders until memory is exhausted).
+/// A block whose bind pairs form a cycle among single-in/single-out coders must be rejected.
+/// `OrderedCoderIter` follows the bind pairs from the first packed stream.
 ///
 /// Layout: three coders. A(1in/1out), B(1in/1out), C(3in/1out, only present so
 /// `num_packed_streams > 1` and `packed_streams` is read raw) with bind pairs
 /// (out=0,in=1) and (out=1,in=0) wiring A<->B into a cycle, and `packed_streams[0] = 0`
-/// entering that cycle. Reached at open time through the encoded-header decode path.
+/// entering that cycle. A bind pair binds input stream 0 as well, and `read_block` rejects a
+/// stream used twice.
 #[test]
 fn cyclic_coder_bind_pairs_are_rejected() {
     // read_block: num_coders, then per-coder [flags,id,...], bind pairs (in,out), packed streams.
@@ -501,7 +502,7 @@ fn cyclic_coder_bind_pairs_are_rejected() {
 
     assert!(
         open_err(&raw_7z_exact(&nh)).is_err(),
-        "a cyclic coder bind-pair graph must be rejected, not loop forever"
+        "a cyclic coder bind-pair graph must be rejected"
     );
 }
 
@@ -888,56 +889,24 @@ fn block_with_too_many_coders_is_rejected() {
     );
 }
 
-/// A header with one block of complex COPY coders over one-byte packed streams, and one file.
-/// Coder `k` declares `streams_per_coder[k]` input streams. The first input of coder `k` reads
-/// the output of coder `k + 1`. Every other input reads a packed stream.
+/// A header from `coder_graph_header` and its number of packed streams. Coder `k` declares
+/// `streams_per_coder[k]` input streams. The first input of coder `k` reads the output of coder
+/// `k + 1`. Every other input reads a packed stream.
 fn input_streams_header(streams_per_coder: &[u64]) -> (Vec<u8>, usize) {
-    let num_coders = streams_per_coder.len() as u64;
     let total: u64 = streams_per_coder.iter().sum();
-    let mut bound = Vec::new();
+    let mut bind_pairs = Vec::new();
     let mut first = 0;
-    for &streams in &streams_per_coder[..streams_per_coder.len() - 1] {
-        bound.push(first);
+    for (k, &streams) in streams_per_coder[..streams_per_coder.len() - 1]
+        .iter()
+        .enumerate()
+    {
+        bind_pairs.push((first, k as u64 + 1));
         first += streams;
     }
-    let packed: Vec<u64> = (0..total).filter(|i| !bound.contains(i)).collect();
-
-    let mut nh = vec![K_HEADER, K_MAIN_STREAMS_INFO, K_PACK_INFO, 0x00]; // pack_pos
-    write_number(&mut nh, packed.len() as u64); // num_pack_streams
-    nh.push(K_SIZE);
-    nh.resize(nh.len() + packed.len(), 0x01); // pack_sizes = 1 each
-    nh.extend_from_slice(&[
-        K_END,
-        K_UNPACK_INFO,
-        K_FOLDER,
-        0x01, // num_blocks
-        0x00, // external
-    ]);
-    write_number(&mut nh, num_coders);
-    for &streams in streams_per_coder {
-        nh.extend_from_slice(&[0x11, 0x00]); // complex COPY coder
-        write_number(&mut nh, streams); // num_in_streams
-        nh.push(0x01); // num_out_streams = 1
-    }
-    for (k, &in_index) in bound.iter().enumerate() {
-        write_number(&mut nh, in_index);
-        write_number(&mut nh, k as u64 + 1); // out_index
-    }
-    for &in_index in &packed {
-        write_number(&mut nh, in_index);
-    }
-    nh.push(K_CODERS_UNPACK_SIZE);
-    nh.resize(nh.len() + streams_per_coder.len(), 0x01); // unpack size of every coder
-    nh.extend_from_slice(&[
-        K_END, // unpack_info end
-        K_SUB_STREAMS_INFO,
-        K_END, // sub_streams_info end
-        K_END, // streams_info end
-        K_FILES_INFO,
-        0x01,  // num_files = 1
-        K_END, // files_info props end
-        K_END, // header end
-    ]);
+    let packed: Vec<u64> = (0..total)
+        .filter(|i| !bind_pairs.iter().any(|&(in_index, _)| in_index == *i))
+        .collect();
+    let nh = coder_graph_header(streams_per_coder, &bind_pairs, &packed);
     (nh, packed.len())
 }
 
@@ -967,4 +936,91 @@ fn encoded_header_with_too_many_files_for_the_address_space_is_rejected() {
         open_err(&bytes).is_err(),
         "files beyond the address space must be rejected"
     );
+}
+
+/// A header with one block of COPY coders and one file. Coder `k` declares
+/// `streams_per_coder[k]` input streams. Each bind pair is `(in_index, out_index)`, and every
+/// packed stream index gets a one-byte pack stream.
+fn coder_graph_header(
+    streams_per_coder: &[u64],
+    bind_pairs: &[(u64, u64)],
+    packed_streams: &[u64],
+) -> Vec<u8> {
+    let mut nh = vec![K_HEADER, K_MAIN_STREAMS_INFO, K_PACK_INFO, 0x00]; // pack_pos
+    write_number(&mut nh, packed_streams.len() as u64); // num_pack_streams
+    nh.push(K_SIZE);
+    nh.resize(nh.len() + packed_streams.len(), 0x01); // pack_sizes = 1 each
+    nh.extend_from_slice(&[
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+    ]);
+    write_number(&mut nh, streams_per_coder.len() as u64); // num_coders
+    for &streams in streams_per_coder {
+        nh.extend_from_slice(&[0x11, 0x00]); // complex COPY coder
+        write_number(&mut nh, streams); // num_in_streams
+        nh.push(0x01); // num_out_streams = 1
+    }
+    for &(in_index, out_index) in bind_pairs {
+        write_number(&mut nh, in_index);
+        write_number(&mut nh, out_index);
+    }
+    if packed_streams.len() > 1 {
+        for &in_index in packed_streams {
+            write_number(&mut nh, in_index);
+        }
+    }
+    nh.push(K_CODERS_UNPACK_SIZE);
+    nh.resize(nh.len() + streams_per_coder.len(), 0x01); // unpack size of every coder
+    nh.extend_from_slice(&[
+        K_END, // unpack_info end
+        K_SUB_STREAMS_INFO,
+        K_END, // sub_streams_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x01,  // num_files = 1
+        K_END, // files_info props end
+        K_END, // header end
+    ]);
+    nh
+}
+
+/// A name, the input streams of each coder, the bind pairs and the packed streams of a block.
+type CoderGraph<'a> = (&'a str, &'a [u64], &'a [(u64, u64)], &'a [u64]);
+
+/// Each input stream of a block is bound or packed once, and each coder output is bound once.
+/// A stream used twice makes the decoder build the coders behind it once for every use. A
+/// chain of BCJ2 coders with three inputs bound to the same output builds 3^n readers.
+#[test]
+fn block_with_a_stream_used_twice_is_rejected() {
+    let valid = coder_graph_header(&[2, 1], &[(0, 1)], &[1, 2]);
+    assert!(
+        open_err(&raw_7z_with_packed(&[0xAA; 2], &valid)).is_ok(),
+        "a block with each stream used once must open"
+    );
+
+    let cases: [CoderGraph; 5] = [
+        (
+            "an output bound twice",
+            &[2, 1, 1],
+            &[(0, 1), (1, 1)],
+            &[2, 3],
+        ),
+        (
+            "an input bound twice",
+            &[2, 1, 1],
+            &[(0, 1), (0, 2)],
+            &[1, 2],
+        ),
+        ("an input packed twice", &[2, 1], &[(0, 1)], &[1, 1]),
+        ("an input bound and packed", &[2, 1], &[(0, 1)], &[0, 1]),
+        ("a packed input out of range", &[2, 1], &[(0, 1)], &[1, 5]),
+    ];
+    for (name, streams_per_coder, bind_pairs, packed_streams) in cases {
+        let nh = coder_graph_header(streams_per_coder, bind_pairs, packed_streams);
+        let bytes = raw_7z_with_packed(&vec![0xAA; packed_streams.len()], &nh);
+        assert!(open_err(&bytes).is_err(), "{name} must be rejected");
+    }
 }

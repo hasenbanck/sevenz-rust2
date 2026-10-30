@@ -1123,6 +1123,10 @@ impl Archive {
             return Err(Error::other("Total output streams can't be 0"));
         }
         let num_bind_pairs = total_out_streams - 1;
+        // The decoder builds the coders behind a stream once for every use of it. 7-Zip
+        // rejects a block that uses a stream twice as well.
+        let mut in_stream_used = vec![false; total_in_streams];
+        let mut out_stream_used = vec![false; total_out_streams];
         let mut bind_pairs = Vec::with_capacity(num_bind_pairs);
         for _ in 0..num_bind_pairs {
             let bp = BindPair {
@@ -1135,6 +1139,12 @@ impl Archive {
             if bp.in_index >= total_in_streams as u64 || bp.out_index >= total_out_streams as u64 {
                 return Err(Error::other("bind pair references an out-of-range stream"));
             }
+            let (in_index, out_index) = (bp.in_index as usize, bp.out_index as usize);
+            if in_stream_used[in_index] || out_stream_used[out_index] {
+                return Err(Error::other("bind pair references a stream used before"));
+            }
+            in_stream_used[in_index] = true;
+            out_stream_used[out_index] = true;
             bind_pairs.push(bp);
         }
         block.bind_pairs = bind_pairs;
@@ -1164,7 +1174,14 @@ impl Archive {
             packed_streams[0] = index;
         } else {
             for packed_stream in packed_streams.iter_mut() {
-                *packed_stream = read_variable_u64(header)?;
+                let index = read_variable_u64(header)?;
+                if index >= total_in_streams as u64 || in_stream_used[index as usize] {
+                    return Err(Error::other(
+                        "packed stream references an out-of-range or used stream",
+                    ));
+                }
+                in_stream_used[index as usize] = true;
+                *packed_stream = index;
             }
         }
         block.packed_streams = packed_streams;
