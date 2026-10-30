@@ -62,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formatted its error message. The reader creates its header parsing errors without
   allocation. The external flag of a time or attribute property now returns
   `Error::ExternalUnsupported`.
+- Decoding a PPMd coder could abort the process when the allocator refused its model memory
+  and no memory was left for the error message. The decoder creates its PPMd errors without
+  allocation.
 
 ## 0.24.1 - 2026-10-18
 
