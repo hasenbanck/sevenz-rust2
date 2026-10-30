@@ -2516,6 +2516,34 @@ mod streaming_hardening_tests {
     }
 
     #[test]
+    fn surplus_output_after_an_empty_entry_in_a_solid_block_is_rejected() {
+        let payload = b"firstlastSURPLUS";
+        let (mut archive, mut source) = copy_archive(9, payload);
+        archive.blocks[0].num_unpack_sub_streams = 2;
+        archive.files = vec![
+            ArchiveEntry::new_file("first"),
+            ArchiveEntry::new_file("empty"),
+            ArchiveEntry::new_file("last"),
+        ];
+        archive.files[0].size = 5;
+        archive.files[1].has_stream = false;
+        archive.files[2].size = 4;
+        archive.stream_map.block_end_file_index = vec![3];
+        archive.stream_map.file_block_index = vec![Some(0), None, Some(0)];
+        let password = Password::empty();
+        let decoder = BlockDecoder::new(1, 0, &archive, &password, &mut source);
+        let mut observed = Vec::new();
+
+        let result = decoder.for_each_entries(&mut |_entry, reader| {
+            reader.read_to_end(&mut observed)?;
+            Ok(true)
+        });
+
+        assert_eq!(observed, &payload[..9]);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn declared_large_block_is_rejected_after_actual_output_is_observed() {
         let payload = b"complete payload";
         let (archive, mut source) = copy_archive(10_000, payload);
