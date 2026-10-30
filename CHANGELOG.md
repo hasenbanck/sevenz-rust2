@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an error in its data ends the iteration.
 - A coder without exactly one output stream made `Block::get_unpack_size_for_coder` panic. The
   reader rejects such a coder with an error.
+- A block with a very long chain of coders overflowed the stack, and a block with very many
+  streams took quadratic time to open. The reader rejects a block with more than 64 coders or
+  more than 64 input streams.
 
 ## 0.24.1 - 2026-10-18
 

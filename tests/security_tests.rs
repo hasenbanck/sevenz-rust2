@@ -832,3 +832,125 @@ fn coder_without_output_stream_is_rejected() {
         "a coder without an output stream must be rejected"
     );
 }
+
+/// A header with one block of `num_coders` COPY coders in a chain over five packed bytes, and
+/// one file.
+fn copy_chain_header(num_coders: u64) -> Vec<u8> {
+    let mut nh = vec![
+        K_HEADER,
+        K_MAIN_STREAMS_INFO,
+        K_PACK_INFO,
+        0x00, // pack_pos
+        0x01, // num_pack_streams
+        K_SIZE,
+        0x05, // pack_sizes[0] = 5
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+    ];
+    write_number(&mut nh, num_coders);
+    for _ in 0..num_coders {
+        nh.extend_from_slice(&[0x01, 0x00]); // simple COPY coder
+    }
+    // Coder `i` reads the output of coder `i + 1`. The packed stream feeds the last coder.
+    for i in 0..num_coders - 1 {
+        write_number(&mut nh, i); // in_index
+        write_number(&mut nh, i + 1); // out_index
+    }
+    nh.push(K_CODERS_UNPACK_SIZE);
+    nh.resize(nh.len() + num_coders as usize, 0x05); // unpack size of every coder
+    nh.extend_from_slice(&[
+        K_END, // unpack_info end
+        K_SUB_STREAMS_INFO,
+        K_END, // sub_streams_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x01,  // num_files = 1
+        K_END, // files_info props end
+        K_END, // header end
+    ]);
+    nh
+}
+
+/// The decoder nests one reader for each coder of a block, and a long chain of coders exhausts
+/// the stack. 7-Zip accepts at most 64 coders in a block.
+#[test]
+fn block_with_too_many_coders_is_rejected() {
+    let bytes = raw_7z_with_packed(&[0xAA; 5], &copy_chain_header(64));
+    assert!(decode_err(&bytes).is_ok(), "64 coders must decode");
+
+    let bytes = raw_7z_with_packed(&[0xAA; 5], &copy_chain_header(65));
+    assert!(
+        open_err(&bytes).is_err(),
+        "a block with 65 coders must be rejected"
+    );
+}
+
+/// A header with one block of complex COPY coders over one-byte packed streams, and one file.
+/// Coder `k` declares `streams_per_coder[k]` input streams. The first input of coder `k` reads
+/// the output of coder `k + 1`. Every other input reads a packed stream.
+fn input_streams_header(streams_per_coder: &[u64]) -> (Vec<u8>, usize) {
+    let num_coders = streams_per_coder.len() as u64;
+    let total: u64 = streams_per_coder.iter().sum();
+    let mut bound = Vec::new();
+    let mut first = 0;
+    for &streams in &streams_per_coder[..streams_per_coder.len() - 1] {
+        bound.push(first);
+        first += streams;
+    }
+    let packed: Vec<u64> = (0..total).filter(|i| !bound.contains(i)).collect();
+
+    let mut nh = vec![K_HEADER, K_MAIN_STREAMS_INFO, K_PACK_INFO, 0x00]; // pack_pos
+    write_number(&mut nh, packed.len() as u64); // num_pack_streams
+    nh.push(K_SIZE);
+    nh.resize(nh.len() + packed.len(), 0x01); // pack_sizes = 1 each
+    nh.extend_from_slice(&[
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+    ]);
+    write_number(&mut nh, num_coders);
+    for &streams in streams_per_coder {
+        nh.extend_from_slice(&[0x11, 0x00]); // complex COPY coder
+        write_number(&mut nh, streams); // num_in_streams
+        nh.push(0x01); // num_out_streams = 1
+    }
+    for (k, &in_index) in bound.iter().enumerate() {
+        write_number(&mut nh, in_index);
+        write_number(&mut nh, k as u64 + 1); // out_index
+    }
+    for &in_index in &packed {
+        write_number(&mut nh, in_index);
+    }
+    nh.push(K_CODERS_UNPACK_SIZE);
+    nh.resize(nh.len() + streams_per_coder.len(), 0x01); // unpack size of every coder
+    nh.extend_from_slice(&[
+        K_END, // unpack_info end
+        K_SUB_STREAMS_INFO,
+        K_END, // sub_streams_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x01,  // num_files = 1
+        K_END, // files_info props end
+        K_END, // header end
+    ]);
+    (nh, packed.len())
+}
+
+/// 7-Zip accepts at most 64 input streams in a block. One coder declares 65, or two coders
+/// declare 33 each.
+#[test]
+fn block_with_too_many_input_streams_is_rejected() {
+    for streams_per_coder in [&[65][..], &[33, 33]] {
+        let (nh, num_packed) = input_streams_header(streams_per_coder);
+        let bytes = raw_7z_with_packed(&vec![0xAA; num_packed], &nh);
+        assert!(
+            open_err(&bytes).is_err(),
+            "a block with input streams {streams_per_coder:?} must be rejected"
+        );
+    }
+}
