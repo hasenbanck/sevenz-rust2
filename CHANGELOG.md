@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A block whose bind pairs or packed streams used a stream twice made the decoder build the
   coders behind that stream once for every use. This could exhaust memory and abort the
   process. The reader rejects a block that uses a stream twice.
+- The WASM `decompress` function panicked when an archive pointed past the end of its data,
+  and on some reads from an input larger than 2 GiB. Its stream now limits seeks and reads to
+  the data.
 
 ## 0.24.1 - 2026-10-18
 
