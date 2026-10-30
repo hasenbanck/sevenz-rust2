@@ -65,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Decoding a PPMd coder could abort the process when the allocator refused its model memory
   and no memory was left for the error message. The decoder creates its PPMd errors without
   allocation.
+- Decoding a coder with an unknown or unsupported compression method could abort the process
+  when memory ran out before the decoder named the method or its id in its error. The decoder
+  allocates this text with fallible allocation and leaves it empty when memory is exhausted.
 
 ## 0.24.1 - 2026-10-18
 

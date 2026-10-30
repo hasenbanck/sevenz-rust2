@@ -84,10 +84,9 @@ pub fn add_decoder<I: Read>(
     let method = if let Some(m) = method {
         m
     } else {
-        return Err(Error::UnsupportedCompressionMethod(format!(
-            "{:?}",
-            coder.encoder_method_id()
-        )));
+        let id = coder.encoder_method_id();
+        // The `Debug` text of a byte slice holds at most 5 bytes for each byte and 2 brackets.
+        return Err(unsupported_method(5 * id.len() + 2, format_args!("{id:?}")));
     };
     match method.id() {
         EncoderMethod::ID_COPY => Ok(Decoder::Copy(input)),
@@ -201,10 +200,22 @@ pub fn add_decoder<I: Read>(
             let de = Aes256Sha256Decoder::new(input, &coder.properties, password)?;
             Ok(Decoder::Aes256Sha256(Box::new(de)))
         }
-        _ => Err(Error::UnsupportedCompressionMethod(
-            method.name().to_string(),
+        _ => Err(unsupported_method(
+            method.name().len(),
+            format_args!("{}", method.name()),
         )),
     }
+}
+
+/// Returns an unsupported method error with a `text` of at most `max_len` bytes that names the
+/// method or its id. The text is allocated with fallible allocation and is empty when memory is
+/// exhausted.
+fn unsupported_method(max_len: usize, text: std::fmt::Arguments) -> Error {
+    let mut name = String::new();
+    if name.try_reserve_exact(max_len).is_ok() {
+        let _ = std::fmt::Write::write_fmt(&mut name, text);
+    }
+    Error::UnsupportedCompressionMethod(name)
 }
 
 /// Converts a PPMd error into the crate error without allocation. Memory can be exhausted when
