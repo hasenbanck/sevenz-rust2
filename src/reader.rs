@@ -75,6 +75,16 @@ impl<R: Read> Read for BoundedReader<R> {
     }
 }
 
+/// The parts of a block that stay the same while the decoder resolves its coder graph.
+struct CoderGraph<'a, 'r, R> {
+    block: &'a Block,
+    sources: &'a [SharedBoundedReader<'r, R>],
+    coder_to_stream_map: &'a [usize],
+    password: &'a Password,
+    thread_count: u32,
+    memory_limit_kb: usize,
+}
+
 /// A special reader that shares it's inner reader with other instances and
 /// needs to re-seek every read operation.
 #[derive(Debug)]
@@ -1893,16 +1903,15 @@ impl<R: Read + Seek> ArchiveReader<R> {
         // output stream. `get_in_stream2` recursively wires up the whole coder graph,
         // so this also handles single-input filters (e.g. Delta) layered on top of a
         // BCJ2 coder's output, not just a bare BCJ2 main coder.
-        let mut decoder = Self::get_in_stream2(
+        let graph = CoderGraph {
             block,
-            &sources,
-            &coder_to_stream_map,
+            sources: &sources,
+            coder_to_stream_map: &coder_to_stream_map,
             password,
-            main_coder_index,
-            0,
             thread_count,
             memory_limit_kb,
-        )?;
+        };
+        let mut decoder = Self::get_in_stream2(&graph, main_coder_index, 0)?;
         if block.has_crc {
             decoder = Box::new(Crc32VerifyingPassthroughReader::new(
                 decoder,
@@ -1914,24 +1923,20 @@ impl<R: Read + Seek> ArchiveReader<R> {
     }
 
     fn get_in_stream<'r>(
-        block: &Block,
-        sources: &[SharedBoundedReader<'r, R>],
-        coder_to_stream_map: &[usize],
-        password: &Password,
+        graph: &CoderGraph<'_, 'r, R>,
         in_stream_index: usize,
         depth: usize,
-        thread_count: u32,
-        memory_limit_kb: usize,
     ) -> Result<Box<dyn Read + 'r>, Error>
     where
         R: 'r,
     {
+        let block = graph.block;
         let index = block
             .packed_streams
             .iter()
             .position(|&i| i == in_stream_index as u64);
         if let Some(index) = index {
-            return Ok(Box::new(sources[index].clone()));
+            return Ok(Box::new(graph.sources[index].clone()));
         }
 
         let bp = block
@@ -1939,31 +1944,18 @@ impl<R: Read + Seek> ArchiveReader<R> {
             .ok_or_else(|| Error::other("Couldn't find bind pair for stream"))?;
         let index = bp.out_index as usize;
 
-        Self::get_in_stream2(
-            block,
-            sources,
-            coder_to_stream_map,
-            password,
-            index,
-            depth,
-            thread_count,
-            memory_limit_kb,
-        )
+        Self::get_in_stream2(graph, index, depth)
     }
 
     fn get_in_stream2<'r>(
-        block: &Block,
-        sources: &[SharedBoundedReader<'r, R>],
-        coder_to_stream_map: &[usize],
-        password: &Password,
+        graph: &CoderGraph<'_, 'r, R>,
         in_stream_index: usize,
         depth: usize,
-        thread_count: u32,
-        memory_limit_kb: usize,
     ) -> Result<Box<dyn Read + 'r>, Error>
     where
         R: 'r,
     {
+        let block = graph.block;
         // Each coder is visited at most once in an acyclic graph, so a traversal deeper
         // than the coder count means the bind pairs form a cycle. Bail out instead of
         // recursing until the stack overflows (an uncatchable abort).
@@ -1972,7 +1964,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         }
         let (Some(coder), Some(&start_index)) = (
             block.coders.get(in_stream_index),
-            coder_to_stream_map.get(in_stream_index),
+            graph.coder_to_stream_map.get(in_stream_index),
         ) else {
             return Err(Error::other("in_stream_index out of range"));
         };
@@ -1984,24 +1976,15 @@ impl<R: Read + Seek> ArchiveReader<R> {
             .get(in_stream_index)
             .ok_or_else(|| Error::other("in_stream_index out of range"))?;
         if coder.num_in_streams == 1 {
-            let input = Self::get_in_stream(
-                block,
-                sources,
-                coder_to_stream_map,
-                password,
-                start_index,
-                depth + 1,
-                thread_count,
-                memory_limit_kb,
-            )?;
+            let input = Self::get_in_stream(graph, start_index, depth + 1)?;
 
             let decoder = add_decoder(
                 input,
                 uncompressed_len,
                 coder,
-                password,
-                memory_limit_kb,
-                thread_count,
+                graph.password,
+                graph.memory_limit_kb,
+                graph.thread_count,
             )?;
             return Ok(Box::new(decoder));
         }
@@ -2019,16 +2002,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             }
             let mut inputs: Vec<Box<dyn Read>> = Vec::with_capacity(num_in_streams);
             for i in start_index..start_index + num_in_streams {
-                inputs.push(Self::get_in_stream(
-                    block,
-                    sources,
-                    coder_to_stream_map,
-                    password,
-                    i,
-                    depth + 1,
-                    thread_count,
-                    memory_limit_kb,
-                )?);
+                inputs.push(Self::get_in_stream(graph, i, depth + 1)?);
             }
             // The BCJ2 reader requires a finite output length. Also verify
             // complete input consumption: the declaration alone must not
@@ -2414,8 +2388,9 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
 
 #[cfg(test)]
 mod streaming_hardening_tests {
-    use super::*;
     use std::io::Cursor;
+
+    use super::*;
 
     fn copy_archive(declared_size: u64, payload: &[u8]) -> (Archive, Cursor<Vec<u8>>) {
         let mut coder = Coder::default();
@@ -2654,8 +2629,9 @@ mod tests {
 
 #[cfg(test)]
 mod bcj2_completion_tests {
-    use super::*;
     use std::io::Cursor;
+
+    use super::*;
 
     fn literal_streams(payload: &[u8]) -> [Vec<u8>; 4] {
         // No branch markers: MAIN contains the payload and RC contains only
