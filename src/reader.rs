@@ -302,7 +302,11 @@ impl Archive {
         while nid != K_END {
             // Bound the skip length against the buffer: an unbounded value cast to `i64`
             // could go negative and seek backwards, re-reading the same bytes forever.
-            let property_size = bounded_count(read_variable_u64(header)?, limit, "propertySize")?;
+            let property_size = bounded_count(
+                read_variable_u64(header)?,
+                limit,
+                "propertySize exceeds the available input",
+            )?;
             header.seek(SeekFrom::Current(property_size as i64))?;
             nid = header.read_u8()?;
         }
@@ -365,10 +369,7 @@ impl Archive {
         if start_header.next_header_size > usize::MAX as u64
             || start_header.next_header_size > reader_len
         {
-            return Err(Error::other(format!(
-                "Cannot handle next_header_size {}",
-                start_header.next_header_size
-            )));
+            return Err(Error::other("Cannot handle next_header_size"));
         }
 
         let next_header_size_int = start_header.next_header_size as usize;
@@ -531,7 +532,11 @@ impl Archive {
         archive: &mut Archive,
         limit: usize,
     ) -> Result<(), Error> {
-        let num_files = bounded_count(read_variable_u64(header)?, limit, "num files")?;
+        let num_files = bounded_count(
+            read_variable_u64(header)?,
+            limit,
+            "num files exceeds the available input",
+        )?;
         let mut files: Vec<ArchiveEntry> = try_vec(num_files, Default::default())?;
 
         let mut is_empty_stream: Option<BitSet> = None;
@@ -577,7 +582,11 @@ impl Archive {
                         return Err(Error::other("file names length invalid"));
                     }
 
-                    let size = bounded_count(size, limit, "file names length")?;
+                    let size = bounded_count(
+                        size,
+                        limit,
+                        "file names length exceeds the available input",
+                    )?;
                     // let mut names = vec![0u8; size - 1];
                     // header.read_exact(&mut names)?;
                     let names_reader = NamesReader::new(header, size - 1);
@@ -602,9 +611,7 @@ impl Archive {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = header.read_u8()?;
                     if external != 0 {
-                        return Err(Error::other(format!(
-                            "kCTime Unimplemented:external={external}"
-                        )));
+                        return Err(Error::ExternalUnsupported);
                     }
                     for (i, file) in files.iter_mut().enumerate() {
                         file.has_creation_date = times_defined.contains(i);
@@ -617,9 +624,7 @@ impl Archive {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = header.read_u8()?;
                     if external != 0 {
-                        return Err(Error::other(format!(
-                            "kATime Unimplemented:external={external}"
-                        )));
+                        return Err(Error::ExternalUnsupported);
                     }
                     for (i, file) in files.iter_mut().enumerate() {
                         file.has_access_date = times_defined.contains(i);
@@ -632,9 +637,7 @@ impl Archive {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = header.read_u8()?;
                     if external != 0 {
-                        return Err(Error::other(format!(
-                            "kMTime Unimplemented:external={external}"
-                        )));
+                        return Err(Error::ExternalUnsupported);
                     }
                     for (i, file) in files.iter_mut().enumerate() {
                         file.has_last_modified_date = times_defined.contains(i);
@@ -647,9 +650,7 @@ impl Archive {
                     let times_defined = read_all_or_bits(header, num_files)?;
                     let external = header.read_u8()?;
                     if external != 0 {
-                        return Err(Error::other(format!(
-                            "kWinAttributes Unimplemented:external={external}"
-                        )));
+                        return Err(Error::ExternalUnsupported);
                     }
                     for (i, file) in files.iter_mut().enumerate() {
                         file.has_windows_attributes = times_defined.contains(i);
@@ -662,11 +663,19 @@ impl Archive {
                 K_DUMMY => {
                     // Bound the skip against the buffer: an unbounded value cast to `i64`
                     // could go negative and seek backwards, re-reading the same bytes forever.
-                    let skip = bounded_count(size, limit, "files-info property size")?;
+                    let skip = bounded_count(
+                        size,
+                        limit,
+                        "files-info property size exceeds the available input",
+                    )?;
                     header.seek(SeekFrom::Current(skip as i64))?;
                 }
                 _ => {
-                    let skip = bounded_count(size, limit, "files-info property size")?;
+                    let skip = bounded_count(
+                        size,
+                        limit,
+                        "files-info property size exceeds the available input",
+                    )?;
                     header.seek(SeekFrom::Current(skip as i64))?;
                 }
             };
@@ -846,8 +855,11 @@ impl Archive {
         limit: usize,
     ) -> Result<(), Error> {
         archive.pack_pos = read_variable_u64(header)?;
-        let num_pack_streams =
-            bounded_count(read_variable_u64(header)?, limit, "num pack streams")?;
+        let num_pack_streams = bounded_count(
+            read_variable_u64(header)?,
+            limit,
+            "num pack streams exceeds the available input",
+        )?;
         let mut nid = header.read_u8()?;
         if nid == K_SIZE {
             archive.pack_sizes = try_vec(num_pack_streams, 0)?;
@@ -881,9 +893,13 @@ impl Archive {
     ) -> Result<(), Error> {
         let nid = header.read_u8()?;
         if nid != K_FOLDER {
-            return Err(Error::other(format!("Expected kFolder, got {nid}")));
+            return Err(Error::other("Expected kFolder"));
         }
-        let num_blocks = bounded_count(read_variable_u64(header)?, limit, "num blocks")?;
+        let num_blocks = bounded_count(
+            read_variable_u64(header)?,
+            limit,
+            "num blocks exceeds the available input",
+        )?;
 
         archive
             .blocks
@@ -900,9 +916,7 @@ impl Archive {
 
         let nid = header.read_u8()?;
         if nid != K_CODERS_UNPACK_SIZE {
-            return Err(Error::other(format!(
-                "Expected kCodersUnpackSize, got {nid}"
-            )));
+            return Err(Error::other("Expected kCodersUnpackSize"));
         }
 
         for block in archive.blocks.iter_mut() {
@@ -949,7 +963,11 @@ impl Archive {
         if nid == K_NUM_UNPACK_STREAM {
             total_unpack_streams = 0;
             for block in archive.blocks.iter_mut() {
-                let num_streams = bounded_count(read_variable_u64(header)?, limit, "numStreams")?;
+                let num_streams = bounded_count(
+                    read_variable_u64(header)?,
+                    limit,
+                    "numStreams exceeds the available input",
+                )?;
                 block.num_unpack_sub_streams = num_streams;
                 // Each sub-stream still consumes header bytes downstream, so the running
                 // total stays bounded by `limit`; reject anything larger up front.
@@ -1046,11 +1064,13 @@ impl Archive {
     fn read_block<R: Read>(header: &mut R, limit: usize) -> Result<Block, Error> {
         let mut block = Block::default();
 
-        let num_coders = bounded_count(read_variable_u64(header)?, limit, "num coders")?;
+        let num_coders = bounded_count(
+            read_variable_u64(header)?,
+            limit,
+            "num coders exceeds the available input",
+        )?;
         if num_coders > MAX_BLOCK_CODERS {
-            return Err(Error::other(format!(
-                "Block has too many coders: {num_coders}"
-            )));
+            return Err(Error::other("Block has too many coders"));
         }
         let mut coders = try_with_capacity(num_coders)?;
         let mut total_in_streams: u64 = 0;
@@ -1092,13 +1112,14 @@ impl Archive {
                 return Err(Error::other("coder stream counts exceed available input"));
             }
             if total_in_streams > MAX_BLOCK_IN_STREAMS {
-                return Err(Error::other(format!(
-                    "Block has too many input streams: {total_in_streams}"
-                )));
+                return Err(Error::other("Block has too many input streams"));
             }
             if has_attributes {
-                let properties_size =
-                    bounded_count(read_variable_u64(header)?, limit, "properties size")?;
+                let properties_size = bounded_count(
+                    read_variable_u64(header)?,
+                    limit,
+                    "properties size exceeds the available input",
+                )?;
                 let mut props = try_vec(properties_size, 0u8)?;
                 header.read_exact(&mut props)?;
                 coder.properties = props;
@@ -1191,16 +1212,17 @@ impl Archive {
 /// Validates an attacker-controlled count/size decoded from the header against an upper
 /// bound derived from the input (the number of bytes in the header buffer).
 ///
-/// Every counted element (a file, pack stream, coder, sub-stream, name byte, …) consumes
+/// Every counted element (a file, pack stream, coder, sub-stream, name byte, ...) consumes
 /// at least one header byte downstream, so a legitimate count can never exceed the buffer
 /// length. Rejecting anything larger stops a tiny archive from declaring a huge count and
 /// forcing an out-of-memory allocation, without rejecting any valid archive.
+///
+/// The `error` message is static. Memory can be exhausted when the count is rejected, and an
+/// error must not allocate.
 #[inline]
-fn bounded_count(value: u64, limit: usize, field: &str) -> Result<usize, Error> {
+fn bounded_count(value: u64, limit: usize, error: &'static str) -> Result<usize, Error> {
     if value > limit as u64 {
-        return Err(Error::other(format!(
-            "{field} ({value}) exceeds the available input ({limit} bytes)"
-        )));
+        return Err(Error::other(error));
     }
     Ok(value as usize)
 }
@@ -1330,7 +1352,9 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
 fn utf16_to_string(units: &[u16]) -> Result<String, Error> {
     let mut len = 0;
     for c in char::decode_utf16(units.iter().copied()) {
-        len += c.map_err(|e| Error::other(e.to_string()))?.len_utf8();
+        len += c
+            .map_err(|_| Error::other("entry name is invalid UTF-16"))?
+            .len_utf8();
     }
     let mut name = String::new();
     name.try_reserve_exact(len)

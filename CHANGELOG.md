@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not fit.
 - Opening an archive with entry names could abort the process when the allocator refused the
   buffer for the names. The reader returns an error in that case.
+- Opening a malformed archive could abort the process when memory ran out before the reader
+  formatted its error message. The reader creates its header parsing errors without
+  allocation. The external flag of a time or attribute property now returns
+  `Error::ExternalUnsupported`.
 
 ## 0.24.1 - 2026-10-18
 
