@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   32-bit targets when a bit field of the header, such as the CRC, empty stream, time or
   attribute flags, did not fit in the address space. The reader returns an error when it does
   not fit.
+- Opening an archive with entry names could abort the process when the allocator refused the
+  buffer for the names. The reader returns an error in that case.
 
 ## 0.24.1 - 2026-10-18
 
