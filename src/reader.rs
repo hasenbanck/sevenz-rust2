@@ -2148,11 +2148,17 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
                 let mut data =
                     Vec::with_capacity(file.size.min(MAX_PREALLOC_BYTES as u64) as usize);
-                let mut decoder: Box<dyn Read> =
-                    Box::new(BoundedReader::new(&mut block_reader, file.size));
+                // The entry is the only entry with data in its block. Reading it to the end of
+                // the block verifies the block CRC and rejects surplus output.
+                let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
+                    inner: &mut block_reader,
+                    remaining: file.size,
+                });
 
                 if file.has_crc {
-                    decoder = Box::new(Crc32VerifyingReader::new(decoder, file.size, file.crc));
+                    decoder = Box::new(Crc32VerifyingPassthroughReader::new(
+                        decoder, file.size, file.crc,
+                    ));
                 }
 
                 decoder.read_to_end(&mut data)?;
@@ -2616,6 +2622,22 @@ mod streaming_hardening_tests {
         assert_eq!(reader.read(&mut [0; 3]).unwrap(), 3);
         assert!(reader.read(&mut [0]).is_err());
         assert!(reader.read(&mut [0]).is_err());
+    }
+
+    #[test]
+    fn read_file_verifies_the_block_crc_of_a_non_solid_entry() {
+        let payload = b"data";
+        let (mut archive, source) = copy_archive(4, payload);
+        archive.blocks[0].has_crc = true;
+        archive.blocks[0].crc = (!crc32fast::hash(payload)) as u64;
+        let mut reader = ArchiveReader::from_archive(archive, source, Password::empty());
+
+        let result = reader.read_file("payload");
+
+        assert!(
+            matches!(&result, Err(Error::Io(e, _)) if e.to_string().contains("ChecksumVerificationFailed")),
+            "a block CRC mismatch must be an error, got {result:?}"
+        );
     }
 
     #[test]
