@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejects such a header with an error, as 7-Zip does.
 - An empty entry between the files of a solid block hid the last file of that block from
   `for_each_entries`, `read_file` and `BlockDecoder`. The block covers all of its entries now.
+- The writer wrote the `kEmptyFile` and `kAnti` bit vectors too short when entries without a
+  stream followed the last empty file or anti item. Readers then lost the entry names or failed
+  to open the archive. Both vectors now hold one bit for every entry without a stream.
 
 ## 0.24.1 - 2026-10-18
 

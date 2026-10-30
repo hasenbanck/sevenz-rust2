@@ -680,10 +680,15 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         Ok(())
     }
 
+    fn empty_stream_count(&self) -> usize {
+        self.files.iter().filter(|entry| !entry.has_stream).count()
+    }
+
     fn write_file_empty_files<H: Write>(&self, header: &mut H) -> std::io::Result<()> {
         let mut has_empty = false;
         let mut empty_stream_counter = 0;
-        let mut bitset = BitSet::new();
+        // Readers read one bit for every entry without a stream.
+        let mut bitset = BitSet::with_capacity(self.empty_stream_count());
         for entry in self.files.iter() {
             if !entry.has_stream {
                 let is_dir = entry.is_directory();
@@ -708,7 +713,8 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     fn write_file_anti_items<H: Write>(&self, header: &mut H) -> std::io::Result<()> {
         let mut has_anti = false;
         let mut counter = 0;
-        let mut bitset = BitSet::new();
+        // Readers read one bit for every entry without a stream.
+        let mut bitset = BitSet::with_capacity(self.empty_stream_count());
         for entry in self.files.iter() {
             if !entry.has_stream {
                 let is_anti = entry.is_anti_item();
