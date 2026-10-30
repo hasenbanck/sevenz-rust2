@@ -963,12 +963,9 @@ impl Archive {
 
         let mut sub_streams_info = SubStreamsInfo {
             unpack_sizes: try_vec(total_unpack_streams, 0)?,
+            has_crc: try_bit_set(total_unpack_streams)?,
             crcs: try_vec(total_unpack_streams, 0)?,
-            ..Default::default()
         };
-        sub_streams_info
-            .has_crc
-            .reserve_len_exact(total_unpack_streams);
 
         let mut next_unpack_stream = 0;
         for block in archive.blocks.iter() {
@@ -1243,10 +1240,16 @@ fn read_variable_u64<R: Read>(reader: &mut R) -> io::Result<u64> {
     Ok(value)
 }
 
-fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
+/// Allocates a bit set of `bit_count` bits for a count from the archive header. Returns an
+/// error when the bits exceed the address space or the allocator fails.
+fn try_bit_set(bit_count: usize) -> Result<BitSet, Error> {
+    BitSet::try_with_capacity(bit_count).map_err(|_| Error::other("cannot allocate a bit set"))
+}
+
+fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> Result<BitSet, Error> {
     let all = header.read_u8()?;
     if all != 0 {
-        let mut bits = BitSet::with_capacity(size);
+        let mut bits = try_bit_set(size)?;
         for i in 0..size {
             bits.insert(i);
         }
@@ -1256,8 +1259,8 @@ fn read_all_or_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> 
     }
 }
 
-fn read_bits<R: Read>(header: &mut R, size: usize) -> io::Result<BitSet> {
-    let mut bits = BitSet::with_capacity(size);
+fn read_bits<R: Read>(header: &mut R, size: usize) -> Result<BitSet, Error> {
+    let mut bits = try_bit_set(size)?;
     let mut mask = 0u32;
     let mut cache = 0u32;
     for i in 0..size {

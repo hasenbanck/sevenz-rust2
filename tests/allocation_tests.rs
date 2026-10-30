@@ -308,3 +308,97 @@ fn coder_properties_allocation_failure_returns_an_error() {
         "coder properties that do not fit must be an allocation error, got {result:?}"
     );
 }
+
+/// A plain header with two COPY blocks, CRCs for the pack streams, the blocks and the
+/// sub-streams, and six entries. Three entries have streams. The others are an empty file, an
+/// anti item and a directory. The entries have the time and attribute `properties`.
+fn complete_header(properties: &[&[u8]]) -> Vec<u8> {
+    let mut nh = vec![
+        0x01, // kHeader
+        0x04, // kMainStreamsInfo
+        0x06, // kPackInfo
+        0x00, // pack_pos
+        0x02, // num_pack_streams
+        0x09, // kSize
+        0x02, 0x01, // pack_sizes
+        0x0A, // kCRC
+        0x01, // all defined
+    ];
+    nh.extend_from_slice(&[0x11; 8]); // pack stream CRCs
+    nh.extend_from_slice(&[
+        0x00, // pack_info end
+        0x07, // kUnpackInfo
+        0x0B, // kFolder
+        0x02, // num_blocks
+        0x00, // external
+        0x01, 0x01, 0x00, // block 0: one simple COPY coder
+        0x01, 0x01, 0x00, // block 1: one simple COPY coder
+        0x0C, // kCodersUnpackSize
+        0x02, 0x01, // unpack sizes
+        0x0A, // kCRC
+        0x00, // not all defined
+        0x40, // block 1 has a CRC
+    ]);
+    nh.extend_from_slice(&[0x22; 4]); // block 1 CRC
+    nh.extend_from_slice(&[
+        0x00, // unpack_info end
+        0x08, // kSubStreamsInfo
+        0x0D, // kNumUnpackStream
+        0x02, 0x01, // sub-streams per block
+        0x09, // kSize
+        0x01, // first sub-stream of block 0
+        0x0A, // kCRC
+        0x00, // not all defined
+        0x80, // the first sub-stream of block 0 has a CRC
+    ]);
+    nh.extend_from_slice(&[0x33; 4]); // sub-stream CRC
+    nh.extend_from_slice(&[
+        0x00, // sub_streams_info end
+        0x00, // streams_info end
+        0x05, // kFilesInfo
+        0x06, // num_files
+        0x0E, 0x01, 0x1C, // kEmptyStream: entries 3, 4 and 5
+        0x0F, 0x01, 0xC0, // kEmptyFile: entries 3 and 4
+        0x10, 0x01, 0x40, // kAnti: entry 4
+    ]);
+    for property in properties {
+        nh.extend_from_slice(property);
+    }
+    nh.extend_from_slice(&[0x00, 0x00]); // files_info props end, header end
+    nh
+}
+
+/// Time and attribute properties for the six entries of `complete_header`.
+fn time_and_attribute_properties() -> [Vec<u8>; 4] {
+    let property = |head: &[u8], value: u8, len: usize| {
+        let mut property = head.to_vec();
+        property.resize(head.len() + len, value);
+        property
+    };
+    [
+        property(&[0x12, 0x0B, 0x00, 0x80, 0x00], 0x44, 8), // kCTime: entry 0 defined
+        property(&[0x13, 0x32, 0x01, 0x00], 0x55, 48),      // kATime: all defined
+        property(&[0x14, 0x13, 0x00, 0xC0, 0x00], 0x66, 16), // kMTime: entries 0 and 1 defined
+        property(&[0x15, 0x13, 0x00, 0xF0, 0x00], 0x77, 16), // kWinAttributes: entries 0 to 3
+    ]
+}
+
+/// The headers set every bit set the reader builds. Each time and attribute property also
+/// appears alone. A bit set of the same size as a freed one fits under every budget the freed
+/// one fits under. Opening each archive must return under every budget.
+#[test]
+fn header_allocation_failure_returns_an_error() {
+    let properties = time_and_attribute_properties();
+    let all: Vec<&[u8]> = properties.iter().map(Vec::as_slice).collect();
+    let mut headers = vec![complete_header(&all)];
+    headers.extend(all.iter().map(|property| complete_header(&[property])));
+
+    for header in headers {
+        let bytes = raw_7z_exact(&header);
+        let archive = Archive::read(&mut Cursor::new(bytes.clone()), &Password::empty()).unwrap();
+        assert_eq!(archive.files.len(), 6);
+        assert!(archive.files[4].is_anti_item());
+        assert!(archive.files[5].is_directory());
+        assert_returns_under_every_budget(&bytes);
+    }
+}
