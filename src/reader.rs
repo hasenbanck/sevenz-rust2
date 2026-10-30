@@ -2377,10 +2377,9 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             }
         }
         if block_reader.count != declared_block_size {
-            return Err(Error::other(format!(
-                "decoded block size {} does not match declared size {declared_block_size}",
-                block_reader.count
-            )));
+            return Err(Error::other(
+                "decoded block size does not match its declared size",
+            ));
         }
         Ok(EntryDecision::Continue)
     }
