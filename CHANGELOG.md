@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bound each decoded entry by its declared size and reject surplus output.
 - Restore BCJ2 block framing and reject unconsumed input streams after decoding.
 - Keep reporting checksum and decoder errors when a callback ignores the first error.
+- Decode and verify the unread data of the last entry of a block when iteration continues, and
+  reject a block whose decoded size differs from its declared size.
 
 ### Added
 

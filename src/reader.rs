@@ -2020,8 +2020,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// Attention about solid archive:
     /// When decoding a solid archive, the data to be decompressed depends on the data in front of it,
     /// you cannot simply skip the previous data and only decompress the data in the back.
-    /// The reader decodes and verifies the data a closure leaves unread when a later entry with
-    /// data of the same block follows.
+    /// The reader decodes and verifies the data a closure leaves unread before it continues with
+    /// the next entry.
     pub fn for_each_entries<F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>>(
         &mut self,
         mut each: F,
@@ -2285,8 +2285,8 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     ///
     /// When decoding files in a block, the data to be decompressed depends on the data in front of
     /// it, you cannot simply skip the previous data and only decompress the data in the back.
-    /// The decoder decodes and verifies the data a closure leaves unread when a later entry with
-    /// data of the block follows.
+    /// The decoder decodes and verifies the data a closure leaves unread before it continues with
+    /// the next entry. Returning `false` skips the remaining entries of the block.
     ///
     /// Non-solid archives use one block per file and allow more effective decoding of single files.
     pub fn for_each_entries<F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<bool, Error>>(
