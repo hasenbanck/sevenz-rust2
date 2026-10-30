@@ -1119,6 +1119,10 @@ impl Archive {
             ));
         }
         let num_packed_streams = total_in_streams - num_bind_pairs;
+        // Decoding a block reads its first packed stream.
+        if num_packed_streams == 0 {
+            return Err(Error::other("Block has no packed streams"));
+        }
         let mut packed_streams = vec![0; num_packed_streams];
         if num_packed_streams == 1 {
             let mut index = u64::MAX;

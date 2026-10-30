@@ -713,3 +713,76 @@ fn encoded_streams_without_files_info_are_rejected() {
         "streams without files info must be rejected when decoding"
     );
 }
+
+/// A coder with zero input streams gives a block with zero packed streams. Its first pack
+/// stream index equals `pack_sizes.len()`, and decoding the block must not index past the
+/// pack streams.
+#[test]
+fn block_without_packed_streams_is_rejected() {
+    let lone: &[u8] = &[
+        K_HEADER,
+        K_MAIN_STREAMS_INFO,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+        0x01, // num_coders
+        0x11, // coder flags: id_size=1, complex, no attributes
+        0x00, // coder id = COPY
+        0x00, // num_in_streams = 0
+        0x01, // num_out_streams = 1
+        K_CODERS_UNPACK_SIZE,
+        0x00,  // unpack_sizes[0] = 0
+        K_END, // unpack_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x00,  // num_files = 0
+        K_END, // files_info props end
+        K_END, // header end
+    ];
+    assert!(
+        decode_err(&raw_7z_exact(lone)).is_err(),
+        "a lone block without packed streams must be rejected"
+    );
+
+    let after_copy_block: &[u8] = &[
+        K_HEADER,
+        K_MAIN_STREAMS_INFO,
+        K_PACK_INFO,
+        0x00, // pack_pos
+        0x01, // num_pack_streams
+        K_SIZE,
+        0x05, // pack_sizes[0] = 5
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x02, // num_blocks
+        0x00, // external
+        0x01, // block 0: num_coders
+        0x01, // coder flags: id_size=1, simple, no attributes
+        0x00, // coder id = COPY
+        0x01, // block 1: num_coders
+        0x11, // coder flags: id_size=1, complex, no attributes
+        0x00, // coder id = COPY
+        0x00, // num_in_streams = 0
+        0x01, // num_out_streams = 1
+        K_CODERS_UNPACK_SIZE,
+        0x05, // unpack_sizes[0] = 5
+        0x00, // unpack_sizes[1] = 0
+        K_END,
+        K_SUB_STREAMS_INFO,
+        K_NUM_UNPACK_STREAM,
+        0x01,  // block 0: one sub-stream
+        0x00,  // block 1: no sub-streams
+        K_END, // sub_streams_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x01,  // num_files = 1
+        K_END, // files_info props end
+        K_END, // header end
+    ];
+    assert!(
+        decode_err(&raw_7z_with_packed(&[0xAA; 5], after_copy_block)).is_err(),
+        "a block without packed streams after a copy block must be rejected"
+    );
+}

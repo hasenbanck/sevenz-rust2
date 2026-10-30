@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The writer wrote the `kEmptyFile` and `kAnti` bit vectors too short when entries without a
   stream followed the last empty file or anti item. Readers then lost the entry names or failed
   to open the archive. Both vectors now hold one bit for every entry without a stream.
+- Decoding an archive with a block without packed streams panicked. The reader rejects such a
+  block with an error.
 
 ## 0.24.1 - 2026-10-18
 
