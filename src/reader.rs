@@ -6,6 +6,7 @@ use std::{
     io::{Read, Seek, SeekFrom},
     num::NonZeroUsize,
     rc::Rc,
+    sync::OnceLock,
 };
 
 use crc32fast::Hasher;
@@ -1318,7 +1319,7 @@ pub struct ArchiveReader<R: Read + Seek> {
     archive: Archive,
     password: Password,
     thread_count: u32,
-    index: HashMap<String, IndexEntry>,
+    index: OnceLock<HashMap<String, IndexEntry>>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1343,10 +1344,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
             archive,
             password,
             thread_count: 1,
-            index: HashMap::default(),
+            index: OnceLock::new(),
         };
-
-        reader.fill_index();
 
         let thread_count =
             std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
@@ -1371,10 +1370,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
             archive,
             password,
             thread_count: 1,
-            index: HashMap::default(),
+            index: OnceLock::new(),
         };
-
-        reader.fill_index();
 
         let thread_count =
             std::thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap());
@@ -1391,18 +1388,37 @@ impl<R: Read + Seek> ArchiveReader<R> {
         self.thread_count = thread_count.clamp(1, 256);
     }
 
-    fn fill_index(&mut self) {
-        for (file_index, file) in self.archive.files.iter().enumerate() {
-            let block_index = self.archive.stream_map.file_block_index[file_index];
+    /// Returns the index from entry names to entries. The first call builds it. A failed
+    /// allocation returns an error.
+    fn index(&self) -> Result<&HashMap<String, IndexEntry>, Error> {
+        if let Some(index) = self.index.get() {
+            return Ok(index);
+        }
 
-            self.index.insert(
-                file.name.clone(),
+        let files = &self.archive.files;
+        let mut index = HashMap::new();
+        index.try_reserve(files.len()).map_err(|e| {
+            Error::other(format!(
+                "cannot allocate the index of {} entries: {e}",
+                files.len()
+            ))
+        })?;
+        for (file_index, file) in files.iter().enumerate() {
+            let block_index = self.archive.stream_map.file_block_index[file_index];
+            let mut name = String::new();
+            name.try_reserve_exact(file.name.len())
+                .map_err(|e| Error::other(format!("cannot allocate an entry name: {e}")))?;
+            name.push_str(&file.name);
+            index.insert(
+                name,
                 IndexEntry {
                     block_index,
                     file_index,
                 },
             );
         }
+
+        Ok(self.index.get_or_init(|| index))
     }
 
     /// Returns a reference to the underlying [`Archive`] structure.
@@ -1743,7 +1759,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
     /// This function is very inefficient when used with solid archives, since
     /// it needs to decode all data before the actual file.
     pub fn read_file(&mut self, name: &str) -> Result<Vec<u8>, Error> {
-        let index_entry = *self.index.get(name).ok_or(Error::FileNotFound)?;
+        let index_entry = *self.index()?.get(name).ok_or(Error::FileNotFound)?;
         let file = &self.archive.files[index_entry.file_index];
 
         if !file.has_stream {
@@ -1822,7 +1838,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         file_name: &str,
         methods: &mut Vec<EncoderMethod>,
     ) -> Result<(), Error> {
-        let index_entry = self.index.get(file_name).ok_or(Error::FileNotFound)?;
+        let index_entry = self.index()?.get(file_name).ok_or(Error::FileNotFound)?;
         let file = &self.archive.files[index_entry.file_index];
 
         if !file.has_stream {
