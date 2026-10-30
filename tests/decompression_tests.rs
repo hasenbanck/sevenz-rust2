@@ -287,6 +287,40 @@ fn test_delta_bcj2() {
 }
 
 #[test]
+fn test_empty_entry_between_files_of_a_solid_block() {
+    // One solid block holds `d.txt`, `b.txt` and `c.txt`. The empty `a.txt` sits between
+    // `d.txt` and `b.txt` in the file list. The block spans four entries for three sub-streams.
+    let path = "tests/resources/interleaved_empty_entry.7z";
+    let expected = vec![
+        ("d.txt".to_string(), 1000),
+        ("a.txt".to_string(), 0),
+        ("b.txt".to_string(), 1000),
+        ("c.txt".to_string(), 1000),
+    ];
+
+    let mut reader = ArchiveReader::open(path, Password::empty()).unwrap();
+    let mut decoded = Vec::new();
+    reader
+        .for_each_entries(|entry, data| {
+            let mut buf = Vec::new();
+            data.read_to_end(&mut buf)?;
+            decoded.push((entry.name().to_string(), buf.len()));
+            Ok(true)
+        })
+        .unwrap();
+    assert_eq!(decoded, expected);
+    assert_eq!(reader.read_file("c.txt").unwrap().len(), 1000);
+
+    let mut file = File::open(path).unwrap();
+    let archive = Archive::read(&mut file, &Password::empty()).unwrap();
+    let password = Password::empty();
+    let fd = BlockDecoder::new(1, 0, &archive, &password, &mut file);
+    assert_eq!(fd.entry_count(), 4);
+    let names: Vec<&str> = fd.entries().iter().map(|entry| entry.name()).collect();
+    assert_eq!(names, ["d.txt", "a.txt", "b.txt", "c.txt"]);
+}
+
+#[test]
 fn test_entry_compressed_size() {
     let dir = std::fs::read_dir("tests/resources").unwrap();
     for entry in dir {
