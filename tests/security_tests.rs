@@ -697,3 +697,19 @@ fn streams_without_files_info_are_rejected() {
         "streams without files info must be rejected when decoding"
     );
 }
+
+/// The same defect as `streams_without_files_info_are_rejected`, inside an LZMA encoded header.
+/// The decoded header declares four blocks but no files info.
+#[test]
+fn encoded_streams_without_files_info_are_rejected() {
+    let bytes = std::fs::read("tests/resources/encoded_streams_without_files_info.bin").unwrap();
+
+    assert!(
+        open_err(&bytes).is_err(),
+        "streams without files info must be rejected when opening"
+    );
+    assert!(
+        decode_err(&bytes).is_err(),
+        "streams without files info must be rejected when decoding"
+    );
+}
