@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The WASM `decompress` function panicked when an archive pointed past the end of its data,
   and on some reads from an input larger than 2 GiB. Its stream now limits seeks and reads to
   the data.
+- Extracting an entry with a file time beyond the range of the platform's `SystemTime`
+  panicked in the `decompress` functions on Windows. The extraction leaves such a time unset.
 
 ## 0.24.1 - 2026-10-18
 

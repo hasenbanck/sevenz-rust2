@@ -87,16 +87,32 @@ impl TryFrom<i64> for NtTime {
 
 impl From<NtTime> for std::time::SystemTime {
     /// Converts a [`NtTime`] to a [`SystemTime`](std::time::SystemTime).
+    ///
+    /// # Panics
+    ///
+    /// Panics when the platform's `SystemTime` cannot hold the time. On Windows this applies to
+    /// a file time of 2^63 or more.
     #[inline]
     fn from(file_time: NtTime) -> Self {
+        file_time
+            .checked_system_time()
+            .expect("the file time exceeds the range of `SystemTime`")
+    }
+}
+
+impl NtTime {
+    /// Converts the file time to a [`SystemTime`](std::time::SystemTime). Returns `None` when
+    /// the platform's `SystemTime` cannot hold the time.
+    pub(crate) fn checked_system_time(self) -> Option<std::time::SystemTime> {
         let duration = std::time::Duration::new(
-            file_time.0 / NtTime::FILE_TIMES_PER_SEC,
-            u32::try_from((file_time.0 % NtTime::FILE_TIMES_PER_SEC) * 100)
+            self.0 / NtTime::FILE_TIMES_PER_SEC,
+            u32::try_from((self.0 % NtTime::FILE_TIMES_PER_SEC) * 100)
                 .expect("the number of nanoseconds is not a valid `u32`"),
         );
 
-        (std::time::SystemTime::UNIX_EPOCH - (NtTime::UNIX_EPOCH.sub(NtTime::NT_TIME_EPOCH)))
-            + duration
+        std::time::SystemTime::UNIX_EPOCH
+            .checked_sub(NtTime::UNIX_EPOCH.sub(NtTime::NT_TIME_EPOCH))?
+            .checked_add(duration)
     }
 }
 

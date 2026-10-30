@@ -97,3 +97,37 @@ fn anti_item_followed_by_directories_round_trips() {
     assert!(archive.files[0].is_anti_item());
     assert!(archive.files[1..].iter().all(|entry| !entry.is_anti_item()));
 }
+
+/// A file time of 2^63 or more exceeds the range of `SystemTime` on Windows. Extracting an
+/// entry with such times must succeed.
+#[cfg(all(windows, feature = "util"))]
+#[test]
+fn extracting_an_entry_with_file_times_beyond_system_time_succeeds() {
+    use sevenz_rust2::{NtTime, decompress};
+
+    let time = NtTime::new(u64::MAX);
+    let mut entry = ArchiveEntry::new_file("file.txt");
+    entry.has_creation_date = true;
+    entry.creation_date = time;
+    entry.has_last_modified_date = true;
+    entry.last_modified_date = time;
+    entry.has_access_date = true;
+    entry.access_date = time;
+    let mut writer = ArchiveWriter::new(Cursor::new(Vec::new())).unwrap();
+    writer
+        .push_archive_entry(entry, Some(&b"data"[..]))
+        .unwrap();
+    let mut archive = writer.finish().unwrap();
+    archive.set_position(0);
+
+    let read = Archive::read(&mut archive, &Password::empty()).unwrap();
+    assert_eq!(read.files[0].last_modified_date(), time);
+    archive.set_position(0);
+
+    let dest = tempfile::tempdir().unwrap();
+    decompress(archive, dest.path()).unwrap();
+    assert_eq!(
+        std::fs::read(dest.path().join("file.txt")).unwrap(),
+        b"data"
+    );
+}

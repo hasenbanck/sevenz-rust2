@@ -223,12 +223,19 @@ pub fn default_entry_extract_fn(
             std::io::copy(reader, &mut writer)?;
 
             let file = writer.get_mut();
-            let file_times = FileTimes::new()
-                .set_accessed(entry.access_date().into())
-                .set_modified(entry.last_modified_date().into());
-
+            // The platform's `SystemTime` cannot hold every file time. A time it cannot hold
+            // stays unset.
+            let mut file_times = FileTimes::new();
+            if let Some(time) = entry.access_date().checked_system_time() {
+                file_times = file_times.set_accessed(time);
+            }
+            if let Some(time) = entry.last_modified_date().checked_system_time() {
+                file_times = file_times.set_modified(time);
+            }
             #[cfg(any(windows, target_os = "macos"))]
-            let file_times = file_times.set_created(entry.creation_date().into());
+            if let Some(time) = entry.creation_date().checked_system_time() {
+                file_times = file_times.set_created(time);
+            }
 
             let _ = file.set_times(file_times);
         }
