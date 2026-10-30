@@ -2486,7 +2486,7 @@ mod streaming_hardening_tests {
         start_header.extend_from_slice(&0u32.to_le_bytes());
 
         let mut archive = Vec::new();
-        archive.extend_from_slice(&SEVEN_Z_SIGNATURE);
+        archive.extend_from_slice(SEVEN_Z_SIGNATURE);
         archive.extend_from_slice(&[0, 4]);
         archive.extend_from_slice(&crc32fast::hash(&start_header).to_le_bytes());
         archive.extend_from_slice(&start_header);
