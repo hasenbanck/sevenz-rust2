@@ -314,9 +314,8 @@ impl<R: Read> Read for CountingReader<R> {
             Ok(size) => size,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => return Err(error),
             Err(error) => {
-                let reported = copy_io_error(&error);
-                self.failure = Some(error);
-                return Err(reported);
+                self.failure = Some(copy_io_error(&error));
+                return Err(error);
             }
         };
         self.count = self
@@ -364,9 +363,8 @@ impl<R: Read> Read for Bcj2VerifyingReader<R> {
         if let Some(reader) = self.inner.take()
             && let Err(error) = reader.finish()
         {
-            let reported = copy_io_error(&error);
-            self.failure = Some(error);
-            return Err(reported);
+            self.failure = Some(copy_io_error(&error));
+            return Err(error);
         }
         Ok(0)
     }
@@ -2640,6 +2638,36 @@ mod streaming_hardening_tests {
         );
     }
 
+    fn is_checksum_error(error: &io::Error) -> bool {
+        matches!(
+            error.get_ref().and_then(|e| e.downcast_ref::<Error>()),
+            Some(Error::ChecksumVerificationFailed)
+        )
+    }
+
+    #[test]
+    fn block_errors_keep_their_type() {
+        let payload = b"data";
+        let (mut archive, mut source) = copy_archive(4, payload);
+        archive.blocks[0].has_crc = true;
+        archive.blocks[0].crc = (!crc32fast::hash(payload)) as u64;
+        let password = Password::empty();
+        let decoder = BlockDecoder::new(1, 0, &archive, &password, &mut source);
+        let mut errors = Vec::new();
+
+        let _ = decoder.for_each_entries(&mut |_entry, reader| {
+            errors.extend(reader.read_to_end(&mut Vec::new()).err());
+            errors.extend(reader.read(&mut [0]).err());
+            Ok(true)
+        });
+
+        let [first, repeated] = errors.as_slice() else {
+            panic!("both reads must fail, got {errors:?}");
+        };
+        assert!(is_checksum_error(first), "got {first:?}");
+        assert_eq!(repeated.kind(), first.kind());
+    }
+
     #[test]
     fn block_without_substreams_does_not_build_a_decoder() {
         let (mut archive, mut source) = copy_archive(4, b"data");
@@ -2851,6 +2879,47 @@ mod bcj2_completion_tests {
         for _ in 0..3 {
             assert_eq!(reader.read(&mut [0]).unwrap_err().raw_os_error(), Some(5));
         }
+    }
+
+    #[test]
+    fn bcj2_completion_errors_keep_their_type() {
+        struct Input<'a> {
+            remaining: &'a [u8],
+            fail_at_end: bool,
+        }
+        impl Read for Input<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                if !buf.is_empty() && self.remaining.is_empty() && self.fail_at_end {
+                    Err(io::Error::other(Error::ChecksumVerificationFailed))
+                } else {
+                    self.remaining.read(buf)
+                }
+            }
+        }
+        let payload = b"plain payload";
+        let streams = literal_streams(payload);
+        let inputs = streams
+            .iter()
+            .enumerate()
+            .map(|(index, stream)| Input {
+                remaining: stream,
+                fail_at_end: index == 1,
+            })
+            .collect();
+        let mut reader = Bcj2VerifyingReader::new(inputs, payload.len() as u64);
+        let mut output = vec![0; payload.len()];
+        reader.read_exact(&mut output).unwrap();
+
+        let error = reader.read(&mut [0]).unwrap_err();
+
+        assert!(
+            matches!(
+                error.get_ref().and_then(|e| e.downcast_ref::<Error>()),
+                Some(Error::ChecksumVerificationFailed)
+            ),
+            "got {error:?}"
+        );
+        assert_eq!(reader.read(&mut [0]).unwrap_err().kind(), error.kind());
     }
 
     #[test]
