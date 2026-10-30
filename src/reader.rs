@@ -1561,10 +1561,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
         const MAX_CODER_COUNT: usize = 32;
         let block = &archive.blocks[block_index];
         if block.coders.len() > MAX_CODER_COUNT {
-            return Err(Error::unsupported(format!(
-                "Too many coders: {}",
-                block.coders.len()
-            )));
+            return Err(Error::unsupported("Block has too many coders"));
         }
 
         assert!(block.total_input_streams > block.total_output_streams);
@@ -1667,11 +1664,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
         let bp = block
             .find_bind_pair_for_in_stream(in_stream_index as u64)
-            .ok_or_else(|| {
-                Error::other(format!(
-                    "Couldn't find bind pair for stream {in_stream_index}"
-                ))
-            })?;
+            .ok_or_else(|| Error::other("Couldn't find bind pair for stream"))?;
         let index = bp.out_index as usize;
 
         Self::get_in_stream2(
@@ -1764,10 +1757,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
             return Ok(Box::new(Bcj2Reader::new(inputs, uncompressed_len)));
         }
 
-        Err(Error::unsupported(format!(
-            "Unsupported multi-input coder: {:?}",
-            coder.encoder_method_id()
-        )))
+        Err(Error::unsupported("Unsupported multi-input coder"))
     }
 
     /// Takes a closure to decode each files in the archive.
