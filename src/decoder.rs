@@ -124,8 +124,7 @@ pub fn add_decoder<I: Read>(
         #[cfg(feature = "ppmd")]
         EncoderMethod::ID_PPMD => {
             let (order, memory_size) = get_ppmd_order_memory_size(coder, max_mem_limit_kb)?;
-            let ppmd = Ppmd7Decoder::new(input, order, memory_size)
-                .map_err(|err| Error::other(err.to_string()))?;
+            let ppmd = Ppmd7Decoder::new(input, order, memory_size).map_err(ppmd_error)?;
             Ok(Decoder::Ppmd(Box::new(ppmd)))
         }
         #[cfg(feature = "brotli")]
@@ -205,6 +204,20 @@ pub fn add_decoder<I: Read>(
         _ => Err(Error::UnsupportedCompressionMethod(
             method.name().to_string(),
         )),
+    }
+}
+
+/// Converts a PPMd error into the crate error without allocation. Memory can be exhausted when
+/// the model memory is refused, and an error must not allocate.
+#[cfg(feature = "ppmd")]
+fn ppmd_error(err: ppmd_rust::Error) -> Error {
+    match err {
+        ppmd_rust::Error::RangeDecoderInitialization => {
+            Error::other("Could not initialize the range decoder")
+        }
+        ppmd_rust::Error::InvalidParameter => Error::other("Wrong PPMd parameter"),
+        ppmd_rust::Error::IoError(err) => err.into(),
+        ppmd_rust::Error::MemoryAllocation => Error::other("cannot allocate the PPMd memory"),
     }
 }
 

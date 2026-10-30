@@ -1,6 +1,7 @@
 //! Tests that run the crate under an allocator which refuses allocations above a per-thread
-//! size limit or beyond a per-thread budget of live bytes. A refused allocation must make the
-//! crate return an error.
+//! size limit or beyond a per-thread budget of live bytes. The allocator can also exhaust the
+//! memory of a thread on the first refusal. A refused allocation must make the crate return an
+//! error.
 
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -16,6 +17,18 @@ const UNLIMITED: usize = usize::MAX;
 thread_local! {
     static LIMIT: Cell<usize> = const { Cell::new(UNLIMITED) };
     static BUDGET: Cell<usize> = const { Cell::new(UNLIMITED) };
+    static EXHAUST_ON_REFUSAL: Cell<bool> = const { Cell::new(false) };
+    static EXHAUSTED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Returns true when an allocation of `size` bytes exceeds the limit or memory is exhausted on
+/// this thread. A refusal exhausts the memory when `EXHAUST_ON_REFUSAL` is set.
+fn refuse(size: usize) -> bool {
+    let refused = EXHAUSTED.with(Cell::get) || size > LIMIT.with(Cell::get);
+    if refused && EXHAUST_ON_REFUSAL.with(Cell::get) {
+        EXHAUSTED.with(|e| e.set(true));
+    }
+    refused
 }
 
 /// Takes `size` bytes from the budget of this thread. Returns false when they do not fit.
@@ -45,7 +58,7 @@ struct LimitedAllocator;
 
 unsafe impl GlobalAlloc for LimitedAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if layout.size() > LIMIT.with(Cell::get) || !take_budget(layout.size()) {
+        if refuse(layout.size()) || !take_budget(layout.size()) {
             return std::ptr::null_mut();
         }
         unsafe { System.alloc(layout) }
@@ -57,7 +70,7 @@ unsafe impl GlobalAlloc for LimitedAllocator {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if new_size > LIMIT.with(Cell::get) {
+        if refuse(new_size) {
             return std::ptr::null_mut();
         }
         let old_size = layout.size();
@@ -82,6 +95,17 @@ fn with_allocation_limit<T>(limit: usize, f: impl FnOnce() -> T) -> T {
     LIMIT.with(|l| l.set(limit));
     let result = f();
     LIMIT.with(|l| l.set(UNLIMITED));
+    result
+}
+
+/// Runs `f` with allocations larger than `limit` bytes refused on this thread. The first
+/// refusal exhausts the memory, and the thread refuses every later allocation in `f`.
+#[cfg(feature = "ppmd")]
+fn with_exhausting_allocation_limit<T>(limit: usize, f: impl FnOnce() -> T) -> T {
+    EXHAUST_ON_REFUSAL.with(|e| e.set(true));
+    let result = with_allocation_limit(limit, f);
+    EXHAUST_ON_REFUSAL.with(|e| e.set(false));
+    EXHAUSTED.with(|e| e.set(false));
     result
 }
 
@@ -118,15 +142,16 @@ fn write_number(out: &mut Vec<u8>, value: u64) {
     out.extend_from_slice(&low);
 }
 
-/// Builds an archive whose start header describes `next_header` after it.
-fn raw_7z_exact(next_header: &[u8]) -> Vec<u8> {
+/// Builds an archive with the `packed` streams and the `next_header` after them.
+fn raw_7z_exact(packed: &[u8], next_header: &[u8]) -> Vec<u8> {
     let mut start = Vec::new();
-    start.extend_from_slice(&0u64.to_le_bytes());
+    start.extend_from_slice(&(packed.len() as u64).to_le_bytes());
     start.extend_from_slice(&(next_header.len() as u64).to_le_bytes());
     start.extend_from_slice(&crc32fast::hash(next_header).to_le_bytes());
     let mut out = vec![0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00, 0x04];
     out.extend_from_slice(&crc32fast::hash(&start).to_le_bytes());
     out.extend_from_slice(&start);
+    out.extend_from_slice(packed);
     out.extend_from_slice(next_header);
     out
 }
@@ -155,7 +180,7 @@ fn unique_names_header(num_files: u32) -> Vec<u8> {
 /// `ArchiveReader::from_archive` cannot return an error. Reading an entry must return one.
 #[test]
 fn name_index_allocation_failure_returns_an_error() {
-    let mut source = Cursor::new(raw_7z_exact(&unique_names_header(100_000)));
+    let mut source = Cursor::new(raw_7z_exact(&[], &unique_names_header(100_000)));
     let archive = Archive::read(&mut source, &Password::empty()).unwrap();
     let name = archive.files[0].name().to_string();
 
@@ -201,7 +226,7 @@ fn entry_name_allocation_failure_returns_an_error() {
         ("UTF-8 name", vec![0x4E00; 1_000_000], 5 << 19),
     ];
     for (name, units, limit) in cases {
-        let bytes = raw_7z_exact(&one_name_header(&units));
+        let bytes = raw_7z_exact(&[], &one_name_header(&units));
         assert!(
             Archive::read(&mut Cursor::new(bytes.clone()), &Password::empty()).is_ok(),
             "{name}: the archive must open without a limit"
@@ -275,7 +300,7 @@ fn assert_returns_under_every_budget(bytes: &[u8]) {
 /// must return under every budget.
 #[test]
 fn block_allocation_failure_returns_an_error() {
-    assert_returns_under_every_budget(&raw_7z_exact(&small_blocks_header()));
+    assert_returns_under_every_budget(&raw_7z_exact(&[], &small_blocks_header()));
 }
 
 /// One coder declares 1 MiB of properties. The budget holds the header, which contains them,
@@ -297,7 +322,7 @@ fn coder_properties_allocation_failure_returns_an_error() {
     write_number(&mut header, PROPERTIES_SIZE as u64);
     header.resize(header.len() + PROPERTIES_SIZE, 0x00);
     let budget = header.len() + 4096;
-    let mut source = Cursor::new(raw_7z_exact(&header));
+    let mut source = Cursor::new(raw_7z_exact(&[], &header));
 
     let result = with_allocation_budget(budget, || {
         Archive::read(&mut source, &Password::empty()).map(|_| ())
@@ -398,7 +423,7 @@ fn header_allocation_failure_returns_an_error() {
     headers.extend(all.iter().map(|property| complete_header(&[property])));
 
     for header in headers {
-        let bytes = raw_7z_exact(&header);
+        let bytes = raw_7z_exact(&[], &header);
         let archive = Archive::read(&mut Cursor::new(bytes.clone()), &Password::empty()).unwrap();
         assert_eq!(archive.files.len(), 6);
         assert!(archive.files[4].is_anti_item());
@@ -527,7 +552,7 @@ fn error_headers() -> Vec<(&'static str, Vec<u8>, &'static str)> {
 #[test]
 fn header_error_allocation_failure_returns_an_error() {
     for (name, header, error) in error_headers() {
-        let bytes = raw_7z_exact(&header);
+        let bytes = raw_7z_exact(&[], &header);
         let result = Archive::read(&mut Cursor::new(bytes.clone()), &Password::empty());
         assert_eq!(
             format!("{:?}", result.map(|_| ())),
@@ -559,5 +584,51 @@ fn next_header_size_error_returns_under_a_zero_budget() {
     assert_eq!(
         format!("{result:?}"),
         r#"Err(Other("Cannot handle next_header_size"))"#
+    );
+}
+
+/// An encoded header with one PPMd coder that needs 16 MiB of model memory. Its packed stream
+/// holds the five bytes that start the range decoder.
+#[cfg(feature = "ppmd")]
+fn ppmd_encoded_header() -> Vec<u8> {
+    vec![
+        0x17, // kEncodedHeader
+        0x06, // kPackInfo
+        0x00, // pack_pos
+        0x01, // num_pack_streams
+        0x09, // kSize
+        0x05, // pack_size
+        0x00, // pack_info end
+        0x07, // kUnpackInfo
+        0x0B, // kFolder
+        0x01, // num_blocks
+        0x00, // external
+        0x01, // num_coders
+        0x23, // coder flags: id_size=3, simple, has attributes
+        0x03, 0x04, 0x01, // coder id = PPMD
+        0x05, // properties size
+        0x06, // order
+        0x00, 0x00, 0x00, 0x01, // memory size = 16 MiB
+        0x0C, // kCodersUnpackSize
+        0x01, // unpack size
+        0x00, // unpack_info end
+        0x00, // streams_info end
+    ]
+}
+
+/// The PPMd model memory exceeds the limit, and its refusal exhausts the memory. Opening the
+/// archive must return an error.
+#[cfg(feature = "ppmd")]
+#[test]
+fn ppmd_memory_allocation_failure_returns_an_error() {
+    let mut source = Cursor::new(raw_7z_exact(&[0x00; 5], &ppmd_encoded_header()));
+
+    let result = with_exhausting_allocation_limit(1 << 20, || {
+        Archive::read(&mut source, &Password::empty()).map(|_| ())
+    });
+
+    assert!(
+        is_allocation_error(&result),
+        "PPMd memory that does not fit must be an allocation error, got {result:?}"
     );
 }
