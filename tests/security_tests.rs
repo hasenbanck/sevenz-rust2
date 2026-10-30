@@ -1036,9 +1036,12 @@ struct SparseSource {
 #[cfg(target_pointer_width = "32")]
 impl std::io::Read for SparseSource {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let n = (self.len.saturating_sub(self.pos)).min(buf.len() as u64) as usize;
-        for (i, byte) in buf[..n].iter_mut().enumerate() {
-            *byte = *self.head.get(self.pos as usize + i).unwrap_or(&0);
+        let n = self.len.saturating_sub(self.pos).min(buf.len() as u64) as usize;
+        let out = &mut buf[..n];
+        out.fill(0);
+        if let Some(head) = self.head.get(self.pos as usize..) {
+            let m = head.len().min(n);
+            out[..m].copy_from_slice(&head[..m]);
         }
         self.pos += n as u64;
         Ok(n)
@@ -1071,5 +1074,68 @@ fn next_header_beyond_the_address_space_is_rejected() {
     assert!(
         ArchiveReader::new(source, Password::empty()).is_err(),
         "a next header beyond the address space must be rejected"
+    );
+}
+
+/// The start header declares a next header of 0x4800_0000 bytes in a 3 GiB source. It holds an
+/// encoded header with one COPY block of 0x5000_0000 bytes, more than the next header holds.
+/// Doubling a buffer of the next header size exceeds `isize::MAX` on 32-bit targets. Opening
+/// the archive must fail with an error.
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn encoded_header_beyond_the_address_space_is_rejected() {
+    const NEXT_HEADER_SIZE: u64 = 0x4800_0000;
+    const UNPACK_SIZE: u64 = 0x5000_0000;
+
+    let mut next_header = vec![
+        0x17, // K_ENCODED_HEADER
+        K_PACK_INFO,
+        0x00, // pack_pos
+        0x01, // num_pack_streams
+        K_SIZE,
+    ];
+    write_number(&mut next_header, UNPACK_SIZE); // pack_sizes[0]
+    next_header.extend_from_slice(&[
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+        0x01, // num_coders
+        0x01, // coder flags: id_size=1, simple, no attributes
+        0x00, // coder id = COPY
+        K_CODERS_UNPACK_SIZE,
+    ]);
+    write_number(&mut next_header, UNPACK_SIZE); // unpack_sizes[0]
+    next_header.extend_from_slice(&[K_END, K_END]); // unpack_info end, streams_info end
+
+    // The next header continues with zeros up to its declared size.
+    let mut hasher = crc32fast::Hasher::new();
+    hasher.update(&next_header);
+    let zeros = vec![0u8; 1 << 20];
+    let mut left = NEXT_HEADER_SIZE - next_header.len() as u64;
+    while left > 0 {
+        let n = left.min(zeros.len() as u64) as usize;
+        hasher.update(&zeros[..n]);
+        left -= n as u64;
+    }
+
+    let mut start = [0u8; 20];
+    start[8..16].copy_from_slice(&NEXT_HEADER_SIZE.to_le_bytes());
+    start[16..20].copy_from_slice(&hasher.finalize().to_le_bytes());
+    let mut head = SEVEN_Z_SIGNATURE.to_vec();
+    head.extend_from_slice(&[0x00, 0x04]);
+    head.extend_from_slice(&crc32(&start).to_le_bytes());
+    head.extend_from_slice(&start);
+    head.extend_from_slice(&next_header);
+
+    let source = SparseSource {
+        head,
+        len: 3 << 30,
+        pos: 0,
+    };
+    assert!(
+        ArchiveReader::new(source, Password::empty()).is_err(),
+        "an encoded header beyond the address space must be rejected"
     );
 }

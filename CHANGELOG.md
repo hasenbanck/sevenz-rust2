@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panicked in the `decompress` functions on Windows. The extraction leaves such a time unset.
 - Opening a source larger than 2 GiB whose start header declares a next header beyond the
   address space panicked on 32-bit targets. The reader returns an error for such a header.
+- Opening an archive whose encoded header decodes to more data than its next header holds
+  panicked on 32-bit targets and could abort the process on 64-bit targets. The reader returns
+  an error when the decoded header exceeds the address space or the allocator.
 
 ## 0.24.1 - 2026-10-18
 
