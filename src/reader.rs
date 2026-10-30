@@ -761,6 +761,7 @@ impl Archive {
         }
 
         stream_map.block_first_file_index = vec![0; num_blocks];
+        stream_map.block_end_file_index = vec![0; num_blocks];
         stream_map.file_block_index = vec![None; archive.files.len()];
         let mut next_block_index = 0;
         let mut next_block_unpack_stream_index = 0;
@@ -772,6 +773,7 @@ impl Archive {
             if next_block_unpack_stream_index == 0 {
                 while next_block_index < archive.blocks.len() {
                     stream_map.block_first_file_index[next_block_index] = i;
+                    stream_map.block_end_file_index[next_block_index] = i;
                     if archive.blocks[next_block_index].num_unpack_sub_streams > 0 {
                         break;
                     }
@@ -782,6 +784,7 @@ impl Archive {
                 }
             }
             stream_map.file_block_index[i] = Some(next_block_index);
+            stream_map.block_end_file_index[next_block_index] = i + 1;
             if !archive.files[i].has_stream {
                 continue;
             }
@@ -810,10 +813,8 @@ impl Archive {
             }
         }
 
-        // Each block's file span `[first_file .. first_file + num_unpack_sub_streams)` is
-        // later iterated directly against `archive.files` (in `BlockDecoder`). The
-        // sub-stream count is an independent header quantity, so reject a block that
-        // declares more sub-streams than there are files instead of indexing out of bounds.
+        // The sub-stream count is an independent header quantity. Reject a block that
+        // declares more sub-streams than there are files from its first file on.
         for (b, block) in archive.blocks.iter().enumerate() {
             let start = stream_map.block_first_file_index[b];
             let end = start
@@ -1838,15 +1839,17 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     /// Returns a slice of archive entries contained in this block.
     ///
     /// The entries are returned in the order they appear in the block.
+    ///
+    /// An empty entry between two entries with data is part of the block.
     pub fn entries(&self) -> &[ArchiveEntry] {
         let start = self.archive.stream_map.block_first_file_index[self.block_index];
-        let file_count = self.archive.blocks[self.block_index].num_unpack_sub_streams;
-        &self.archive.files[start..(file_count + start)]
+        let end = self.archive.stream_map.block_end_file_index[self.block_index];
+        &self.archive.files[start..end]
     }
 
     /// Returns the number of entries contained in this block.
     pub fn entry_count(&self) -> usize {
-        self.archive.blocks[self.block_index].num_unpack_sub_streams
+        self.entries().len()
     }
 
     /// Takes a closure to decode each files in this block.
@@ -1874,9 +1877,9 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
             thread_count,
         )?;
         let start = archive.stream_map.block_first_file_index[block_index];
-        let file_count = archive.blocks[block_index].num_unpack_sub_streams;
+        let end = archive.stream_map.block_end_file_index[block_index];
 
-        for file_index in start..(file_count + start) {
+        for file_index in start..end {
             let file = &archive.files[file_index];
             if file.has_stream && file.size > 0 {
                 let mut decoder: Box<dyn Read> =

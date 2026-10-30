@@ -470,6 +470,9 @@ pub struct StreamMap {
     pub(crate) block_first_sub_stream_index: Vec<usize>,
     /// Index of first file for each block.
     pub block_first_file_index: Vec<usize>,
+    /// One past the index of the last file of each block. The span from the first file holds
+    /// every file of the block, including an empty entry between two files with data.
+    pub(crate) block_end_file_index: Vec<usize>,
     /// Block index for each file (None if file has no data).
     pub file_block_index: Vec<Option<usize>>,
 }
