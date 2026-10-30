@@ -76,9 +76,10 @@ impl Archive {
     /// AES256-SHA256 coder.
     ///
     /// Returns `false` for an invalid file index or an entry without an owning
-    /// block, such as a directory or an empty streamless file. This describes
-    /// content encryption; encrypted headers must be decoded before file
-    /// metadata is available.
+    /// block. An entry without a stream belongs to a block when it lies between
+    /// the files of that block, and it reports the encryption of that block.
+    /// This describes content encryption; encrypted headers must be decoded
+    /// before file metadata is available.
     pub fn is_file_encrypted(&self, file_index: usize) -> bool {
         self.stream_map
             .file_block_index
