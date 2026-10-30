@@ -311,7 +311,7 @@ fn coder_properties_allocation_failure_returns_an_error() {
 
 /// A plain header with two COPY blocks, CRCs for the pack streams, the blocks and the
 /// sub-streams, and six entries. Three entries have streams. The others are an empty file, an
-/// anti item and a directory. The entries have the time and attribute `properties`.
+/// anti item and a directory. The entries have names and the time and attribute `properties`.
 fn complete_header(properties: &[&[u8]]) -> Vec<u8> {
     let mut nh = vec![
         0x01, // kHeader
@@ -360,7 +360,11 @@ fn complete_header(properties: &[&[u8]]) -> Vec<u8> {
         0x0E, 0x01, 0x1C, // kEmptyStream: entries 3, 4 and 5
         0x0F, 0x01, 0xC0, // kEmptyFile: entries 3 and 4
         0x10, 0x01, 0x40, // kAnti: entry 4
+        0x11, 0x19, 0x00, // kName, 25 bytes, external
     ]);
+    for name in b"abcdef" {
+        nh.extend_from_slice(&[*name, 0x00, 0x00, 0x00]);
+    }
     for property in properties {
         nh.extend_from_slice(property);
     }
@@ -399,6 +403,7 @@ fn header_allocation_failure_returns_an_error() {
         assert_eq!(archive.files.len(), 6);
         assert!(archive.files[4].is_anti_item());
         assert!(archive.files[5].is_directory());
+        assert_eq!(archive.files[5].name(), "f");
         assert_returns_under_every_budget(&bytes);
     }
 }

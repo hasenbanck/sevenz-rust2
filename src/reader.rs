@@ -1289,7 +1289,7 @@ impl<'a, R: Read> NamesReader<'a, R> {
             max_bytes,
             reader,
             read_bytes: 0,
-            cache: Vec::with_capacity(16),
+            cache: Vec::new(),
         }
     }
 }
@@ -1315,7 +1315,7 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
             }
             // A name can be as long as the header. Grow the buffer with fallible allocation.
             if self.cache.len() == self.cache.capacity()
-                && self.cache.try_reserve(self.cache.len()).is_err()
+                && self.cache.try_reserve(self.cache.len().max(16)).is_err()
             {
                 return Some(Err(Error::other("cannot allocate an entry name")));
             }
