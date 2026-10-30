@@ -407,3 +407,157 @@ fn header_allocation_failure_returns_an_error() {
         assert_returns_under_every_budget(&bytes);
     }
 }
+
+/// Plain headers that each end in a header error, with the `Debug` text of that error.
+fn error_headers() -> Vec<(&'static str, Vec<u8>, &'static str)> {
+    let mut too_many_files = vec![0x01, 0x05]; // kHeader, kFilesInfo
+    write_number(&mut too_many_files, 1 << 40);
+
+    let mut too_many_coders = vec![
+        0x01, // kHeader
+        0x04, // kMainStreamsInfo
+        0x07, // kUnpackInfo
+        0x0B, // kFolder
+        0x01, // num_blocks
+        0x00, // external
+        0x41, // num_coders = 65
+    ];
+    // The padding raises the header length above 65, so the count limit admits 65 coders.
+    too_many_coders.resize(too_many_coders.len() + 128, 0x00);
+
+    let mut too_many_input_streams = vec![
+        0x01, // kHeader
+        0x04, // kMainStreamsInfo
+        0x07, // kUnpackInfo
+        0x0B, // kFolder
+        0x01, // num_blocks
+        0x00, // external
+        0x01, // num_coders
+        0x11, // coder flags: id_size=1, complex
+        0x00, // coder id = COPY
+        0x41, // num_in_streams = 65
+        0x01, // num_out_streams
+    ];
+    // The padding raises the header length above 65, so the count limit admits 65 streams.
+    too_many_input_streams.resize(too_many_input_streams.len() + 128, 0x00);
+
+    let mut headers = vec![
+        (
+            "too many files",
+            too_many_files,
+            r#"Other("num files exceeds the available input")"#,
+        ),
+        (
+            "missing kFolder",
+            vec![
+                0x01, // kHeader
+                0x04, // kMainStreamsInfo
+                0x07, // kUnpackInfo
+                0x0A, // kCRC
+                0x00, 0x00, 0x00,
+            ],
+            r#"Other("Expected kFolder")"#,
+        ),
+        (
+            "missing kCodersUnpackSize",
+            vec![
+                0x01, // kHeader
+                0x04, // kMainStreamsInfo
+                0x07, // kUnpackInfo
+                0x0B, // kFolder
+                0x01, // num_blocks
+                0x00, // external
+                0x01, 0x01, 0x00, // block: one simple COPY coder
+                0x0A, // kCRC
+                0x00, 0x00, 0x00,
+            ],
+            r#"Other("Expected kCodersUnpackSize")"#,
+        ),
+        (
+            "too many coders",
+            too_many_coders,
+            r#"Other("Block has too many coders")"#,
+        ),
+        (
+            "too many input streams",
+            too_many_input_streams,
+            r#"Other("Block has too many input streams")"#,
+        ),
+        (
+            "invalid UTF-16 name",
+            vec![
+                0x01, // kHeader
+                0x05, // kFilesInfo
+                0x01, // num_files
+                0x11, // kName
+                0x05, // property size
+                0x00, // external
+                0x00, 0xD8, // unpaired high surrogate
+                0x00, 0x00, // name terminator
+                0x00, 0x00, // files_info props end, header end
+            ],
+            r#"Other("entry name is invalid UTF-16")"#,
+        ),
+    ];
+    for (name, id) in [
+        ("external kCTime", 0x12),
+        ("external kATime", 0x13),
+        ("external kMTime", 0x14),
+        ("external kWinAttributes", 0x15),
+    ] {
+        headers.push((
+            name,
+            vec![
+                0x01, // kHeader
+                0x05, // kFilesInfo
+                0x01, // num_files
+                id,   // time or attribute property
+                0x02, // property size
+                0x01, // all defined
+                0x01, // external
+                0x00, 0x00,
+            ],
+            "ExternalUnsupported",
+        ));
+    }
+    headers
+}
+
+/// Each header ends in an error. Opening each archive must return under every budget.
+#[test]
+fn header_error_allocation_failure_returns_an_error() {
+    for (name, header, error) in error_headers() {
+        let bytes = raw_7z_exact(&header);
+        let result = Archive::read(&mut Cursor::new(bytes.clone()), &Password::empty());
+        assert_eq!(
+            format!("{:?}", result.map(|_| ())),
+            format!("Err({error})"),
+            "{name}"
+        );
+        assert_returns_under_every_budget(&bytes);
+    }
+}
+
+/// The start header declares a next header beyond the end of the archive. The reader
+/// allocates nothing before it rejects it. Opening the archive must return under a budget of
+/// zero bytes.
+#[test]
+fn next_header_size_error_returns_under_a_zero_budget() {
+    let mut start = Vec::new();
+    start.extend_from_slice(&0u64.to_le_bytes()); // next_header_offset
+    start.extend_from_slice(&1024u64.to_le_bytes()); // next_header_size
+    start.extend_from_slice(&0u32.to_le_bytes()); // next_header_crc
+    let mut bytes = vec![0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0x00, 0x04];
+    bytes.extend_from_slice(&crc32fast::hash(&start).to_le_bytes());
+    bytes.extend_from_slice(&start);
+    let mut source = Cursor::new(bytes);
+
+    let result = with_allocation_budget(0, || {
+        Archive::read(&mut source, &Password::empty()).map(|_| ())
+    });
+
+    assert_eq!(
+        format!("{result:?}"),
+        r#"Err(Other("Cannot handle next_header_size"))"#
+    );
+}

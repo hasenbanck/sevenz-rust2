@@ -32,7 +32,7 @@ pub enum Error {
     BadTerminatedSubStreamsInfo,
     /// Bad terminated header.
     BadTerminatedHeader(u8),
-    /// External compression method not supported.
+    /// Header data stored in an additional stream is not supported.
     ExternalUnsupported,
     /// Unsupported compression method.
     UnsupportedCompressionMethod(String),
