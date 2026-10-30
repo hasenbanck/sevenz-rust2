@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   broke the later entries of that block. The reader now decodes and verifies the unread data
   before it hands out the next entry with data. Skipping such an entry costs its decoding, and
   an error in its data ends the iteration.
+- A coder without exactly one output stream made `Block::get_unpack_size_for_coder` panic. The
+  reader rejects such a coder with an error.
 
 ## 0.24.1 - 2026-10-18
 

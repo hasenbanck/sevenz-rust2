@@ -786,3 +786,49 @@ fn block_without_packed_streams_is_rejected() {
         "a block without packed streams after a copy block must be rejected"
     );
 }
+
+/// Every coder has exactly one output stream. Here coder 1 declares none, so the block has two
+/// coders and one unpack size. `Block::get_unpack_size_for_coder` indexes the unpack sizes by
+/// the coder position. Opening the archive must fail.
+#[test]
+fn coder_without_output_stream_is_rejected() {
+    let nh: &[u8] = &[
+        K_HEADER,
+        K_MAIN_STREAMS_INFO,
+        K_PACK_INFO,
+        0x00, // pack_pos
+        0x02, // num_pack_streams
+        K_SIZE,
+        0x01, // pack_sizes[0] = 1
+        0x01, // pack_sizes[1] = 1
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+        0x02, // num_coders
+        0x01, // coder 0 flags: id_size=1, simple, no attributes
+        0x00, // coder 0 id = COPY
+        0x11, // coder 1 flags: id_size=1, complex, no attributes
+        0x00, // coder 1 id = COPY
+        0x01, // num_in_streams = 1
+        0x00, // num_out_streams = 0
+        0x00, // packed_streams[0] = 0
+        0x01, // packed_streams[1] = 1
+        K_CODERS_UNPACK_SIZE,
+        0x01,  // unpack_sizes[0] = 1
+        K_END, // unpack_info end
+        K_SUB_STREAMS_INFO,
+        K_END, // sub_streams_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x01,  // num_files = 1
+        K_END, // files_info props end
+        K_END, // header end
+    ];
+    let bytes = raw_7z_with_packed(&[0xAA, 0xBB], nh);
+    assert!(
+        open_err(&bytes).is_err(),
+        "a coder without an output stream must be rejected"
+    );
+}
