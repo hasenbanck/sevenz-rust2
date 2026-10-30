@@ -399,12 +399,12 @@ impl Archive {
                 next_header_size_int,
                 thread_count,
             )?;
-            // Read the decoded header lazily instead of pre-allocating `buf_size` bytes:
-            // a crafted encoded header can declare a huge unpack size, and `resize`
-            // would allocate it all up front (OOM) before any data is produced. `take`
-            // caps the read at the declared size while `read_to_end` grows the buffer to
-            // match only what is actually decoded, so the allocation tracks real input.
-            buf.clear();
+            // Read the decoded header lazily. `take` caps the read at the declared unpack
+            // size, and `read_to_end` grows the buffer only with decoded data. `read_to_end`
+            // grows a buffer past its starting capacity first with an infallible allocation
+            // of twice that capacity and later with fallible ones. A new buffer starts
+            // without capacity, and its infallible growth holds at most 32 bytes.
+            buf = Vec::new();
             (&mut out_reader)
                 .take(buf_size)
                 .read_to_end(&mut buf)
