@@ -381,7 +381,7 @@ impl Archive {
             .ok_or_else(|| Error::other("next header offset out of range"))?;
         reader.seek(SeekFrom::Start(header_pos))?;
 
-        let mut buf = vec![0; next_header_size_int];
+        let mut buf = try_vec(next_header_size_int, 0)?;
         reader.read_exact(&mut buf)?;
         if verify_crc && crc32fast::hash(&buf) as u64 != start_header.next_header_crc {
             return Err(Error::NextHeaderCrcMismatch);

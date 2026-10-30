@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the data.
 - Extracting an entry with a file time beyond the range of the platform's `SystemTime`
   panicked in the `decompress` functions on Windows. The extraction leaves such a time unset.
+- Opening a source larger than 2 GiB whose start header declares a next header beyond the
+  address space panicked on 32-bit targets. The reader returns an error for such a header.
 
 ## 0.24.1 - 2026-10-18
 
