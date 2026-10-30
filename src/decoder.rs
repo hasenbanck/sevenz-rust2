@@ -22,17 +22,20 @@ use crate::codec::lz4::Lz4Decoder;
 use crate::encryption::Aes256Sha256Decoder;
 use crate::{ByteReader, Password, archive::EncoderMethod, block::Coder, error::Error};
 
+#[cfg(any(feature = "ppmd", feature = "aes256"))]
 pub struct OutputBoundReader<R> {
     inner: R,
     remaining: u64,
 }
 
+#[cfg(any(feature = "ppmd", feature = "aes256"))]
 impl<R> OutputBoundReader<R> {
     fn new(inner: R, remaining: u64) -> Self {
         Self { inner, remaining }
     }
 }
 
+#[cfg(any(feature = "ppmd", feature = "aes256"))]
 impl<R: Read> Read for OutputBoundReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.remaining == 0 {
@@ -352,8 +355,9 @@ fn get_lzma_dic_size(coder: &Coder) -> io::Result<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Cursor;
+
+    use super::*;
 
     fn coder(method: &[u8], properties: Vec<u8>) -> Coder {
         let mut coder = Coder::default();
