@@ -954,3 +954,17 @@ fn block_with_too_many_input_streams_is_rejected() {
         );
     }
 }
+
+/// The LZMA2 encoded header decodes to 30,000,000 bytes and declares 29,999,984 files. Their
+/// entries need more than `isize::MAX` bytes on 32-bit targets. Opening the archive must fail
+/// with an error.
+#[cfg(target_pointer_width = "32")]
+#[test]
+fn encoded_header_with_too_many_files_for_the_address_space_is_rejected() {
+    let bytes = std::fs::read("tests/resources/encoded_header_with_many_files.bin").unwrap();
+
+    assert!(
+        open_err(&bytes).is_err(),
+        "files beyond the address space must be rejected"
+    );
+}

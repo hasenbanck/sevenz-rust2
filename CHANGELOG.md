@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A block with a very long chain of coders overflowed the stack, and a block with very many
   streams took quadratic time to open. The reader rejects a block with more than 64 coders or
   more than 64 input streams.
+- Opening an archive whose header declares so many files, blocks or streams that their entries
+  exceed the address space or the allocator aborted the process on 64-bit targets and panicked
+  on 32-bit targets. The reader returns an error for such a header.
 
 ## 0.24.1 - 2026-10-18
 

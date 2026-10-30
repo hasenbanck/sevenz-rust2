@@ -531,7 +531,7 @@ impl Archive {
         limit: usize,
     ) -> Result<(), Error> {
         let num_files = bounded_count(read_variable_u64(header)?, limit, "num files")?;
-        let mut files: Vec<ArchiveEntry> = vec![Default::default(); num_files];
+        let mut files: Vec<ArchiveEntry> = try_vec(num_files, Default::default())?;
 
         let mut is_empty_stream: Option<BitSet> = None;
         let mut is_empty_file: Option<BitSet> = None;
@@ -728,7 +728,7 @@ impl Archive {
 
         let mut next_block_pack_stream_index = 0;
         let num_blocks = archive.blocks.len();
-        stream_map.block_first_pack_stream_index = vec![0; num_blocks];
+        stream_map.block_first_pack_stream_index = try_vec(num_blocks, 0)?;
         for i in 0..num_blocks {
             stream_map.block_first_pack_stream_index[i] = next_block_pack_stream_index;
             // A block's pack-stream span `[first .. first + packed_streams.len())` is later
@@ -750,7 +750,7 @@ impl Archive {
         // does not re-sum the preceding blocks every time it opens one, which
         // made extracting an archive of many non-solid blocks quadratic.
         let mut next_sub_stream_index: usize = 0;
-        stream_map.block_first_sub_stream_index = vec![0; num_blocks];
+        stream_map.block_first_sub_stream_index = try_vec(num_blocks, 0)?;
         for i in 0..num_blocks {
             stream_map.block_first_sub_stream_index[i] = next_sub_stream_index;
             next_sub_stream_index = next_sub_stream_index
@@ -760,7 +760,7 @@ impl Archive {
 
         let mut next_pack_stream_offset: u64 = 0;
         let num_pack_sizes = archive.pack_sizes.len();
-        stream_map.pack_stream_offsets = vec![0; num_pack_sizes];
+        stream_map.pack_stream_offsets = try_vec(num_pack_sizes, 0)?;
         for i in 0..num_pack_sizes {
             stream_map.pack_stream_offsets[i] = next_pack_stream_offset;
             next_pack_stream_offset = next_pack_stream_offset
@@ -768,9 +768,9 @@ impl Archive {
                 .ok_or_else(|| Error::other("pack stream offset overflow"))?;
         }
 
-        stream_map.block_first_file_index = vec![0; num_blocks];
-        stream_map.block_end_file_index = vec![0; num_blocks];
-        stream_map.file_block_index = vec![None; archive.files.len()];
+        stream_map.block_first_file_index = try_vec(num_blocks, 0)?;
+        stream_map.block_end_file_index = try_vec(num_blocks, 0)?;
+        stream_map.file_block_index = try_vec(archive.files.len(), None)?;
         let mut next_block_index = 0;
         let mut next_block_unpack_stream_index = 0;
         for i in 0..archive.files.len() {
@@ -849,7 +849,7 @@ impl Archive {
             bounded_count(read_variable_u64(header)?, limit, "num pack streams")?;
         let mut nid = header.read_u8()?;
         if nid == K_SIZE {
-            archive.pack_sizes = vec![0u64; num_pack_streams];
+            archive.pack_sizes = try_vec(num_pack_streams, 0)?;
             for i in 0..archive.pack_sizes.len() {
                 archive.pack_sizes[i] = read_variable_u64(header)?;
             }
@@ -858,7 +858,7 @@ impl Archive {
 
         if nid == K_CRC {
             archive.pack_crcs_defined = read_all_or_bits(header, num_pack_streams)?;
-            archive.pack_crcs = vec![0; num_pack_streams];
+            archive.pack_crcs = try_vec(num_pack_streams, 0)?;
             for i in 0..num_pack_streams {
                 if archive.pack_crcs_defined.contains(i) {
                     archive.pack_crcs[i] = header.read_u32()? as u64;
@@ -884,7 +884,10 @@ impl Archive {
         }
         let num_blocks = bounded_count(read_variable_u64(header)?, limit, "num blocks")?;
 
-        archive.blocks.reserve_exact(num_blocks);
+        archive
+            .blocks
+            .try_reserve_exact(num_blocks)
+            .map_err(|e| Error::other(format!("cannot allocate {num_blocks} blocks: {e}")))?;
         let external = header.read_u8()?;
         if external != 0 {
             return Err(Error::ExternalUnsupported);
@@ -957,14 +960,14 @@ impl Archive {
             nid = header.read_u8()?;
         }
 
-        let mut sub_streams_info = SubStreamsInfo::default();
-        sub_streams_info
-            .unpack_sizes
-            .resize(total_unpack_streams, Default::default());
+        let mut sub_streams_info = SubStreamsInfo {
+            unpack_sizes: try_vec(total_unpack_streams, 0)?,
+            crcs: try_vec(total_unpack_streams, 0)?,
+            ..Default::default()
+        };
         sub_streams_info
             .has_crc
             .reserve_len_exact(total_unpack_streams);
-        sub_streams_info.crcs = vec![0; total_unpack_streams];
 
         let mut next_unpack_stream = 0;
         for block in archive.blocks.iter() {
@@ -1004,7 +1007,7 @@ impl Archive {
 
         if nid == K_CRC {
             let has_missing_crc = read_all_or_bits(header, num_digests)?;
-            let mut missing_crcs = vec![0; num_digests];
+            let mut missing_crcs = try_vec(num_digests, 0)?;
             for (i, missing_crc) in missing_crcs.iter_mut().enumerate() {
                 if has_missing_crc.contains(i) {
                     *missing_crc = header.read_u32()? as u64;
@@ -1185,6 +1188,16 @@ fn bounded_count(value: u64, limit: usize, field: &str) -> Result<usize, Error> 
         )));
     }
     Ok(value as usize)
+}
+
+/// Allocates `len` copies of `value` for a count from the archive header. Returns an error
+/// when the entries exceed the address space or the allocator fails.
+fn try_vec<T: Clone>(len: usize, value: T) -> Result<Vec<T>, Error> {
+    let mut vec = Vec::new();
+    vec.try_reserve_exact(len)
+        .map_err(|e| Error::other(format!("cannot allocate {len} header entries: {e}")))?;
+    vec.resize(len, value);
+    Ok(vec)
 }
 
 fn read_variable_u64<R: Read>(reader: &mut R) -> io::Result<u64> {
