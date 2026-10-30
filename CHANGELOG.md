@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   address space and abort the process on 32-bit targets. The reader builds the index on the
   first `read_file` or `file_compression_methods` call and returns an error when it does not
   fit.
+- Opening an archive with a very long entry name could exceed the address space and panic or
+  abort the process on 32-bit targets. The reader returns an error when a name does not fit.
 
 ## 0.24.1 - 2026-10-18
 

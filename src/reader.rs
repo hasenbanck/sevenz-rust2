@@ -1300,11 +1300,32 @@ impl<R: Read> Iterator for NamesReader<'_, R> {
             if u == 0 {
                 break;
             }
+            // A name can be as long as the header. Grow the buffer with fallible allocation.
+            if self.cache.len() == self.cache.capacity()
+                && let Err(e) = self.cache.try_reserve(self.cache.len())
+            {
+                return Some(Err(Error::other(format!(
+                    "cannot allocate an entry name: {e}"
+                ))));
+            }
             self.cache.push(u);
         }
 
-        Some(String::from_utf16(&self.cache).map_err(|e| Error::other(e.to_string())))
+        Some(utf16_to_string(&self.cache))
     }
+}
+
+/// Decodes a UTF-16 name. The name is allocated with fallible allocation at its exact length.
+fn utf16_to_string(units: &[u16]) -> Result<String, Error> {
+    let mut len = 0;
+    for c in char::decode_utf16(units.iter().copied()) {
+        len += c.map_err(|e| Error::other(e.to_string()))?.len_utf8();
+    }
+    let mut name = String::new();
+    name.try_reserve_exact(len)
+        .map_err(|e| Error::other(format!("cannot allocate an entry name: {e}")))?;
+    name.extend(char::decode_utf16(units.iter().copied()).flatten());
+    Ok(name)
 }
 
 #[derive(Copy, Clone)]
