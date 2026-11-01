@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Bumped `lzma-rust2` to 0.25.
+
 ### Fixed
 
 - Bound each decoded entry by its declared size and reject surplus output.
