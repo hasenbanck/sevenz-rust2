@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep reporting checksum and decoder errors when a callback ignores the first error.
 - Decode and verify the unread data of the last entry of a block when iteration continues, and
   reject a block whose decoded size differs from its declared size.
+- Reject at read time an archive whose number of files with a stream differs from its number of
+  sub-streams.
+- `ArchiveWriter::push_archive_entries` and `prepare_block` give a sub-stream only to an entry with
+  a stream. A directory in a solid block shifted the data of every later entry onto the wrong
+  entry. An entry without a stream whose reader returns data is now an error.
 
 ### Added
 

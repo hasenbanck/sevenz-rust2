@@ -981,6 +981,17 @@ impl Archive {
                 empty_file_counter += 1;
             }
         }
+        // Each sub-stream belongs to exactly one file with a stream, in order. A surplus
+        // sub-stream shifts the data of every later file onto the wrong entry.
+        let num_sub_streams = archive
+            .sub_streams_info
+            .as_ref()
+            .map_or(0, |info| info.unpack_sizes.len());
+        if non_empty_file_counter != num_sub_streams {
+            return Err(Error::other(
+                "Archive declares fewer streamed files than sub-streams",
+            ));
+        }
         archive.files = files;
 
         Self::calculate_stream_map(archive)?;

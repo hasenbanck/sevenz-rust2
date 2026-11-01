@@ -127,6 +127,99 @@ fn prepare_block_round_trips_through_push_prepared_block() {
 }
 
 #[cfg(feature = "compress")]
+type Sources = Vec<SourceReader<std::io::Cursor<Vec<u8>>>>;
+
+/// The entries of issue 157: a directory and an empty file between files with data.
+#[cfg(feature = "compress")]
+fn mixed_entries() -> (Vec<ArchiveEntry>, Sources) {
+    use std::io::Cursor;
+
+    let entries = vec![
+        ArchiveEntry::new_file("a.txt"),
+        ArchiveEntry::new_directory("dir"),
+        ArchiveEntry::new_file("b.txt"),
+        ArchiveEntry::new_file("empty.txt"),
+    ];
+    let readers = [&b"AAAAA"[..], b"", b"BBBBB", b""]
+        .iter()
+        .map(|data| SourceReader::new(Cursor::new(data.to_vec())))
+        .collect();
+    (entries, readers)
+}
+
+/// Every entry of an archive as `(name, contents)`, in order.
+#[cfg(feature = "compress")]
+fn read_entries(archive: Vec<u8>) -> Vec<(String, Vec<u8>)> {
+    let mut reader = ArchiveReader::new(std::io::Cursor::new(archive), Password::empty()).unwrap();
+    let mut entries = Vec::new();
+    reader
+        .for_each_entries(|entry, data| {
+            let mut buffer = Vec::new();
+            data.read_to_end(&mut buffer)?;
+            entries.push((entry.name.clone(), buffer));
+            Ok(true)
+        })
+        .unwrap();
+    entries
+}
+
+#[cfg(feature = "compress")]
+fn expected_mixed_entries() -> Vec<(String, Vec<u8>)> {
+    vec![
+        ("a.txt".to_string(), b"AAAAA".to_vec()),
+        ("dir".to_string(), Vec::new()),
+        ("b.txt".to_string(), b"BBBBB".to_vec()),
+        ("empty.txt".to_string(), Vec::new()),
+    ]
+}
+
+#[cfg(feature = "compress")]
+#[test]
+fn push_archive_entries_with_a_directory_round_trips() {
+    let (entries, readers) = mixed_entries();
+    let mut writer = ArchiveWriter::new(std::io::Cursor::new(Vec::new())).unwrap();
+    writer.push_archive_entries(entries, readers).unwrap();
+    let archive = writer.finish().unwrap().into_inner();
+
+    assert_eq!(read_entries(archive), expected_mixed_entries());
+}
+
+#[cfg(feature = "compress")]
+#[test]
+fn prepare_block_with_a_directory_round_trips() {
+    use std::sync::Arc;
+
+    let (entries, readers) = mixed_entries();
+    let methods = Arc::new(vec![EncoderConfiguration::new(EncoderMethod::LZMA2)]);
+    let block = prepare_block(methods, entries, readers).unwrap();
+    let mut writer = ArchiveWriter::new(std::io::Cursor::new(Vec::new())).unwrap();
+    writer.push_prepared_block(block).unwrap();
+    let archive = writer.finish().unwrap().into_inner();
+
+    assert_eq!(read_entries(archive), expected_mixed_entries());
+}
+
+#[cfg(feature = "compress")]
+#[test]
+fn push_archive_entries_rejects_data_for_a_directory() {
+    use std::io::Cursor;
+
+    let mut writer = ArchiveWriter::new(Cursor::new(Vec::new())).unwrap();
+    let result = writer.push_archive_entries(
+        vec![
+            ArchiveEntry::new_file("a.txt"),
+            ArchiveEntry::new_directory("dir"),
+        ],
+        vec![
+            SourceReader::new(Cursor::new(b"AAAAA".to_vec())),
+            SourceReader::new(Cursor::new(b"DIR".to_vec())),
+        ],
+    );
+
+    assert!(result.is_err());
+}
+
+#[cfg(feature = "compress")]
 #[test]
 fn prepare_block_refuses_an_empty_method_list() {
     use std::{io::Cursor, sync::Arc};

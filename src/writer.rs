@@ -268,7 +268,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             methods,
             sizes,
             crc,
-            entries.len() as u64,
+            sub_stream_sizes.len() as u64,
             sub_stream_sizes,
             sub_stream_crcs,
         );
@@ -464,17 +464,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             (w.crc_value(), write_len)
         };
         let compressed_crc = compressed.crc_value();
-        let mut sub_stream_crcs = Vec::with_capacity(entries.len());
-        let mut sub_stream_sizes = Vec::with_capacity(entries.len());
-        for i in 0..entries.len() {
-            let entry = &mut entries[i];
-            let ri = &r[i];
-            entry.crc = ri.crc_value() as u64;
-            entry.size = ri.read_count() as u64;
-            sub_stream_crcs.push(entry.crc as u32);
-            sub_stream_sizes.push(entry.size);
-            entry.has_crc = true;
-        }
+        let (sub_stream_sizes, sub_stream_crcs) = sub_streams(&mut entries, &r)?;
 
         self.pack_info
             .add_stream(compressed_len as u64, Some(compressed_crc));
@@ -487,7 +477,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             content_methods.clone(),
             sizes,
             crc,
-            entries.len() as u64,
+            sub_stream_sizes.len() as u64,
             sub_stream_sizes,
             sub_stream_crcs,
         );
@@ -876,6 +866,38 @@ impl PreparedBlock {
     }
 }
 
+/// Sizes and CRCs of the sub-streams of a solid block, one for each entry with a stream, in
+/// order. Sets the size and CRC of every entry from the data its reader returned. An entry
+/// without a stream has no sub-stream, and its reader must return no data.
+fn sub_streams<R>(
+    entries: &mut [ArchiveEntry],
+    readers: &[SourceReader<R>],
+) -> Result<(Vec<u64>, Vec<u32>)> {
+    let mut sizes = Vec::with_capacity(entries.len());
+    let mut crcs = Vec::with_capacity(entries.len());
+    for (entry, reader) in entries.iter_mut().zip(readers) {
+        if !entry.has_stream {
+            if reader.read_count() != 0 {
+                return Err(Error::other(format!(
+                    "entry '{}' has no stream, but its reader returned {} bytes",
+                    entry.name,
+                    reader.read_count()
+                )));
+            }
+            entry.crc = 0;
+            entry.size = 0;
+            entry.has_crc = false;
+            continue;
+        }
+        entry.crc = reader.crc_value() as u64;
+        entry.size = reader.read_count() as u64;
+        entry.has_crc = true;
+        sizes.push(entry.size);
+        crcs.push(entry.crc as u32);
+    }
+    Ok((sizes, crcs))
+}
+
 /// Compress `entries` into one solid block using `methods`, without a writer.
 ///
 /// Mirrors the encoding half of [`ArchiveWriter::push_archive_entries`], writing into memory instead
@@ -954,17 +976,7 @@ pub fn prepare_block<R: Read>(
         (crc, size, compressed.crc_value())
     };
 
-    let mut sub_stream_crcs = Vec::with_capacity(entries.len());
-    let mut sub_stream_sizes = Vec::with_capacity(entries.len());
-    for i in 0..entries.len() {
-        let entry = &mut entries[i];
-        let ri = &r[i];
-        entry.crc = ri.crc_value() as u64;
-        entry.size = ri.read_count() as u64;
-        sub_stream_crcs.push(entry.crc as u32);
-        sub_stream_sizes.push(entry.size);
-        entry.has_crc = true;
-    }
+    let (sub_stream_sizes, sub_stream_crcs) = sub_streams(&mut entries, &r)?;
 
     let mut sizes = Vec::with_capacity(more_sizes.len() + 1);
     sizes.extend(more_sizes.iter().map(|s| s.get() as u64));
