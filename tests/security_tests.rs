@@ -65,6 +65,7 @@ const K_SIZE: u8 = 0x09;
 const K_FOLDER: u8 = 0x0B;
 const K_CODERS_UNPACK_SIZE: u8 = 0x0C;
 const K_NUM_UNPACK_STREAM: u8 = 0x0D;
+const K_EMPTY_STREAM: u8 = 0x0E;
 const K_NAME: u8 = 0x11;
 const K_DUMMY: u8 = 0x19;
 
@@ -320,6 +321,51 @@ fn more_substreams_than_files_is_rejected() {
     assert!(
         decode_err(&bytes).is_err(),
         "more sub-streams than files must be rejected, not panic"
+    );
+}
+
+/// A solid block with two sub-streams for two files, where the second file is a directory
+/// without a stream. One file with a stream faces two sub-streams.
+#[test]
+fn fewer_streamed_files_than_substreams_is_rejected() {
+    let nh: &[u8] = &[
+        K_HEADER,
+        K_MAIN_STREAMS_INFO,
+        K_PACK_INFO,
+        0x00, // pack_pos
+        0x01, // num_pack_streams
+        K_SIZE,
+        0x05, // pack_sizes[0] = 5
+        K_END,
+        K_UNPACK_INFO,
+        K_FOLDER,
+        0x01, // num_blocks
+        0x00, // external
+        0x01, // num_coders
+        0x01, // coder flags: id_size=1, simple, no attributes
+        0x00, // coder id = COPY
+        K_CODERS_UNPACK_SIZE,
+        0x05, // unpack_sizes[0] = 5 (block total)
+        K_END,
+        K_SUB_STREAMS_INFO,
+        K_NUM_UNPACK_STREAM,
+        0x02, // block0 num_unpack_sub_streams = 2
+        K_SIZE,
+        0x05,  // sub-stream 0 size = 5 (sub-stream 1 derived as 5 - 5 = 0)
+        K_END, // sub_streams_info end
+        K_END, // streams_info end
+        K_FILES_INFO,
+        0x02, // num_files = 2
+        K_EMPTY_STREAM,
+        0x01,        // property size
+        0b0100_0000, // file 1 has no stream
+        K_END,       // files_info props end
+        K_END,       // header end
+    ];
+    let bytes = raw_7z_with_packed(&[0xAA; 5], nh);
+    assert!(
+        open_err(&bytes).is_err(),
+        "fewer streamed files than sub-streams must be rejected at open"
     );
 }
 
