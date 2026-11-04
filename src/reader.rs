@@ -252,6 +252,8 @@ struct DeclaredSizeReader<R> {
     inner: R,
     remaining: u64,
     reject_surplus: bool,
+    allow_surplus: bool,
+    surplus_seen: bool,
 }
 
 impl<R: Read> Read for DeclaredSizeReader<R> {
@@ -260,6 +262,20 @@ impl<R: Read> Read for DeclaredSizeReader<R> {
             return Ok(0);
         }
         if self.remaining == 0 {
+            if self.allow_surplus {
+                let size = self.inner.read(buf)?;
+                if size > 0 {
+                    self.surplus_seen = true;
+                    return Ok(size);
+                }
+                if self.surplus_seen {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "decoded data exceeds declared size",
+                    ));
+                }
+                return Ok(0);
+            }
             if !self.reject_surplus {
                 return Ok(0);
             }
@@ -2063,7 +2079,37 @@ impl<R: Read + Seek> ArchiveReader<R> {
         F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<EntryDecision, Error>,
     >(
         &mut self,
+        each: F,
+    ) -> Result<(), Error> {
+        self.for_each_entries_with_decision_impl(each, false)
+    }
+
+    /// Like [`Self::for_each_entries_with_decision`], but exposes decoded
+    /// output beyond the declared size of the final streamed entry in each
+    /// block when the codec can identify the end of its stream. This is useful
+    /// for scanners that need to inspect output from a malformed archive whose
+    /// declared size is too small.
+    ///
+    /// Earlier entries in a solid block remain bounded by their declared
+    /// sizes because those sizes define the boundaries between files. The
+    /// callback is responsible for enforcing an appropriate output limit.
+    /// A size mismatch is reported after the final entry's decoded output has
+    /// been consumed.
+    pub fn for_each_entries_with_decision_allowing_surplus<
+        F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<EntryDecision, Error>,
+    >(
+        &mut self,
+        each: F,
+    ) -> Result<(), Error> {
+        self.for_each_entries_with_decision_impl(each, true)
+    }
+
+    fn for_each_entries_with_decision_impl<
+        F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<EntryDecision, Error>,
+    >(
+        &mut self,
         mut each: F,
+        allow_surplus: bool,
     ) -> Result<(), Error> {
         let block_count = self.archive.blocks.len();
         for block_index in 0..block_count {
@@ -2075,7 +2121,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 &self.password,
                 &mut self.source,
             );
-            match forder_dec.for_each_entries_with_decision(&mut each)? {
+            match forder_dec.for_each_entries_with_decision(&mut each, allow_surplus)? {
                 EntryDecision::Continue | EntryDecision::SkipBlock => {}
                 EntryDecision::Stop => return Ok(()),
             }
@@ -2168,6 +2214,8 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     inner: &mut block_reader,
                     remaining: file.size,
                     reject_surplus: true,
+                    allow_surplus: false,
+                    surplus_seen: false,
                 });
 
                 if file.has_crc {
@@ -2314,13 +2362,16 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         self,
         each: &mut F,
     ) -> Result<bool, Error> {
-        let decision = self.for_each_entries_with_decision(&mut |entry, reader| {
-            Ok(if each(entry, reader)? {
-                EntryDecision::Continue
-            } else {
-                EntryDecision::SkipBlock
-            })
-        })?;
+        let decision = self.for_each_entries_with_decision(
+            &mut |entry, reader| {
+                Ok(if each(entry, reader)? {
+                    EntryDecision::Continue
+                } else {
+                    EntryDecision::SkipBlock
+                })
+            },
+            false,
+        )?;
         Ok(decision == EntryDecision::Continue)
     }
 
@@ -2329,6 +2380,7 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
     >(
         self,
         each: &mut F,
+        allow_surplus: bool,
     ) -> Result<EntryDecision, Error> {
         let Self {
             thread_count,
@@ -2358,14 +2410,16 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
         for file_index in start..end {
             let file = &archive.files[file_index];
             if file.has_stream {
-                // Declared sizes preserve member boundaries in solid blocks and
-                // prevent a malformed final member from exposing unbounded output.
-                // An entry that ends before its declared size is an error.
+                // Declared sizes preserve member boundaries in solid blocks.
+                // The opt-in surplus mode only relaxes the final streamed
+                // entry, whose remaining output cannot belong to another file.
                 let is_last = Some(file_index) == last_stream_index;
                 let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
                     inner: &mut block_reader,
                     remaining: file.size,
                     reject_surplus: is_last,
+                    allow_surplus: allow_surplus && is_last,
+                    surplus_seen: false,
                 });
                 if file.has_crc {
                     decoder = if is_last {
@@ -2530,6 +2584,22 @@ mod streaming_hardening_tests {
         });
 
         assert_eq!(observed, &payload[..5]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn allowing_surplus_delivers_final_entry_output_before_rejection() {
+        let payload = b"clean-prefix-MALICIOUS-SUFFIX";
+        let (archive, source) = copy_archive(5, payload);
+        let mut reader = ArchiveReader::from_archive(archive, source, Password::empty());
+        let mut observed = Vec::new();
+
+        let result = reader.for_each_entries_with_decision_allowing_surplus(|_entry, input| {
+            input.read_to_end(&mut observed)?;
+            Ok(EntryDecision::Continue)
+        });
+
+        assert_eq!(observed, payload);
         assert!(result.is_err());
     }
 
