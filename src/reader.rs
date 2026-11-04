@@ -245,14 +245,22 @@ impl<R: Read> Read for Crc32VerifyingPassthroughReader<R> {
     }
 }
 
-/// Read exactly the size declared for an entry. An early end of the decoder is
-/// an error. With `reject_surplus`, probe the decoder once after the declared
-/// size to reject any surplus output.
+#[derive(Clone, Copy)]
+enum DeclaredSizePolicy {
+    /// Treat the declared size as the boundary between entries in a solid block.
+    Bounded,
+    /// Probe after the declared size and reject any surplus without exposing it.
+    RejectSurplus,
+    /// Expose surplus output, then report a size mismatch after decoder EOF.
+    ExposeSurplus,
+}
+
+/// Read an entry according to its declared-size policy. An early end of the
+/// decoder is always an error.
 struct DeclaredSizeReader<R> {
     inner: R,
     remaining: u64,
-    reject_surplus: bool,
-    allow_surplus: bool,
+    policy: DeclaredSizePolicy,
     surplus_seen: bool,
 }
 
@@ -262,30 +270,32 @@ impl<R: Read> Read for DeclaredSizeReader<R> {
             return Ok(0);
         }
         if self.remaining == 0 {
-            if self.allow_surplus {
-                let size = self.inner.read(buf)?;
-                if size > 0 {
-                    self.surplus_seen = true;
-                    return Ok(size);
+            match self.policy {
+                DeclaredSizePolicy::Bounded => return Ok(0),
+                DeclaredSizePolicy::RejectSurplus => {
+                    return match self.inner.read(&mut [0])? {
+                        0 => Ok(0),
+                        _ => Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "decoded data exceeds declared size",
+                        )),
+                    };
                 }
-                if self.surplus_seen {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "decoded data exceeds declared size",
-                    ));
+                DeclaredSizePolicy::ExposeSurplus => {
+                    let size = self.inner.read(buf)?;
+                    if size > 0 {
+                        self.surplus_seen = true;
+                        return Ok(size);
+                    }
+                    if self.surplus_seen {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "decoded data exceeds declared size",
+                        ));
+                    }
+                    return Ok(0);
                 }
-                return Ok(0);
             }
-            if !self.reject_surplus {
-                return Ok(0);
-            }
-            return match self.inner.read(&mut [0])? {
-                0 => Ok(0),
-                _ => Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "decoded data exceeds declared size",
-                )),
-            };
         }
 
         let bound = buf
@@ -2213,8 +2223,7 @@ impl<R: Read + Seek> ArchiveReader<R> {
                 let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
                     inner: &mut block_reader,
                     remaining: file.size,
-                    reject_surplus: true,
-                    allow_surplus: false,
+                    policy: DeclaredSizePolicy::RejectSurplus,
                     surplus_seen: false,
                 });
 
@@ -2417,8 +2426,11 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
                 let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
                     inner: &mut block_reader,
                     remaining: file.size,
-                    reject_surplus: is_last,
-                    allow_surplus: allow_surplus && is_last,
+                    policy: match (is_last, allow_surplus) {
+                        (false, _) => DeclaredSizePolicy::Bounded,
+                        (true, false) => DeclaredSizePolicy::RejectSurplus,
+                        (true, true) => DeclaredSizePolicy::ExposeSurplus,
+                    },
                     surplus_seen: false,
                 });
                 if file.has_crc {
