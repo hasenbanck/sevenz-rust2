@@ -700,6 +700,90 @@ fn raw_7z(pack: &[u8], header: &[u8]) -> Vec<u8> {
     out
 }
 
+/// A seekable source that counts the bytes the reader takes from it.
+#[cfg(feature = "compress")]
+struct CountingSource<'a> {
+    inner: std::io::Cursor<Vec<u8>>,
+    read: &'a std::cell::Cell<u64>,
+}
+
+#[cfg(feature = "compress")]
+impl std::io::Read for CountingSource<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let size = self.inner.read(buf)?;
+        self.read.set(self.read.get() + size as u64);
+        Ok(size)
+    }
+}
+
+#[cfg(feature = "compress")]
+impl std::io::Seek for CountingSource<'_> {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.inner.seek(pos)
+    }
+}
+
+/// Continuing after a limited callback read must not drain the full surplus.
+#[cfg(feature = "compress")]
+#[test]
+fn continue_after_limited_read_does_not_drain_surplus() {
+    use std::{cell::Cell, io::Write};
+
+    use sevenz_rust2::EntryDecision;
+
+    const DECLARED: u64 = 16;
+
+    let mut options = lzma_rust2::Lzma2Options::with_preset(1);
+    options.lzma_options.dict_size = 1 << 20;
+    let mut writer = lzma_rust2::Lzma2Writer::new(Vec::new(), options);
+    let zeros = vec![0; 1 << 20];
+    for _ in 0..64 {
+        writer.write_all(&zeros).unwrap();
+    }
+    let pack = writer.finish().unwrap();
+
+    // LZMA2 coder: id size 1 with properties, id 0x21, one property byte for a 1 MiB dictionary.
+    let block = RawBlock {
+        coder: vec![0x21, 0x21, 0x01, 16],
+        unpack_size: DECLARED,
+        crc: None,
+        sub_streams: vec![DECLARED],
+    };
+    let header = raw_header(&[pack.len() as u64], &[block], &["bomb"], &[]);
+    let archive = raw_7z(&pack, &header);
+
+    // The first limit ends inside the declared size, the others inside the surplus.
+    for limit in [8, DECLARED, 4096] {
+        let read = Cell::new(0);
+        let source = CountingSource {
+            inner: std::io::Cursor::new(archive.clone()),
+            read: &read,
+        };
+        let mut reader = ArchiveReader::new(source, Password::empty()).unwrap();
+        reader.set_thread_count(1);
+        let before = read.get();
+
+        let mut delivered = 0;
+        let result = reader.for_each_entries_with_decision_allowing_surplus(|_entry, data| {
+            delivered +=
+                std::io::copy(&mut std::io::Read::take(data, limit), &mut std::io::sink())?;
+            Ok(EntryDecision::Continue)
+        });
+        let taken = read.get() - before;
+
+        assert_eq!(delivered, limit, "the callback reads up to its own limit");
+        assert!(
+            result.is_err(),
+            "the surplus must fail the iteration with limit {limit}, got: {result:?}"
+        );
+        assert!(
+            taken < pack.len() as u64 / 4,
+            "with limit {limit} the iteration took {taken} of {} packed bytes",
+            pack.len()
+        );
+    }
+}
+
 /// A solid LZMA2 block declares two 16 byte entries but decodes to 16 MiB. No entry
 /// may hand out more bytes than its declared size, neither through `for_each_entries`
 /// nor through `read_file`.
