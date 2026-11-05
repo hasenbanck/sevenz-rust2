@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashMap,
     fs::File,
     io,
@@ -257,23 +257,29 @@ enum DeclaredSizePolicy {
 
 /// Read an entry according to its declared-size policy. An early end of the
 /// decoder is always an error.
-struct DeclaredSizeReader<R> {
+struct DeclaredSizeReader<'a, R> {
     inner: R,
     remaining: u64,
-    policy: DeclaredSizePolicy,
+    policy: &'a Cell<DeclaredSizePolicy>,
     surplus_seen: bool,
 }
 
-impl<R: Read> Read for DeclaredSizeReader<R> {
+impl<R: Read> Read for DeclaredSizeReader<'_, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
         if self.remaining == 0 {
-            match self.policy {
+            match self.policy.get() {
                 DeclaredSizePolicy::Bounded => return Ok(0),
                 DeclaredSizePolicy::RejectSurplus => {
-                    return match self.inner.read(&mut [0])? {
+                    if self.surplus_seen {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "decoded data exceeds declared size",
+                        ));
+                    }
+                    return match self.inner.read(&mut [0u8; 1])? {
                         0 => Ok(0),
                         _ => Err(io::Error::new(
                             io::ErrorKind::InvalidData,
@@ -2102,9 +2108,10 @@ impl<R: Read + Seek> ArchiveReader<R> {
     ///
     /// Earlier entries in a solid block remain bounded by their declared
     /// sizes because those sizes define the boundaries between files. The
-    /// callback is responsible for enforcing an appropriate output limit.
-    /// A size mismatch is reported after the final entry's decoded output has
-    /// been consumed.
+    /// callback is responsible for limiting any surplus output it reads.
+    /// After it returns, unread data is drained only through the declared size;
+    /// at most one additional decoded byte is probed to detect surplus. A size
+    /// mismatch is reported if surplus output is found.
     pub fn for_each_entries_with_decision_allowing_surplus<
         F: FnMut(&ArchiveEntry, &mut dyn Read) -> Result<EntryDecision, Error>,
     >(
@@ -2220,10 +2227,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
                     Vec::with_capacity(file.size.min(MAX_PREALLOC_BYTES as u64) as usize);
                 // The entry is the only entry with data in its block. Reading it to the end of
                 // the block verifies the block CRC and rejects surplus output.
+                let policy = Cell::new(DeclaredSizePolicy::RejectSurplus);
                 let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
                     inner: &mut block_reader,
                     remaining: file.size,
-                    policy: DeclaredSizePolicy::RejectSurplus,
+                    policy: &policy,
                     surplus_seen: false,
                 });
 
@@ -2423,14 +2431,15 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
                 // The opt-in surplus mode only relaxes the final streamed
                 // entry, whose remaining output cannot belong to another file.
                 let is_last = Some(file_index) == last_stream_index;
+                let policy = Cell::new(match (is_last, allow_surplus) {
+                    (false, _) => DeclaredSizePolicy::Bounded,
+                    (true, false) => DeclaredSizePolicy::RejectSurplus,
+                    (true, true) => DeclaredSizePolicy::ExposeSurplus,
+                });
                 let mut decoder: Box<dyn Read> = Box::new(DeclaredSizeReader {
                     inner: &mut block_reader,
                     remaining: file.size,
-                    policy: match (is_last, allow_surplus) {
-                        (false, _) => DeclaredSizePolicy::Bounded,
-                        (true, false) => DeclaredSizePolicy::RejectSurplus,
-                        (true, true) => DeclaredSizePolicy::ExposeSurplus,
-                    },
+                    policy: &policy,
                     surplus_seen: false,
                 });
                 if file.has_crc {
@@ -2446,6 +2455,12 @@ impl<'a, R: Read + Seek> BlockDecoder<'a, R> {
                     .map_err(|e| e.maybe_bad_password(!self.password.is_empty()))?;
                 if decision != EntryDecision::Continue {
                     return Ok(decision);
+                }
+                if is_last && allow_surplus {
+                    // The callback controls how much malformed surplus it
+                    // inspects. The integrity drain must never decode all of
+                    // the surplus from a potentially hostile stream.
+                    policy.set(DeclaredSizePolicy::RejectSurplus);
                 }
                 // A callback may intentionally read only part of an entry.
                 // Drain the remainder so solid-stream state, actual-output
