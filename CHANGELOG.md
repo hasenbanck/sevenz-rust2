@@ -7,13 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.25.0 - 2026-11-06
+
 ### Changed
 
 - Bumped `lzma-rust2` to 0.25.
+- An LZMA entry hands out the data it decoded before a decoding error.
 
 ### Fixed
 
 - Bound each decoded entry by its declared size and reject surplus output.
+- `read_file` verifies the block CRC of an entry that is the only entry with data in its block.
 - Reject an entry whose decoded data ends before its declared size. `for_each_entries`,
   `BlockDecoder::for_each_entries` and `read_file` returned such an entry as complete and skipped
   its CRC check. With a wrong password, `read_file` could return an empty entry.
@@ -35,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ArchiveReader::new_with_memory_limit()`, `Archive::read_with_memory_limit()`, and
   `BlockDecoder::new_with_memory_limit()` for limiting header and decoder dictionary/model allocations.
 - `Archive::is_file_encrypted()` to report whether an entry's compression block uses 7z AES.
+- `ArchiveReader::for_each_entries_with_decision_allowing_surplus()` for scanners of malformed archives.
 
 ## 0.24.2 - 2026-10-30
 
