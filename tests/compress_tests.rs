@@ -579,3 +579,28 @@ fn compress_path_does_not_emit_root_dir_entry() {
     assert!(names.iter().any(|n| n == "sub"));
     assert!(names.iter().any(|n| n == "sub/file2.txt"));
 }
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn decompress_keeps_unix_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = tempdir().unwrap();
+    let dest = temp_dir.path().join("mode.7z");
+    {
+        let mut writer = ArchiveWriter::new(File::create(&dest).unwrap()).unwrap();
+        let mut entry = ArchiveEntry::new_file("run.sh");
+        entry.has_windows_attributes = true;
+        entry.windows_attributes = 0x8000 | (0o100755 << 16);
+        writer
+            .push_archive_entry(entry, Some(b"#!/bin/sh\n".as_slice()))
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let out = temp_dir.path().join("out");
+    decompress_file(&dest, &out).expect("decompress ok");
+    let mode = std::fs::metadata(out.join("run.sh")).unwrap().permissions().mode();
+    // the umask still applies, so check the owner's execute bit
+    assert_ne!(mode & 0o100, 0, "mode {mode:o}");
+}
