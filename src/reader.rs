@@ -2281,6 +2281,11 @@ impl<R: Read + Seek> ArchiveReader<R> {
 
         Ok(())
     }
+
+    /// Returns the underlying reader
+    pub fn into_inner(self) -> R {
+        self.source
+    }
 }
 
 /// Decoder for a specific block within a 7z archive.
