@@ -216,8 +216,12 @@ pub fn default_entry_extract_fn(
                 None
             }
         });
+        if std::fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_dir()) {
+            std::fs::remove_file(path)
+                .map_err(|e| Error::file_open(e, path.to_string_lossy().to_string()))?;
+        }
         let mut options = OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        options.write(true).create_new(true);
         // 7-Zip on Unix stores st_mode in the high 16 bits, flagged by 0x8000.
         #[cfg(unix)]
         if entry.has_windows_attributes && entry.windows_attributes & 0x8000 != 0 {
@@ -252,7 +256,6 @@ pub fn default_entry_extract_fn(
 
             let _ = file.set_times(file_times);
         }
-
     }
 
     Ok(true)

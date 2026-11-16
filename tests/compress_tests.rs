@@ -580,6 +580,17 @@ fn compress_path_does_not_emit_root_dir_entry() {
     assert!(names.iter().any(|n| n == "sub/file2.txt"));
 }
 
+/// Writes an archive with one file entry that carries the Unix mode `st_mode`.
+#[cfg(all(feature = "compress", feature = "util", unix))]
+fn unix_mode_archive(path: &std::path::Path, name: &str, st_mode: u32, content: &[u8]) {
+    let mut writer = ArchiveWriter::new(File::create(path).unwrap()).unwrap();
+    let mut entry = ArchiveEntry::new_file(name);
+    entry.has_windows_attributes = true;
+    entry.windows_attributes = 0x8000 | (st_mode << 16);
+    writer.push_archive_entry(entry, Some(content)).unwrap();
+    writer.finish().unwrap();
+}
+
 #[cfg(all(feature = "compress", feature = "util", unix))]
 #[test]
 fn decompress_keeps_unix_file_mode() {
@@ -587,20 +598,52 @@ fn decompress_keeps_unix_file_mode() {
 
     let temp_dir = tempdir().unwrap();
     let dest = temp_dir.path().join("mode.7z");
-    {
-        let mut writer = ArchiveWriter::new(File::create(&dest).unwrap()).unwrap();
-        let mut entry = ArchiveEntry::new_file("run.sh");
-        entry.has_windows_attributes = true;
-        entry.windows_attributes = 0x8000 | (0o100755 << 16);
-        writer
-            .push_archive_entry(entry, Some(b"#!/bin/sh\n".as_slice()))
-            .unwrap();
-        writer.finish().unwrap();
-    }
+    unix_mode_archive(&dest, "run.sh", 0o100755, b"#!/bin/sh\n");
 
     let out = temp_dir.path().join("out");
     decompress_file(&dest, &out).expect("decompress ok");
-    let mode = std::fs::metadata(out.join("run.sh")).unwrap().permissions().mode();
+    let mode = std::fs::metadata(out.join("run.sh"))
+        .unwrap()
+        .permissions()
+        .mode();
     // the umask still applies, so check the owner's execute bit
+    assert_ne!(mode & 0o100, 0, "mode {mode:o}");
+}
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn decompress_replaces_read_only_file() {
+    let temp_dir = tempdir().unwrap();
+    let old = temp_dir.path().join("old.7z");
+    let new = temp_dir.path().join("new.7z");
+    unix_mode_archive(&old, "ro.txt", 0o100444, b"old");
+    unix_mode_archive(&new, "ro.txt", 0o100444, b"new");
+
+    let out = temp_dir.path().join("out");
+    decompress_file(&old, &out).expect("first extraction");
+    decompress_file(&new, &out).expect("second extraction into the same directory");
+    assert_eq!(std::fs::read(out.join("ro.txt")).unwrap(), b"new");
+}
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn decompress_applies_unix_file_mode_to_existing_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = tempdir().unwrap();
+    let dest = temp_dir.path().join("mode.7z");
+    unix_mode_archive(&dest, "run.sh", 0o100755, b"#!/bin/sh\n");
+
+    let out = temp_dir.path().join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::write(out.join("run.sh"), b"old").unwrap();
+    std::fs::set_permissions(out.join("run.sh"), std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    decompress_file(&dest, &out).expect("decompress ok");
+    let mode = std::fs::metadata(out.join("run.sh"))
+        .unwrap()
+        .permissions()
+        .mode();
+    // The umask still applies. The owner execute bit survives any common umask.
     assert_ne!(mode & 0o100, 0, "mode {mode:o}");
 }
