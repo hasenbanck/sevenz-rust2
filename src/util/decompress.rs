@@ -191,7 +191,7 @@ pub fn default_entry_extract_fn(
     reader: &mut dyn Read,
     dest: &PathBuf,
 ) -> Result<bool, Error> {
-    use std::{fs::File, io::BufWriter, path::Component};
+    use std::{fs::OpenOptions, io::BufWriter, path::Component};
 
     // Reject any `..` component so a relative-traversal path can never reach a write.
     // (An absolute escape cannot be detected here, as the destination root is unknown.)
@@ -216,7 +216,24 @@ pub fn default_entry_extract_fn(
                 None
             }
         });
-        let file = File::create(path)
+        if std::fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_dir()) {
+            std::fs::remove_file(path)
+                .map_err(|e| Error::file_open(e, path.to_string_lossy().to_string()))?;
+        }
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        // 7-Zip on Unix stores st_mode in the high 16 bits, flagged by 0x8000.
+        #[cfg(unix)]
+        if entry.has_windows_attributes && entry.windows_attributes & 0x8000 != 0 {
+            use std::os::unix::fs::OpenOptionsExt;
+            let st_mode = entry.windows_attributes >> 16;
+            // Regular files only; the umask applies and setuid, setgid and sticky bits are dropped.
+            if st_mode & 0o170000 == 0o100000 {
+                options.mode(st_mode & 0o777);
+            }
+        }
+        let file = options
+            .open(path)
             .map_err(|e| Error::file_open(e, path.to_string_lossy().to_string()))?;
         if entry.size() > 0 {
             let mut writer = BufWriter::new(file);
