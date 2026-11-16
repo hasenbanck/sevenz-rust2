@@ -647,3 +647,127 @@ fn decompress_applies_unix_file_mode_to_existing_file() {
     // The umask still applies. The owner execute bit survives any common umask.
     assert_ne!(mode & 0o100, 0, "mode {mode:o}");
 }
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn compress_path_follows_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempdir().unwrap();
+    let folder = temp_dir.path().join("proj");
+    std::fs::create_dir_all(folder.join("lib")).unwrap();
+    std::fs::write(folder.join("lib/libfoo.so.1"), "data").unwrap();
+    symlink("libfoo.so.1", folder.join("lib/libfoo.so")).unwrap();
+    symlink("lib", folder.join("lib64")).unwrap();
+    symlink("missing", folder.join("dangling")).unwrap();
+
+    let dest = temp_dir.path().join("proj.7z");
+    compress_to_path(&folder, &dest).expect("compress ok");
+
+    let mut reader = ArchiveReader::new(File::open(&dest).unwrap(), Password::empty()).unwrap();
+    let mut names: Vec<String> = reader
+        .archive()
+        .files
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "lib",
+            "lib/libfoo.so",
+            "lib/libfoo.so.1",
+            "lib64",
+            "lib64/libfoo.so",
+            "lib64/libfoo.so.1"
+        ]
+    );
+    assert_eq!(reader.read_file("lib/libfoo.so").unwrap(), b"data");
+    assert_eq!(reader.read_file("lib64/libfoo.so.1").unwrap(), b"data");
+}
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn compress_rejects_symlink_cycle() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempdir().unwrap();
+
+    // A link to the parent directory.
+    let parent_cycle = temp_dir.path().join("parent");
+    std::fs::create_dir_all(parent_cycle.join("sub")).unwrap();
+    symlink("..", parent_cycle.join("sub/up")).unwrap();
+
+    // Two sibling directories that link to each other.
+    let sibling_cycle = temp_dir.path().join("sibling");
+    std::fs::create_dir_all(sibling_cycle.join("x")).unwrap();
+    std::fs::create_dir_all(sibling_cycle.join("y")).unwrap();
+    symlink("../y", sibling_cycle.join("x/to_y")).unwrap();
+    symlink("../x", sibling_cycle.join("y/to_x")).unwrap();
+
+    for folder in [parent_cycle, sibling_cycle] {
+        let dest = temp_dir.path().join("cycle.7z");
+        let result = compress_to_path(&folder, &dest);
+        assert!(result.is_err(), "compress_to_path {folder:?}: {result:?}");
+
+        let mut writer = ArchiveWriter::new(Cursor::new(Vec::new())).unwrap();
+        let result = writer.push_source_path(&folder, |_| true).map(|_| ());
+        assert!(result.is_err(), "push_source_path {folder:?}: {result:?}");
+    }
+}
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn compress_reports_unresolvable_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempdir().unwrap();
+    let folder = temp_dir.path().join("proj");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("a.txt"), "data").unwrap();
+    // Each link points to the other. Resolving them fails with ELOOP.
+    symlink("y", folder.join("x")).unwrap();
+    symlink("x", folder.join("y")).unwrap();
+
+    let dest = temp_dir.path().join("proj.7z");
+    let result = compress_to_path(&folder, &dest);
+    assert!(result.is_err(), "compress_to_path: {result:?}");
+}
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
+fn push_source_path_follows_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempdir().unwrap();
+    let folder = temp_dir.path().join("proj");
+    std::fs::create_dir_all(folder.join("lib")).unwrap();
+    std::fs::write(folder.join("lib/libfoo.so.1"), "data").unwrap();
+    symlink("libfoo.so.1", folder.join("lib/libfoo.so")).unwrap();
+    symlink("lib", folder.join("lib64")).unwrap();
+    symlink("missing", folder.join("dangling")).unwrap();
+
+    let dest = temp_dir.path().join("proj.7z");
+    let mut writer = ArchiveWriter::create(&dest).unwrap();
+    writer.push_source_path(&folder, |_| true).unwrap();
+    writer.finish().unwrap();
+
+    let mut reader = ArchiveReader::new(File::open(&dest).unwrap(), Password::empty()).unwrap();
+    let mut names: Vec<String> = reader
+        .archive()
+        .files
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "lib/libfoo.so",
+            "lib/libfoo.so.1",
+            "lib64/libfoo.so",
+            "lib64/libfoo.so.1"
+        ]
+    );
+    assert_eq!(reader.read_file("lib64/libfoo.so").unwrap(), b"data");
+}
