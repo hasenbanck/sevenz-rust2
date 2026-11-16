@@ -107,8 +107,7 @@ impl UnpackInfo {
                     debug_assert_eq!(f.sub_stream_sizes.len(), f.num_sub_unpack_streams as usize);
 
                     // Write N-1 sizes (last size is calculated).
-                    for i in 0..f.sub_stream_sizes.len() - 1 {
-                        let size = f.sub_stream_sizes[i];
+                    for &size in &f.sub_stream_sizes[..f.sub_stream_sizes.len() - 1] {
                         write_u64(header, size)?;
                     }
                 }
