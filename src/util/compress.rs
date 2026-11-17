@@ -1,8 +1,8 @@
 //! 7z Compressor helper functions
 
 use std::{
-    fs::File,
-    io::{Seek, Write},
+    fs::{DirEntry, File},
+    io::{ErrorKind, Seek, Write},
     path::{Path, PathBuf},
 };
 
@@ -11,6 +11,9 @@ use crate::{ArchiveEntry, ArchiveWriter, Error, writer::LazyFileReader};
 use crate::{EncoderMethod, Password, encoder_options::AesEncoderOptions};
 
 /// Compresses a source file or directory to a destination writer.
+///
+/// Symbolic links inside a source directory are followed. A link that creates a cycle is
+/// an error and a link without a target is skipped.
 ///
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
@@ -27,6 +30,9 @@ pub fn compress<W: Write + Seek>(src: impl AsRef<Path>, dest: W) -> Result<W, Er
 }
 
 /// Compresses a source file or directory to a destination writer with password encryption.
+///
+/// Symbolic links inside a source directory are followed. A link that creates a cycle is
+/// an error and a link without a target is skipped.
 ///
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
@@ -58,6 +64,9 @@ pub fn compress_encrypted<W: Write + Seek>(
 ///
 /// This is a convenience function that handles file creation automatically.
 ///
+/// Symbolic links inside a source directory are followed. A link that creates a cycle is
+/// an error and a link without a target is skipped.
+///
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
 /// * `dest` - Path where the compressed archive will be created
@@ -79,6 +88,9 @@ pub fn compress_to_path(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> Result
 /// Compresses a source file or directory to a destination file path with password encryption.
 ///
 /// This is a convenience function that handles file creation automatically.
+///
+/// Symbolic links inside a source directory are followed. A link that creates a cycle is
+/// an error and a link without a target is skipped.
 ///
 /// # Arguments
 /// * `src` - Path to the source file or directory to compress
@@ -105,43 +117,129 @@ pub fn compress_to_path_encrypted(
     Ok(())
 }
 
-fn compress_path<W: Write + Seek, P: AsRef<Path>>(
-    src: P,
+fn compress_path<W: Write + Seek>(
+    src: &Path,
     root: &Path,
     archive_writer: &mut ArchiveWriter<W>,
 ) -> Result<(), Error> {
-    let entry_name = src
-        .as_ref()
+    if src.is_dir() {
+        let canonical_src = std::fs::canonicalize(src)
+            .map_err(|e| Error::file_open(e, src.to_string_lossy().to_string()))?;
+        compress_dir(src, &canonical_src, root, &mut Vec::new(), archive_writer)
+    } else {
+        compress_file(src, root, archive_writer)
+    }
+}
+
+/// Adds the content of the directory `dir` with the canonical path `canonical_dir` to the
+/// archive. `ancestors` holds the canonical paths of the directories above `dir`.
+fn compress_dir<W: Write + Seek>(
+    dir: &Path,
+    canonical_dir: &Path,
+    root: &Path,
+    ancestors: &mut Vec<PathBuf>,
+    archive_writer: &mut ArchiveWriter<W>,
+) -> Result<(), Error> {
+    for entry in dir
+        .read_dir()
+        .map_err(|e| Error::io_msg(e, "error read dir"))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        match resolve_entry(&entry, canonical_dir, ancestors)? {
+            EntryKind::Directory(canonical_path) => {
+                let entry = ArchiveEntry::from_path(&path, entry_name(&path, root)?);
+                archive_writer.push_archive_entry::<&[u8]>(entry, None)?;
+                ancestors.push(canonical_dir.to_path_buf());
+                compress_dir(&path, &canonical_path, root, ancestors, archive_writer)?;
+                ancestors.pop();
+            }
+            EntryKind::File => compress_file(&path, root, archive_writer)?,
+            EntryKind::Skip => {}
+        }
+    }
+    Ok(())
+}
+
+fn compress_file<W: Write + Seek>(
+    path: &Path,
+    root: &Path,
+    archive_writer: &mut ArchiveWriter<W>,
+) -> Result<(), Error> {
+    let entry = ArchiveEntry::from_path(path, entry_name(path, root)?);
+    let file =
+        File::open(path).map_err(|e| Error::file_open(e, path.to_string_lossy().to_string()))?;
+    archive_writer.push_archive_entry(entry, Some(file))?;
+    Ok(())
+}
+
+fn entry_name(path: &Path, root: &Path) -> Result<String, Error> {
+    Ok(path
         .strip_prefix(root)
         .map_err(|e| Error::other(e.to_string()))?
         .to_string_lossy()
-        .to_string();
-    let entry = ArchiveEntry::from_path(src.as_ref(), entry_name);
-    let path = src.as_ref();
-    if path.is_dir() {
-        if path != root {
-            archive_writer.push_archive_entry::<&[u8]>(entry, None)?;
-        }
-        for dir in path
-            .read_dir()
-            .map_err(|e| Error::io_msg(e, "error read dir"))?
-        {
-            let dir = dir?;
-            let ftype = dir.file_type()?;
-            if ftype.is_dir() || ftype.is_file() {
-                compress_path(dir.path(), root, archive_writer)?;
-            }
-        }
-    } else {
-        archive_writer.push_archive_entry(
-            entry,
-            Some(
-                File::open(path)
-                    .map_err(|e| Error::file_open(e, path.to_string_lossy().to_string()))?,
-            ),
-        )?;
+        .to_string())
+}
+
+/// The kind of a directory entry after its symbolic links are resolved.
+enum EntryKind {
+    /// A directory with its canonical path.
+    Directory(PathBuf),
+    /// A regular file.
+    File,
+    /// A link without a target, a FIFO, a socket or a device file.
+    Skip,
+}
+
+/// Resolves an entry of the directory with the canonical path `canonical_dir`.
+///
+/// A symbolic link is followed. A link to a directory that contains
+/// `canonical_dir` or one of its `ancestors` creates a cycle and is an error.
+fn resolve_entry(
+    entry: &DirEntry,
+    canonical_dir: &Path,
+    ancestors: &[PathBuf],
+) -> std::io::Result<EntryKind> {
+    let file_type = entry.file_type()?;
+    if !file_type.is_symlink() {
+        return Ok(if file_type.is_dir() {
+            EntryKind::Directory(canonical_dir.join(entry.file_name()))
+        } else if file_type.is_file() {
+            EntryKind::File
+        } else {
+            EntryKind::Skip
+        });
     }
-    Ok(())
+
+    let path = entry.path();
+    let target = match std::fs::canonicalize(&path) {
+        Ok(target) => target,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(EntryKind::Skip),
+        Err(e) => {
+            return Err(std::io::Error::new(
+                e.kind(),
+                format!("can't resolve symbolic link {path:?}: {e}"),
+            ));
+        }
+    };
+    let metadata = std::fs::metadata(&target)?;
+    if metadata.is_dir() {
+        let cycle = canonical_dir.starts_with(&target)
+            || ancestors
+                .iter()
+                .any(|ancestor| ancestor.starts_with(&target));
+        if cycle {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("symbolic link {path:?} creates a cycle"),
+            ));
+        }
+        Ok(EntryKind::Directory(target))
+    } else if metadata.is_file() {
+        Ok(EntryKind::File)
+    } else {
+        Ok(EntryKind::Skip)
+    }
 }
 
 impl<W: Write + Seek> ArchiveWriter<W> {
@@ -149,6 +247,9 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     ///
     /// The filter function allows selective inclusion of files based on their paths.
     /// Files are compressed using solid compression for better compression ratios.
+    ///
+    /// Symbolic links inside a source directory are followed. A link that creates a cycle is
+    /// an error and a link without a target is skipped.
     ///
     /// # Arguments
     /// * `path` - Path to add to the compression
@@ -166,6 +267,9 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     ///
     /// Non-solid compression allows individual file extraction without decompressing the entire archive,
     /// but typically results in larger archive sizes compared to solid compression.
+    ///
+    /// Symbolic links inside a source directory are followed. A link that creates a cycle is
+    /// an error and a link without a target is skipped.
     ///
     /// # Arguments
     /// * `path` - Path to add to the compression
@@ -190,15 +294,38 @@ fn collect_file_paths(
         return Ok(());
     }
     if path.is_dir() {
-        for dir in path.read_dir()? {
-            let dir = dir?;
-            let ftype = dir.file_type()?;
-            if ftype.is_file() || ftype.is_dir() {
-                collect_file_paths(dir.path(), paths, filter)?;
-            }
-        }
+        let canonical_path = std::fs::canonicalize(path)?;
+        collect_dir_file_paths(path, &canonical_path, &mut Vec::new(), paths, filter)
     } else {
-        paths.push(path.to_path_buf())
+        paths.push(path.to_path_buf());
+        Ok(())
+    }
+}
+
+/// Collects the files inside the directory `dir` with the canonical path `canonical_dir`.
+/// `ancestors` holds the canonical paths of the directories above `dir`.
+fn collect_dir_file_paths(
+    dir: &Path,
+    canonical_dir: &Path,
+    ancestors: &mut Vec<PathBuf>,
+    paths: &mut Vec<PathBuf>,
+    filter: &dyn Fn(&Path) -> bool,
+) -> std::io::Result<()> {
+    for entry in dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if !filter(&path) {
+            continue;
+        }
+        match resolve_entry(&entry, canonical_dir, ancestors)? {
+            EntryKind::Directory(canonical_path) => {
+                ancestors.push(canonical_dir.to_path_buf());
+                collect_dir_file_paths(&path, &canonical_path, ancestors, paths, filter)?;
+                ancestors.pop();
+            }
+            EntryKind::File => paths.push(path),
+            EntryKind::Skip => {}
+        }
     }
     Ok(())
 }
