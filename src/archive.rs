@@ -222,6 +222,15 @@ impl ArchiveEntry {
                 entry.access_date = date;
                 entry.has_access_date = entry.access_date.0 > 0;
             }
+            // Store st_mode the way 7-Zip does on Unix: in the high 16 bits,
+            // flagged by 0x8000, next to the DOS directory/archive bit.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let dos = if meta.is_dir() { 0x10 } else { 0x20 };
+                entry.has_windows_attributes = true;
+                entry.windows_attributes = dos | 0x8000 | (meta.permissions().mode() << 16);
+            }
         }
         entry
     }

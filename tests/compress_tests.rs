@@ -612,6 +612,30 @@ fn decompress_keeps_unix_file_mode() {
 
 #[cfg(all(feature = "compress", feature = "util", unix))]
 #[test]
+fn compress_keeps_unix_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = tempdir().unwrap();
+    let src = temp_dir.path().join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("run.sh"), b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(src.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let dest = temp_dir.path().join("mode.7z");
+    compress_to_path(&src, &dest).expect("compress ok");
+    let out = temp_dir.path().join("out");
+    decompress_file(&dest, &out).expect("decompress ok");
+
+    let mode = std::fs::metadata(out.join("run.sh"))
+        .unwrap()
+        .permissions()
+        .mode();
+    // the umask still applies, so check the owner's execute bit
+    assert_ne!(mode & 0o100, 0, "mode {mode:o}");
+}
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
 fn decompress_replaces_read_only_file() {
     let temp_dir = tempdir().unwrap();
     let old = temp_dir.path().join("old.7z");
