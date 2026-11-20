@@ -636,6 +636,41 @@ fn compress_keeps_unix_file_mode() {
 
 #[cfg(all(feature = "compress", feature = "util", unix))]
 #[test]
+fn compress_stores_unix_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp_dir = tempdir().unwrap();
+    let src = temp_dir.path().join("src");
+    std::fs::create_dir_all(src.join("dir")).unwrap();
+    std::fs::write(src.join("run.sh"), b"#!/bin/sh\n").unwrap();
+    std::fs::write(src.join("readonly.txt"), b"r").unwrap();
+    std::fs::set_permissions(src.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(
+        src.join("readonly.txt"),
+        std::fs::Permissions::from_mode(0o444),
+    )
+    .unwrap();
+    std::fs::set_permissions(src.join("dir"), std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let dest = temp_dir.path().join("mode.7z");
+    compress_to_path(&src, &dest).expect("compress ok");
+
+    let archive = Archive::open(&dest).unwrap();
+    let attributes = |name: &str| {
+        let entry = archive.files.iter().find(|e| e.name() == name).unwrap();
+        assert!(entry.has_windows_attributes, "{name}");
+        entry.windows_attributes()
+    };
+    assert_eq!(attributes("run.sh"), 0x8000 | 0x20 | (0o100755 << 16));
+    assert_eq!(
+        attributes("readonly.txt"),
+        0x8000 | 0x20 | 0x1 | (0o100444 << 16)
+    );
+    assert_eq!(attributes("dir"), 0x8000 | 0x10 | (0o40700 << 16));
+}
+
+#[cfg(all(feature = "compress", feature = "util", unix))]
+#[test]
 fn decompress_replaces_read_only_file() {
     let temp_dir = tempdir().unwrap();
     let old = temp_dir.path().join("old.7z");
