@@ -23,6 +23,9 @@ const MAX_MEM_LIMIT_KB: usize = usize::MAX / 1024;
 /// read; this only stops a tiny archive from forcing a huge up-front allocation.
 const MAX_PREALLOC_BYTES: usize = 4 << 20;
 
+/// The window at the end of an archive that the search for an end header reads.
+const END_HEADER_SEARCH_LIMIT: u64 = 512;
+
 /// The decoder nests one reader for each coder of a block. 7-Zip accepts at most 64 coders in a
 /// block.
 const MAX_BLOCK_CODERS: usize = 64;
@@ -500,7 +503,7 @@ impl Archive {
             let start_header = Self::read_start_header(reader, start_header_crc)?;
             Self::init_archive(reader, start_header, password, true, 1, memory_limit_kb)
         } else {
-            Self::try_to_locale_end_header(reader, reader_len, password, 1, memory_limit_kb)
+            Self::try_to_locate_end_header(reader, reader_len, password, 1, memory_limit_kb)
         }
     }
 
@@ -575,55 +578,56 @@ impl Archive {
         Ok(())
     }
 
-    fn try_to_locale_end_header<R: Read + Seek>(
+    /// Locates the end header of an archive whose start header is zero. A writer leaves the
+    /// start header zero when it stops after the end header and before it fills in the start
+    /// header. The end header ends the file with `K_END`. It starts with `K_ENCODED_HEADER,
+    /// K_PACK_INFO` or `K_HEADER, K_MAIN_STREAMS_INFO` within the last `END_HEADER_SEARCH_LIMIT`
+    /// bytes. The last match is the only candidate. This bounds the work to one header parse.
+    fn try_to_locate_end_header<R: Read + Seek>(
         reader: &mut R,
         reader_len: u64,
         password: &Password,
         thread_count: u32,
         memory_limit_kb: usize,
     ) -> Result<Self, Error> {
-        let search_limit = 1024 * 1024;
-        let prev_data_size = reader.stream_position()? + 20;
-        let size = reader_len;
-        let min_pos = if reader.stream_position()? + search_limit > size {
-            reader.stream_position()?
-        } else {
-            size - search_limit
-        };
-        let mut pos = reader_len - 1;
-        while pos > min_pos {
-            pos -= 1;
+        let not_found = || Error::other("Start header corrupt and unable to guess end header");
 
-            reader.seek(SeekFrom::Start(pos))?;
-            let nid = reader.read_u8()?;
-            if nid == K_ENCODED_HEADER || nid == K_HEADER {
-                // `pos` scans down and can fall below `prev_data_size`; skip such candidates
-                // instead of underflowing the subtraction.
-                let Some(next_header_offset) = pos.checked_sub(prev_data_size) else {
-                    continue;
-                };
-                let start_header = StartHeader {
-                    next_header_offset,
-                    next_header_size: reader_len - pos,
-                    next_header_crc: 0,
-                };
-                let result = Self::init_archive(
-                    reader,
-                    start_header,
-                    password,
-                    false,
-                    thread_count,
-                    memory_limit_kb,
-                )?;
+        let data_len = reader_len
+            .checked_sub(SIGNATURE_HEADER_SIZE)
+            .ok_or_else(not_found)?;
+        let window_len = data_len.min(END_HEADER_SEARCH_LIMIT);
+        let mut window = [0u8; END_HEADER_SEARCH_LIMIT as usize];
+        let window = &mut window[..window_len as usize];
+        reader.seek(SeekFrom::Start(reader_len - window_len))?;
+        reader.read_exact(window)?;
 
-                if !result.files.is_empty() {
-                    return Ok(result);
-                }
-            }
+        if window.last() != Some(&K_END) {
+            return Err(not_found());
         }
-        Err(Error::other(
-            "Start header corrupt and unable to guess end header",
-        ))
+        let start = window
+            .windows(2)
+            .rposition(|pair| {
+                matches!(
+                    (pair[0], pair[1]),
+                    (K_ENCODED_HEADER, K_PACK_INFO) | (K_HEADER, K_MAIN_STREAMS_INFO)
+                )
+            })
+            .ok_or_else(not_found)?;
+
+        let next_header_size = window_len - start as u64;
+        let start_header = StartHeader {
+            next_header_offset: data_len - next_header_size,
+            next_header_size,
+            next_header_crc: 0,
+        };
+        Self::init_archive(
+            reader,
+            start_header,
+            password,
+            false,
+            thread_count,
+            memory_limit_kb,
+        )
     }
 
     fn init_archive<R: Read + Seek>(
@@ -826,6 +830,9 @@ impl Archive {
         let mut files: Vec<ArchiveEntry> = try_vec(num_files, Default::default())?;
 
         let mut is_empty_stream: Option<BitSet> = None;
+        // The number of set bits in `is_empty_stream`. A count of the bits on every empty file
+        // or anti property would cost a pass over all files for each repeated property.
+        let mut num_empty_streams = 0;
         let mut is_empty_file: Option<BitSet> = None;
         let mut is_anti: Option<BitSet> = None;
         loop {
@@ -836,27 +843,25 @@ impl Archive {
             let size = read_variable_u64(header)?;
             match prop_type {
                 K_EMPTY_STREAM => {
-                    is_empty_stream = Some(read_bits(header, num_files)?);
+                    let bits = read_bits(header, num_files)?;
+                    num_empty_streams = bits.len();
+                    is_empty_stream = Some(bits);
                 }
                 K_EMPTY_FILE => {
-                    let n = if let Some(s) = &is_empty_stream {
-                        s.len()
-                    } else {
+                    if is_empty_stream.is_none() {
                         return Err(Error::other(
                             "Header format error: kEmptyStream must appear before kEmptyFile",
                         ));
-                    };
-                    is_empty_file = Some(read_bits(header, n)?);
+                    }
+                    is_empty_file = Some(read_bits(header, num_empty_streams)?);
                 }
                 K_ANTI => {
-                    let n = if let Some(s) = is_empty_stream.as_ref() {
-                        s.len()
-                    } else {
+                    if is_empty_stream.is_none() {
                         return Err(Error::other(
                             "Header format error: kEmptyStream must appear before kEmptyFile",
                         ));
-                    };
-                    is_anti = Some(read_bits(header, n)?);
+                    }
+                    is_anti = Some(read_bits(header, num_empty_streams)?);
                 }
                 K_NAME => {
                     let external = header.read_u8()?;
