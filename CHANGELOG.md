@@ -7,17 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.26.0 - 2026-11-25
+
+### Changed
+
+- Bumped `lzma-rust2` to 0.26.
+
 ### Added
 
-- `ArchiveReader::into_inner()`.
+- `ArchiveReader::into_inner()` returns the underlying reader.
 
 ### Fixed
 
-- Apply the stored Unix file mode when extracting files.
-- Store the Unix file mode when compressing from the filesystem.
-- Follow symbolic links when compressing a directory.
-- Recover an archive with a zeroed start header.
-- Count the empty streams of a files info once.
+- Extracting a file applies its stored Unix file mode.
+- Extracting a file replaces an existing file or symbolic link at its path and never writes
+  through a symbolic link.
+- Compressing from the filesystem stores the Unix file mode.
+- Compressing a directory follows symbolic links.
+- Recover an archive with a zeroed start header. A crafted archive can no longer make this
+  recovery take very long.
+- A crafted files info can no longer make the header parse take very long.
 
 ## 0.25.0 - 2026-11-06
 
