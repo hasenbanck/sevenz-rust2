@@ -1185,3 +1185,140 @@ fn encoded_header_beyond_the_address_space_is_rejected() {
         "an encoded header beyond the address space must be rejected"
     );
 }
+
+/// Counts the bytes an archive reader pulls from its source.
+struct CountingSource {
+    inner: Cursor<Vec<u8>>,
+    read: std::rc::Rc<std::cell::Cell<u64>>,
+}
+
+impl std::io::Read for CountingSource {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let size = self.inner.read(buf)?;
+        self.read.set(self.read.get() + size as u64);
+        Ok(size)
+    }
+}
+
+impl std::io::Seek for CountingSource {
+    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+        self.inner.seek(pos)
+    }
+}
+
+/// Opens `bytes` and returns the number of bytes the reader pulled from the source.
+fn bytes_read_on_open(bytes: Vec<u8>) -> u64 {
+    let read = std::rc::Rc::new(std::cell::Cell::new(0));
+    let source = CountingSource {
+        inner: Cursor::new(bytes),
+        read: read.clone(),
+    };
+    let _ = ArchiveReader::new(source, Password::empty());
+    read.get()
+}
+
+/// A signature header with a zeroed start header, followed by `tail`. The reader must search
+/// the tail for the end header.
+fn raw_7z_without_start_header(tail: &[u8]) -> Vec<u8> {
+    let mut out = SEVEN_Z_SIGNATURE.to_vec();
+    out.extend_from_slice(&[0x00, 0x04]);
+    out.extend_from_slice(&[0u8; 24]);
+    out.extend_from_slice(tail);
+    out
+}
+
+/// The tail repeats `K_HEADER, K_END`. Each pair parses to an empty archive. The search for
+/// the end header must parse one candidate and read the tail a bounded number of times.
+#[test]
+fn end_header_search_parses_one_candidate() {
+    let tail = [K_HEADER, K_END].repeat(8 * 1024);
+    let bytes = raw_7z_without_start_header(&tail);
+    let len = bytes.len() as u64;
+    let read = bytes_read_on_open(bytes);
+    assert!(
+        read <= 4 * len,
+        "opening a {len} byte archive read {read} bytes from the source"
+    );
+}
+
+/// Writes an archive with `count` files and zeroes its start header, as a writer leaves it
+/// when it stops before it finishes the archive.
+fn archive_without_start_header(count: usize) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        for i in 0..count {
+            let entry = ArchiveEntry::new_file(&format!("dir/file_{i}.txt"));
+            let content = format!("content of file {i}");
+            writer
+                .push_archive_entry(entry, Some(content.as_bytes()))
+                .unwrap();
+        }
+        writer.finish().unwrap();
+    }
+    bytes[8..32].fill(0);
+    bytes
+}
+
+fn assert_recovers(count: usize) {
+    let bytes = archive_without_start_header(count);
+    let mut reader = ArchiveReader::new(Cursor::new(bytes), Password::empty())
+        .unwrap_or_else(|e| panic!("archive with {count} files was not recovered: {e}"));
+    assert_eq!(reader.archive().files.len(), count);
+    for i in 0..count {
+        let data = reader.read_file(&format!("dir/file_{i}.txt")).unwrap();
+        assert_eq!(data, format!("content of file {i}").as_bytes());
+    }
+}
+
+/// An archive with a plain end header opens when its start header is zero.
+#[test]
+fn archive_with_plain_end_header_is_recovered() {
+    assert_recovers(1);
+}
+
+/// An archive with an encoded end header opens when its start header is zero.
+#[test]
+fn archive_with_encoded_end_header_is_recovered() {
+    assert_recovers(200);
+}
+
+const K_EMPTY_FILE: u8 = 0x0F;
+
+/// Times the parse of a files info with `num_files` files, an empty stream property without
+/// set bits and `repeats` empty file properties of zero bits.
+fn time_repeated_empty_file_properties(num_files: u64, repeats: usize) -> std::time::Duration {
+    let mut nh = vec![K_HEADER, K_FILES_INFO];
+    write_number(&mut nh, num_files);
+    nh.push(K_EMPTY_STREAM);
+    let bit_bytes = num_files.div_ceil(8);
+    write_number(&mut nh, bit_bytes);
+    nh.extend(std::iter::repeat_n(0u8, bit_bytes as usize));
+    for _ in 0..repeats {
+        nh.extend_from_slice(&[K_EMPTY_FILE, 0x00]);
+    }
+    nh.extend_from_slice(&[K_END, K_END]);
+    let bytes = raw_7z_exact(&nh);
+
+    (0..3)
+        .map(|_| {
+            let start = std::time::Instant::now();
+            let _ = ArchiveReader::new(Cursor::new(bytes.as_slice()), Password::empty());
+            start.elapsed()
+        })
+        .min()
+        .unwrap()
+}
+
+/// An empty file property reads one bit for each empty stream. The parse cost of a repeated
+/// empty file property must not grow with the number of files.
+#[test]
+fn repeated_empty_file_property_cost_is_independent_of_file_count() {
+    const REPEATS: usize = 200_000;
+    let few = time_repeated_empty_file_properties(64, REPEATS);
+    let many = time_repeated_empty_file_properties(64 * 1024, REPEATS);
+    assert!(
+        many < few * 10 + std::time::Duration::from_millis(50),
+        "64 files took {few:?}, 65536 files took {many:?}"
+    );
+}

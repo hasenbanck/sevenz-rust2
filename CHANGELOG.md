@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `ArchiveReader::into_inner()`.
+
+### Fixed
+
+- Apply the stored Unix file mode when extracting files.
+- Store the Unix file mode when compressing from the filesystem.
+- Follow symbolic links when compressing a directory.
+- Recover an archive with a zeroed start header.
+- Count the empty streams of a files info once.
+
 ## 0.25.0 - 2026-11-06
 
 ### Changed
