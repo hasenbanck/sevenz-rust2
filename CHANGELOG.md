@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 0.27.0 - 2026-11-26
+
 ### Added
 
 - `ExtractLimits` and the `decompress_*limits()` helpers reject an archive whose declared
