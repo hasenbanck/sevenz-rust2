@@ -51,6 +51,20 @@ pub enum Error {
     MaybeBadPassword(std::io::Error),
     /// File not found.
     FileNotFound,
+    /// The archive declares more entries than the extraction limit allows.
+    EntryLimitExceeded {
+        /// Maximum allowed number of entries.
+        max: usize,
+        /// Number of entries the archive declares.
+        actual: usize,
+    },
+    /// The archive declares a larger total size than the extraction limit allows.
+    TotalSizeLimitExceeded {
+        /// Maximum allowed total size in bytes.
+        max: u64,
+        /// Total size in bytes the archive declares, saturated at `u64::MAX`.
+        actual: u64,
+    },
 }
 
 impl From<std::io::Error> for Error {
