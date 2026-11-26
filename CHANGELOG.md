@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `ExtractLimits` and the `decompress_*limits()` helpers reject an archive whose declared
+  total size or entry count exceeds a limit before extracting it, and bound the memory used to
+  read it.
+- Breaking change: `Error::EntryLimitExceeded` and `Error::TotalSizeLimitExceeded` report an
+  exceeded extraction limit.
+
 ## 0.26.0 - 2026-11-25
 
 ### Changed

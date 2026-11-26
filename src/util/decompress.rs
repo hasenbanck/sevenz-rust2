@@ -14,6 +14,9 @@ use crate::{Error, Password, *};
 ///
 /// This is a convenience function for decompressing archive files directly from the filesystem.
 ///
+/// The extracted output is only bounded by the sizes the archive declares. Use
+/// [`decompress_file_with_limits`] or [`decompress_with_limits`] to extract untrusted archives.
+///
 /// # Arguments
 /// * `src_path` - Path to the source archive file
 /// * `dest` - Path to the destination directory where files will be extracted
@@ -44,6 +47,9 @@ pub fn decompress_file_with_extract_fn(
 
 /// Decompresses an archive from a reader to a destination directory.
 ///
+/// The extracted output is only bounded by the sizes the archive declares. Use
+/// [`decompress_file_with_limits`] or [`decompress_with_limits`] to extract untrusted archives.
+///
 /// # Arguments
 /// * `src_reader` - Reader containing the archive data
 /// * `dest` - Path to the destination directory where files will be extracted
@@ -65,7 +71,13 @@ pub fn decompress_with_extract_fn<R: Read + Seek>(
     dest: impl AsRef<Path>,
     extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
-    decompress_impl(src_reader, dest, Password::empty(), extract_fn)
+    decompress_impl(
+        src_reader,
+        dest,
+        Password::empty(),
+        ExtractLimits::new(),
+        extract_fn,
+    )
 }
 
 /// Decompresses an encrypted archive file with the given password.
@@ -97,7 +109,13 @@ pub fn decompress_with_password<R: Read + Seek>(
     dest: impl AsRef<Path>,
     password: Password,
 ) -> Result<(), Error> {
-    decompress_impl(src_reader, dest, password, default_entry_extract_fn)
+    decompress_impl(
+        src_reader,
+        dest,
+        password,
+        ExtractLimits::new(),
+        default_entry_extract_fn,
+    )
 }
 
 /// Decompresses an encrypted archive from a reader with a custom extraction function and password.
@@ -117,7 +135,188 @@ pub fn decompress_with_extract_fn_and_password<R: Read + Seek>(
     password: Password,
     extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
-    decompress_impl(src_reader, dest, password, extract_fn)
+    decompress_impl(src_reader, dest, password, ExtractLimits::new(), extract_fn)
+}
+
+/// Limits for the extraction helpers, for extracting untrusted archives.
+///
+/// The size and entry limits are checked against what the archive header declares, before
+/// anything is written to the destination. The decoder never hands out more data for an entry
+/// than its declared size, so the declared total size bounds the file data that is extracted.
+/// Parent directories that are created for nested entry names are not counted as entries.
+///
+/// The memory limit bounds the header buffers and the decoder dictionaries and models, see
+/// [`ArchiveReader::new_with_memory_limit`]. It is applied while the header is read, so it also
+/// protects the size and entry checks.
+///
+/// All limits are unset by default.
+///
+/// # Example
+/// ```no_run
+/// use sevenz_rust2::{ExtractLimits, decompress_file_with_limits};
+///
+/// let limits = ExtractLimits::new()
+///     .max_total_size(1024 * 1024 * 1024)
+///     .max_entries(10_000)
+///     .max_memory_kb(256 * 1024);
+/// decompress_file_with_limits("archive.7z", "output", limits).expect("extraction failed");
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ExtractLimits {
+    max_total_size: Option<u64>,
+    max_entries: Option<usize>,
+    max_memory_kb: Option<usize>,
+}
+
+impl ExtractLimits {
+    /// Creates limits with no limit set.
+    pub const fn new() -> Self {
+        Self {
+            max_total_size: None,
+            max_entries: None,
+            max_memory_kb: None,
+        }
+    }
+
+    /// Sets the maximum total size in bytes of all entries in the archive.
+    pub const fn max_total_size(mut self, bytes: u64) -> Self {
+        self.max_total_size = Some(bytes);
+        self
+    }
+
+    /// Sets the maximum number of entries (files and directories) in the archive.
+    pub const fn max_entries(mut self, count: usize) -> Self {
+        self.max_entries = Some(count);
+        self
+    }
+
+    /// Sets the maximum memory in KiB for the header buffers and for each decoder's dictionary
+    /// or model.
+    pub const fn max_memory_kb(mut self, kb: usize) -> Self {
+        self.max_memory_kb = Some(kb);
+        self
+    }
+
+    fn open<R: Read + Seek>(
+        &self,
+        src_reader: R,
+        password: Password,
+    ) -> Result<ArchiveReader<R>, Error> {
+        let reader = match self.max_memory_kb {
+            Some(kb) => ArchiveReader::new_with_memory_limit(src_reader, password, kb)?,
+            None => ArchiveReader::new(src_reader, password)?,
+        };
+        self.check(reader.archive())?;
+        Ok(reader)
+    }
+
+    fn check(&self, archive: &Archive) -> Result<(), Error> {
+        if let Some(max) = self.max_entries {
+            let actual = archive.files.len();
+            if actual > max {
+                return Err(Error::EntryLimitExceeded { max, actual });
+            }
+        }
+        if let Some(max) = self.max_total_size {
+            let actual = archive
+                .files
+                .iter()
+                .try_fold(0u64, |total, file| total.checked_add(file.size()));
+            match actual {
+                Some(actual) if actual <= max => {}
+                actual => {
+                    return Err(Error::TotalSizeLimitExceeded {
+                        max,
+                        actual: actual.unwrap_or(u64::MAX),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Decompresses an archive file to a destination directory, enforcing the given limits.
+///
+/// The archive is rejected before anything is written if it exceeds a limit.
+///
+/// # Arguments
+/// * `src_path` - Path to the source archive file
+/// * `dest` - Path to the destination directory where files will be extracted
+/// * `limits` - Limits the archive must stay within
+pub fn decompress_file_with_limits(
+    src_path: impl AsRef<Path>,
+    dest: impl AsRef<Path>,
+    limits: ExtractLimits,
+) -> Result<(), Error> {
+    let file = std::fs::File::open(src_path.as_ref())
+        .map_err(|e| Error::file_open(e, src_path.as_ref().to_string_lossy().to_string()))?;
+    decompress_with_limits(file, dest, limits)
+}
+
+/// Decompresses an archive from a reader to a destination directory, enforcing the given limits.
+///
+/// The archive is rejected before anything is written if it exceeds a limit.
+///
+/// # Arguments
+/// * `src_reader` - Reader containing the archive data
+/// * `dest` - Path to the destination directory where files will be extracted
+/// * `limits` - Limits the archive must stay within
+pub fn decompress_with_limits<R: Read + Seek>(
+    src_reader: R,
+    dest: impl AsRef<Path>,
+    limits: ExtractLimits,
+) -> Result<(), Error> {
+    decompress_impl(
+        src_reader,
+        dest,
+        Password::empty(),
+        limits,
+        default_entry_extract_fn,
+    )
+}
+
+/// Decompresses an archive from a reader to a destination directory with a custom extraction
+/// function, enforcing the given limits.
+///
+/// The archive is rejected before `extract_fn` is called if it exceeds a limit. The limits
+/// apply to all entries in the archive, including the ones `extract_fn` skips.
+///
+/// # Arguments
+/// * `src_reader` - Reader containing the archive data
+/// * `dest` - Path to the destination directory where files will be extracted
+/// * `limits` - Limits the archive must stay within
+/// * `extract_fn` - Custom function to handle each archive entry during extraction
+pub fn decompress_with_extract_fn_and_limits<R: Read + Seek>(
+    src_reader: R,
+    dest: impl AsRef<Path>,
+    limits: ExtractLimits,
+    extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
+) -> Result<(), Error> {
+    decompress_impl(src_reader, dest, Password::empty(), limits, extract_fn)
+}
+
+/// Decompresses an encrypted archive from a reader with a custom extraction function and
+/// password, enforcing the given limits.
+///
+/// The archive is rejected before `extract_fn` is called if it exceeds a limit. The limits
+/// apply to all entries in the archive, including the ones `extract_fn` skips.
+///
+/// # Arguments
+/// * `src_reader` - Reader containing the encrypted archive data
+/// * `dest` - Path to the destination directory where files will be extracted
+/// * `password` - Password to decrypt the archive
+/// * `limits` - Limits the archive must stay within
+/// * `extract_fn` - Custom function to handle each archive entry during extraction
+#[cfg(all(feature = "aes256", not(target_arch = "wasm32")))]
+pub fn decompress_with_extract_fn_password_and_limits<R: Read + Seek>(
+    src_reader: R,
+    dest: impl AsRef<Path>,
+    password: Password,
+    limits: ExtractLimits,
+    extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
+) -> Result<(), Error> {
+    decompress_impl(src_reader, dest, password, limits, extract_fn)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -125,13 +324,14 @@ fn decompress_impl<R: Read + Seek>(
     mut src_reader: R,
     dest: impl AsRef<Path>,
     password: Password,
+    limits: ExtractLimits,
     mut extract_fn: impl FnMut(&ArchiveEntry, &mut dyn Read, &PathBuf) -> Result<bool, Error>,
 ) -> Result<(), Error> {
     use std::io::SeekFrom;
 
     let pos = src_reader.stream_position()?;
     src_reader.seek(SeekFrom::Start(pos))?;
-    let mut seven = ArchiveReader::new(src_reader, password)?;
+    let mut seven = limits.open(src_reader, password)?;
     let dest = PathBuf::from(dest.as_ref());
     if !dest.exists() {
         std::fs::create_dir_all(&dest)?;

@@ -4,7 +4,10 @@
 
 use std::io::Cursor;
 
-use sevenz_rust2::{ArchiveEntry, ArchiveReader, ArchiveWriter, Password, decompress};
+use sevenz_rust2::{
+    ArchiveEntry, ArchiveReader, ArchiveWriter, Error, ExtractLimits, Password, decompress,
+    decompress_file_with_limits, decompress_with_extract_fn_and_limits, decompress_with_limits,
+};
 use tempfile::tempdir;
 
 /// Builds a valid single-file archive whose only entry has the given (attacker-chosen) name.
@@ -1321,4 +1324,182 @@ fn repeated_empty_file_property_cost_is_independent_of_file_count() {
         many < few * 10 + std::time::Duration::from_millis(50),
         "64 files took {few:?}, 65536 files took {many:?}"
     );
+}
+
+const ZEROS_SIZE: usize = 1024 * 1024;
+const LIMITS_TOTAL_SIZE: u64 = ZEROS_SIZE as u64 + 5;
+
+/// Builds a small archive with a directory, one highly compressible entry and one small entry.
+fn highly_compressed_archive() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        writer
+            .push_archive_entry::<&[u8]>(ArchiveEntry::new_directory("dir"), None)
+            .unwrap();
+        let zeros = vec![0u8; ZEROS_SIZE];
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("dir/zeros.bin"),
+                Some(zeros.as_slice()),
+            )
+            .unwrap();
+        writer
+            .push_archive_entry(ArchiveEntry::new_file("small.txt"), Some(b"small" as &[u8]))
+            .unwrap();
+        writer.finish().unwrap();
+    }
+    bytes
+}
+
+fn assert_total_size_limit_error(
+    result: Result<(), Error>,
+    expected_max: u64,
+    expected_actual: u64,
+) {
+    match result {
+        Err(Error::TotalSizeLimitExceeded { max, actual }) => {
+            assert_eq!(max, expected_max);
+            assert_eq!(actual, expected_actual);
+        }
+        other => panic!("expected a total size limit error, got {other:?}"),
+    }
+}
+
+fn assert_nothing_written(dest: &std::path::Path) {
+    assert!(
+        !dest.exists() || std::fs::read_dir(dest).unwrap().next().is_none(),
+        "nothing may be written when a limit is exceeded"
+    );
+}
+
+#[test]
+fn extract_limits_reject_oversized_archive_before_writing() {
+    let bytes = highly_compressed_archive();
+    assert!(bytes.len() < 4 * 1024);
+
+    let temp = tempdir().unwrap();
+    let archive_path = temp.path().join("archive.7z");
+    std::fs::write(&archive_path, &bytes).unwrap();
+    let dest = temp.path().join("out");
+
+    let limits = ExtractLimits::new().max_total_size(LIMITS_TOTAL_SIZE - 1);
+    assert_total_size_limit_error(
+        decompress_file_with_limits(&archive_path, &dest, limits),
+        LIMITS_TOTAL_SIZE - 1,
+        LIMITS_TOTAL_SIZE,
+    );
+    assert_nothing_written(&dest);
+}
+
+#[test]
+fn extract_limits_count_directories_as_entries() {
+    let bytes = highly_compressed_archive();
+    let temp = tempdir().unwrap();
+    let dest = temp.path().join("out");
+
+    let mut called = false;
+    let result = decompress_with_extract_fn_and_limits(
+        Cursor::new(bytes.as_slice()),
+        &dest,
+        ExtractLimits::new().max_entries(2),
+        |_, _, _| {
+            called = true;
+            Ok(true)
+        },
+    );
+    assert!(
+        matches!(result, Err(Error::EntryLimitExceeded { max: 2, actual: 3 })),
+        "expected an entry limit error, got {result:?}"
+    );
+    assert!(
+        !called,
+        "the extract function must not run when a limit is exceeded"
+    );
+    assert_nothing_written(&dest);
+}
+
+#[test]
+fn extract_limits_bound_decoder_memory() {
+    let bytes = highly_compressed_archive();
+    let temp = tempdir().unwrap();
+    let dest = temp.path().join("out");
+
+    let result = decompress_with_limits(
+        Cursor::new(bytes.as_slice()),
+        &dest,
+        ExtractLimits::new().max_memory_kb(1),
+    );
+    assert!(
+        matches!(result, Err(Error::MaxMemLimited { .. })),
+        "expected a memory limit error, got {result:?}"
+    );
+}
+
+#[test]
+fn extract_limits_allow_archive_at_the_limit() {
+    let bytes = highly_compressed_archive();
+    let temp = tempdir().unwrap();
+    let archive_path = temp.path().join("archive.7z");
+    std::fs::write(&archive_path, &bytes).unwrap();
+    let dest = temp.path().join("out");
+
+    let limits = ExtractLimits::new()
+        .max_total_size(LIMITS_TOTAL_SIZE)
+        .max_entries(3)
+        .max_memory_kb(64 * 1024);
+    decompress_file_with_limits(&archive_path, &dest, limits).unwrap();
+    assert_eq!(
+        std::fs::metadata(dest.join("dir/zeros.bin")).unwrap().len(),
+        ZEROS_SIZE as u64
+    );
+    assert_eq!(std::fs::read(dest.join("small.txt")).unwrap(), b"small");
+}
+
+#[cfg(feature = "aes256")]
+#[test]
+fn extract_limits_apply_to_encrypted_archives() {
+    use sevenz_rust2::{
+        EncoderConfiguration, EncoderMethod, decompress_with_extract_fn_password_and_limits,
+        default_entry_extract_fn, encoder_options::AesEncoderOptions,
+    };
+
+    let mut bytes = Vec::new();
+    {
+        let mut writer = ArchiveWriter::new(Cursor::new(&mut bytes)).unwrap();
+        writer.set_content_methods(vec![
+            AesEncoderOptions::new(Password::new("test")).into(),
+            EncoderConfiguration::new(EncoderMethod::COPY),
+        ]);
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("secret.txt"),
+                Some(b"secret" as &[u8]),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    let temp = tempdir().unwrap();
+    let dest = temp.path().join("rejected");
+    let result = decompress_with_extract_fn_password_and_limits(
+        Cursor::new(bytes.as_slice()),
+        &dest,
+        Password::new("test"),
+        ExtractLimits::new().max_total_size(5),
+        default_entry_extract_fn,
+    );
+    assert_total_size_limit_error(result, 5, 6);
+    assert_nothing_written(&dest);
+
+    let dest = temp.path().join("extracted");
+    decompress_with_extract_fn_password_and_limits(
+        Cursor::new(bytes.as_slice()),
+        &dest,
+        Password::new("test"),
+        ExtractLimits::new().max_total_size(6),
+        default_entry_extract_fn,
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(dest.join("secret.txt")).unwrap(), b"secret");
 }
