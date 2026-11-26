@@ -1,3 +1,5 @@
+#[cfg(target_has_atomic = "64")]
+use std::sync::{Arc, atomic::AtomicU64};
 use std::{fmt::Debug, num::NonZeroU64};
 
 #[cfg(feature = "ppmd")]
@@ -56,6 +58,8 @@ impl LzmaOptions {
 pub struct Lzma2Options {
     pub(crate) options: lzma_rust2::Lzma2Options,
     pub(crate) threads: u32,
+    #[cfg(target_has_atomic = "64")]
+    pub(crate) progress: Option<Arc<AtomicU64>>,
 }
 
 impl Default for Lzma2Options {
@@ -63,6 +67,8 @@ impl Default for Lzma2Options {
         Self {
             options: lzma_rust2::Lzma2Options::with_preset(6),
             threads: 1,
+            #[cfg(target_has_atomic = "64")]
+            progress: None,
         }
     }
 }
@@ -78,6 +84,8 @@ impl Lzma2Options {
         Self {
             options: lzma_rust2::Lzma2Options::with_preset(level),
             threads: 1,
+            #[cfg(target_has_atomic = "64")]
+            progress: None,
         }
     }
 
@@ -96,7 +104,12 @@ impl Lzma2Options {
         options.set_chunk_size(NonZeroU64::new(
             chunk_size.max(options.lzma_options.dict_size as u64),
         ));
-        Self { options, threads }
+        Self {
+            options,
+            threads,
+            #[cfg(target_has_atomic = "64")]
+            progress: None,
+        }
     }
 
     /// Sets the dictionary size used when encoding.
@@ -118,6 +131,17 @@ impl Lzma2Options {
             lzma_rust2::LzmaOptions::NICE_LEN_MIN,
             lzma_rust2::LzmaOptions::NICE_LEN_MAX,
         );
+    }
+
+    /// Sets a shared counter for the uncompressed bytes passed to the LZMA2 encoder.
+    ///
+    /// The encoder only adds to the counter, with single-threaded and multi-threaded encoding.
+    /// It equals the total uncompressed size of the entries compressed with these options after
+    /// a successful [`ArchiveWriter::finish`](crate::ArchiveWriter::finish). Other compression
+    /// methods don't update it.
+    #[cfg(target_has_atomic = "64")]
+    pub fn set_progress(&mut self, counter: Arc<AtomicU64>) {
+        self.progress = Some(counter);
     }
 }
 

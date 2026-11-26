@@ -1,4 +1,9 @@
 use std::io::Write;
+#[cfg(target_has_atomic = "64")]
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use lzma_rust2::{
     Lzma2Writer, Lzma2WriterMt, LzmaWriter,
@@ -35,7 +40,11 @@ pub(crate) enum Encoder<W: Write> {
     Bcj(Option<BcjWriter<CountingWriter<W>>>),
     Delta(DeltaWriter<CountingWriter<W>>),
     Lzma(Option<LzmaWriter<CountingWriter<W>>>),
-    Lzma2(Option<Lzma2Writer<CountingWriter<W>>>),
+    Lzma2 {
+        writer: Option<Lzma2Writer<CountingWriter<W>>>,
+        #[cfg(target_has_atomic = "64")]
+        progress: Option<Arc<AtomicU64>>,
+    },
     Lzma2Mt(Option<Lzma2WriterMt<CountingWriter<W>>>),
     #[cfg(feature = "ppmd")]
     Ppmd(Option<Box<ppmd_rust::Ppmd7Encoder<CountingWriter<W>>>>),
@@ -82,14 +91,25 @@ impl<W: Write> Write for Encoder<W> {
                 }
                 false => w.as_mut().unwrap().write(buf),
             },
-            Encoder::Lzma2(w) => match buf.is_empty() {
+            Encoder::Lzma2 {
+                writer: w,
+                #[cfg(target_has_atomic = "64")]
+                progress,
+            } => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
                     let mut inner = writer.finish()?;
                     let _ = inner.write(buf);
                     Ok(0)
                 }
-                false => w.as_mut().unwrap().write(buf),
+                false => {
+                    let written = w.as_mut().unwrap().write(buf)?;
+                    #[cfg(target_has_atomic = "64")]
+                    if let Some(progress) = progress {
+                        progress.fetch_add(written as u64, Ordering::Relaxed);
+                    }
+                    Ok(written)
+                }
             },
             Encoder::Lzma2Mt(w) => match buf.is_empty() {
                 true => {
@@ -163,7 +183,7 @@ impl<W: Write> Write for Encoder<W> {
             Encoder::Bcj(w) => w.as_mut().unwrap().flush(),
             Encoder::Delta(w) => w.flush(),
             Encoder::Lzma(w) => w.as_mut().unwrap().flush(),
-            Encoder::Lzma2(w) => w.as_mut().unwrap().flush(),
+            Encoder::Lzma2 { writer: w, .. } => w.as_mut().unwrap().flush(),
             Encoder::Lzma2Mt(w) => w.as_mut().unwrap().flush(),
             #[cfg(feature = "brotli")]
             Encoder::Brotli(w) => w.flush(),
@@ -241,14 +261,20 @@ pub(crate) fn add_encoder<W: Write>(
 
             validate_lzma_dictionary_size(lzma2_options.options.lzma_options.dict_size)?;
             let encoder = match lzma2_options.threads {
-                0 | 1 => Encoder::Lzma2(Some(Lzma2Writer::new(input, lzma2_options.options))),
+                0 | 1 => Encoder::Lzma2 {
+                    writer: Some(Lzma2Writer::new(input, lzma2_options.options)),
+                    #[cfg(target_has_atomic = "64")]
+                    progress: lzma2_options.progress,
+                },
                 _ => {
                     let threads = lzma2_options.threads;
-                    Encoder::Lzma2Mt(Some(Lzma2WriterMt::new(
-                        input,
-                        lzma2_options.options,
-                        threads,
-                    )?))
+                    #[cfg_attr(not(target_has_atomic = "64"), allow(unused_mut))]
+                    let mut writer = Lzma2WriterMt::new(input, lzma2_options.options, threads)?;
+                    #[cfg(target_has_atomic = "64")]
+                    if let Some(progress) = lzma2_options.progress {
+                        writer.set_progress(progress)?;
+                    }
+                    Encoder::Lzma2Mt(Some(writer))
                 }
             };
 
