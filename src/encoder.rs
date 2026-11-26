@@ -268,11 +268,13 @@ pub(crate) fn add_encoder<W: Write>(
                 },
                 _ => {
                     let threads = lzma2_options.threads;
-                    #[cfg_attr(not(target_has_atomic = "64"), allow(unused_mut))]
                     let mut writer = Lzma2WriterMt::new(input, lzma2_options.options, threads)?;
                     #[cfg(target_has_atomic = "64")]
                     if let Some(progress) = lzma2_options.progress {
                         writer.set_progress(progress)?;
+                    }
+                    if let Some(cancellation) = lzma2_options.cancellation {
+                        writer.set_cancellation(cancellation)?;
                     }
                     Encoder::Lzma2Mt(Some(writer))
                 }
