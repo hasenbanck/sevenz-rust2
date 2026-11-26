@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Lzma2Options::set_progress()` sets a shared counter for the uncompressed bytes passed to the
   LZMA2 encoder.
+- `Lzma2Options::set_cancellation()` sets a shared flag that cancels multi-threaded LZMA2 encoding.
 
 ## 0.27.0 - 2026-11-26
 

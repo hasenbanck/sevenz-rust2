@@ -1,6 +1,10 @@
 #[cfg(target_has_atomic = "64")]
-use std::sync::{Arc, atomic::AtomicU64};
-use std::{fmt::Debug, num::NonZeroU64};
+use std::sync::atomic::AtomicU64;
+use std::{
+    fmt::Debug,
+    num::NonZeroU64,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 #[cfg(feature = "ppmd")]
 use ppmd_rust::{PPMD7_MAX_MEM_SIZE, PPMD7_MAX_ORDER, PPMD7_MIN_MEM_SIZE, PPMD7_MIN_ORDER};
@@ -60,6 +64,7 @@ pub struct Lzma2Options {
     pub(crate) threads: u32,
     #[cfg(target_has_atomic = "64")]
     pub(crate) progress: Option<Arc<AtomicU64>>,
+    pub(crate) cancellation: Option<Arc<AtomicBool>>,
 }
 
 impl Default for Lzma2Options {
@@ -69,6 +74,7 @@ impl Default for Lzma2Options {
             threads: 1,
             #[cfg(target_has_atomic = "64")]
             progress: None,
+            cancellation: None,
         }
     }
 }
@@ -86,6 +92,7 @@ impl Lzma2Options {
             threads: 1,
             #[cfg(target_has_atomic = "64")]
             progress: None,
+            cancellation: None,
         }
     }
 
@@ -109,6 +116,7 @@ impl Lzma2Options {
             threads,
             #[cfg(target_has_atomic = "64")]
             progress: None,
+            cancellation: None,
         }
     }
 
@@ -142,6 +150,14 @@ impl Lzma2Options {
     #[cfg(target_has_atomic = "64")]
     pub fn set_progress(&mut self, counter: Arc<AtomicU64>) {
         self.progress = Some(counter);
+    }
+
+    /// Sets a shared flag that cancels multi-threaded LZMA2 encoding.
+    ///
+    /// Setting the flag to `true` requests cancellation, which returns an I/O error carrying
+    /// `lzma_rust2::EncoderCancelled`. Single-threaded encoding ignores the flag.
+    pub fn set_cancellation(&mut self, flag: Arc<AtomicBool>) {
+        self.cancellation = Some(flag);
     }
 }
 
