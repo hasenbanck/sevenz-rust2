@@ -68,6 +68,8 @@ pub use archive::*;
 pub use block::*;
 pub use encryption::Password;
 pub use error::Error;
+#[cfg(feature = "compress")]
+pub use lzma_rust2::EncoderCancelled;
 pub use reader::{ArchiveReader, BlockDecoder, EntryDecision};
 pub use time::NtTime;
 #[cfg(all(feature = "compress", feature = "util", not(target_arch = "wasm32")))]
