@@ -1,12 +1,15 @@
-use std::io::Write;
 #[cfg(target_has_atomic = "64")]
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
+use std::sync::atomic::AtomicU64;
+use std::{
+    io::Write,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use lzma_rust2::{
-    Lzma2Writer, Lzma2WriterMt, LzmaWriter,
+    EncoderCancelled, Lzma2Writer, Lzma2WriterMt, LzmaWriter,
     filter::{bcj::BcjWriter, delta::DeltaWriter},
 };
 
@@ -44,6 +47,7 @@ pub(crate) enum Encoder<W: Write> {
         writer: Option<Lzma2Writer<CountingWriter<W>>>,
         #[cfg(target_has_atomic = "64")]
         progress: Option<Arc<AtomicU64>>,
+        cancellation: Option<Arc<AtomicBool>>,
     },
     Lzma2Mt(Option<Lzma2WriterMt<CountingWriter<W>>>),
     #[cfg(feature = "ppmd")]
@@ -95,22 +99,31 @@ impl<W: Write> Write for Encoder<W> {
                 writer: w,
                 #[cfg(target_has_atomic = "64")]
                 progress,
-            } => match buf.is_empty() {
-                true => {
-                    let writer = w.take().unwrap();
-                    let mut inner = writer.finish()?;
-                    let _ = inner.write(buf);
-                    Ok(0)
+                cancellation,
+            } => {
+                if cancellation
+                    .as_ref()
+                    .is_some_and(|flag| flag.load(Ordering::Relaxed))
+                {
+                    return Err(std::io::Error::other(EncoderCancelled));
                 }
-                false => {
-                    let written = w.as_mut().unwrap().write(buf)?;
-                    #[cfg(target_has_atomic = "64")]
-                    if let Some(progress) = progress {
-                        progress.fetch_add(written as u64, Ordering::Relaxed);
+                match buf.is_empty() {
+                    true => {
+                        let writer = w.take().unwrap();
+                        let mut inner = writer.finish()?;
+                        let _ = inner.write(buf);
+                        Ok(0)
                     }
-                    Ok(written)
+                    false => {
+                        let written = w.as_mut().unwrap().write(buf)?;
+                        #[cfg(target_has_atomic = "64")]
+                        if let Some(progress) = progress {
+                            progress.fetch_add(written as u64, Ordering::Relaxed);
+                        }
+                        Ok(written)
+                    }
                 }
-            },
+            }
             Encoder::Lzma2Mt(w) => match buf.is_empty() {
                 true => {
                     let writer = w.take().unwrap();
@@ -265,6 +278,7 @@ pub(crate) fn add_encoder<W: Write>(
                     writer: Some(Lzma2Writer::new(input, lzma2_options.options)),
                     #[cfg(target_has_atomic = "64")]
                     progress: lzma2_options.progress,
+                    cancellation: lzma2_options.cancellation,
                 },
                 _ => {
                     let threads = lzma2_options.threads;

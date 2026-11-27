@@ -165,9 +165,18 @@ impl<W: Write + Seek> ArchiveWriter<W> {
     /// ```
     pub fn push_archive_entry<R: Read>(
         &mut self,
-        mut entry: ArchiveEntry,
+        entry: ArchiveEntry,
         reader: Option<R>,
     ) -> Result<&ArchiveEntry> {
+        let position = self.output.stream_position()?;
+        if let Err(error) = self.encode_entry(entry, reader) {
+            self.output.seek(std::io::SeekFrom::Start(position))?;
+            return Err(error);
+        }
+        Ok(self.files.last().unwrap())
+    }
+
+    fn encode_entry<R: Read>(&mut self, mut entry: ArchiveEntry, reader: Option<R>) -> Result<()> {
         if !entry.is_directory
             && let Some(mut r) = reader
         {
@@ -223,14 +232,14 @@ impl<W: Write + Seek> ArchiveWriter<W> {
                 .add(self.content_methods.clone(), sizes, crc);
 
             self.files.push(entry);
-            return Ok(self.files.last().unwrap());
+            return Ok(());
         }
         entry.has_stream = false;
         entry.size = 0;
         entry.compressed_size = 0;
         entry.has_crc = false;
         self.files.push(entry);
-        Ok(self.files.last().unwrap())
+        Ok(())
     }
 
     /// Append a block compressed elsewhere by [`prepare_block`].
@@ -414,9 +423,22 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         entries: Vec<ArchiveEntry>,
         reader: Vec<SourceReader<R>>,
     ) -> Result<&mut Self> {
+        assert_eq!(reader.len(), entries.len());
+        let position = self.output.stream_position()?;
+        if let Err(error) = self.encode_entries(entries, reader) {
+            self.output.seek(std::io::SeekFrom::Start(position))?;
+            return Err(error);
+        }
+        Ok(self)
+    }
+
+    fn encode_entries<R: Read>(
+        &mut self,
+        entries: Vec<ArchiveEntry>,
+        reader: Vec<SourceReader<R>>,
+    ) -> Result<()> {
         let mut entries = entries;
         let mut r = SeqReader::new(reader);
-        assert_eq!(r.reader_len(), entries.len());
         let mut compressed_len = 0;
         let mut compressed = CompressWrapWriter::new(&mut self.output, &mut compressed_len);
         let content_methods = &self.content_methods;
@@ -483,7 +505,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         );
 
         self.files.extend(entries);
-        Ok(self)
+        Ok(())
     }
 
     fn create_writer<'a, O: Write + 'a>(

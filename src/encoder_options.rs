@@ -141,21 +141,22 @@ impl Lzma2Options {
         );
     }
 
-    /// Sets a shared counter for the uncompressed bytes passed to the LZMA2 encoder.
+    /// Sets a shared counter for the bytes passed to the LZMA2 encoder.
     ///
-    /// The encoder only adds to the counter, with single-threaded and multi-threaded encoding.
-    /// It equals the total uncompressed size of the entries compressed with these options after
-    /// a successful [`ArchiveWriter::finish`](crate::ArchiveWriter::finish). Other compression
-    /// methods don't update it.
+    /// The encoder only adds to the counter. A successful push adds the uncompressed size of its
+    /// entries, as long as LZMA2 is the only method of the chain that changes the size of the data.
     #[cfg(target_has_atomic = "64")]
     pub fn set_progress(&mut self, counter: Arc<AtomicU64>) {
         self.progress = Some(counter);
     }
 
-    /// Sets a shared flag that cancels multi-threaded LZMA2 encoding.
+    /// Sets a shared flag that cancels LZMA2 encoding.
     ///
-    /// Setting the flag to `true` requests cancellation, which returns an I/O error carrying
-    /// `lzma_rust2::EncoderCancelled`. Single-threaded encoding ignores the flag.
+    /// Setting the flag to `true` requests cancellation. The running push returns an I/O error
+    /// containing [`EncoderCancelled`](crate::EncoderCancelled) and its entries are left out of the
+    /// archive. The writer accepts new entries once the flag is `false` again.
+    ///
+    /// A failed push can leave bytes behind the end of an archive that is finished right after it.
     pub fn set_cancellation(&mut self, flag: Arc<AtomicBool>) {
         self.cancellation = Some(flag);
     }
